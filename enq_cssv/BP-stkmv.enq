@@ -1,0 +1,30 @@
+select
+	stock-code
+	stk-description
+	stk-unit-desc
+	stk-trans-type
+	stk-trans-date
+	stk-trans-whse
+	stk-trans-qty
+	wh-date-start = input date "Please enter the starting date e.g.010213 for 01 Feb 2013"
+	wh-date-end = input date "Please enter the ending date"
+	wh-mvt-sign = input alpha "Please input IN or OUT"
+from
+	stock-master
+	stock-movements
+where
+	stk-trans-whse = "339"
+	and 
+	(stk-trans-date between wh-date-start and wh-date-end)
+order by stk-unit-desc
+	if wh-mvt-sign = "IN" then stk-trans-qty < 0 and if wh-mvt-sign = "OUT" then stk-trans-qty > 0
+format is lst
+	suppress wh-date-start
+	suppress wh-date-end
+	subtotal on stk-trans-qty
+		with breaks on stk-unit-desc
+	skip
+	total on stk-trans-qty
+//field order is stock-code stk-description stk-user-group[2] stock-groupfrom
+//	stock-master
+	

@@ -1,0 +1,6 @@
+// Fixing broken Bankrec GL Codes missing from Header
+
+update bankrec-bank-header 
+
+set
+	bank-gl-accountcode = input alpha "GL Code"

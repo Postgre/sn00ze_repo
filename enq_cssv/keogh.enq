@@ -1,0 +1,70 @@
+select
+	stock-code
+	stk-description
+	ash-type
+	ash-years-ago
+	ash-value
+	ash-cost
+	ash-qty
+	ws-total-value = sum-array (ash-value 2 13) 
+	ws-total-cost = sum-array (ash-cost 2 13) 
+	ws-total-qty = sum-array (ash-qty 2 13) 
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = 'O' 
+	and 
+	ash-years-ago = 0 
+	and 
+	stk-description like "* WINTON SLAT BED STAINED *"
+//	stock-code in { 'KEO0506' 'KEO0507' 'KEO0525' 'KEO0509' 'KEO0425' 'KEO0432' 'KEO0433' 'KEO0431' 'KEO0434' 'KEO0296' 'KEO0302' 'KEO0301' 'KEO0303' 'KEO0304' } 
+format is lst
+suppress ash-type
+suppress ash-years-ago
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ash-cost[1]
+suppress ash-cost[2]
+suppress ash-cost[3]
+suppress ash-cost[4]
+suppress ash-cost[5]
+suppress ash-cost[6]
+suppress ash-cost[7]
+suppress ash-cost[8]
+suppress ash-cost[9]
+suppress ash-cost[10]
+suppress ash-cost[11]
+suppress ash-cost[12]
+suppress ash-cost[13]
+suppress ash-qty[1]
+suppress ash-qty[2]
+suppress ash-qty[3]
+suppress ash-qty[4]
+suppress ash-qty[5]
+suppress ash-qty[6]
+suppress ash-qty[7]
+suppress ash-qty[8]
+suppress ash-qty[9]
+suppress ash-qty[10]
+suppress ash-qty[11]
+suppress ash-qty[12]
+suppress ash-qty[13]
+unique record on stock-code
+subtotal on ws-total-value
+	with breaks on stock-code
+subtotal on ws-total-cost
+	with breaks on stock-code
+subtotal on ws-total-qty
+	with breaks on stock-code

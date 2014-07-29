@@ -1,0 +1,30 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	ws-pattern = "SUITE" 
+	comp-code
+	bom-parent-code
+	cre-accountcode
+	sup-shipping-method-code
+	bom-seq-no
+from
+	stock-master
+	bill-of-materials-detail
+	stock-supplier
+where
+	bom-parent-code = stock-code 
+	and 
+	(pattern (stk-description ws-pattern) != 0 
+	or 
+	pattern (stk-desc-line-2 ws-pattern) != 0 ) 
+	and 
+	sup-shipping-method-code between "A" and "B" 
+format is lst
+report width is 132
+suppress ws-pattern
+suppress bom-parent-code
+suppress cre-accountcode
+suppress sup-shipping-method-code
+suppress bom-seq-no
+unique record on comp-code

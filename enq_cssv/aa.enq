@@ -1,0 +1,100 @@
+select
+	accountcode
+	territory
+	trans-type
+	trans-date
+	tr-amount
+from
+	deb-master
+	deb-trans
+order by territory accountcode 
+format is rpt
+field new-accountcode pic 9
+field new-territory pic 9
+field total-tr-amount like tr-amount
+field sub-tot-tr-amount like tr-amount
+field 2sub-tot-tr-amount like tr-amount
+report header
+	page
+	set total-tr-amount = 0
+header
+	print 
+		tod() in col 48
+		"Pageno." in col 58
+		pageno() in col 66
+	skip 1
+	print
+		"territory" in col 2
+		"accountcode" in col 14
+		"trans" in col 30
+		"trans-date" in col 42
+		"tr-amount" in col 60
+	print
+		"type" in col 30
+	skip 1
+	print territory in col 2 no newline
+before accountcode
+	set new-accountcode = 1
+	set sub-tot-tr-amount = 0
+	print accountcode in col 14 no newline
+before territory
+	set new-territory = 1
+	set 2sub-tot-tr-amount = 0
+	if territory = spaces
+		print "XXXX" in col 2 no-newline
+	else
+		print territory in col 2 no newline
+	endif
+//	if territory = "1232"
+//		print "TERR123"
+//	elseif territory = "1332"
+//		print "TERR123"
+//	elseif territory = "1432"
+//		print "TERR123"
+//	elseif territory = "1532"
+//		print "TERR125"
+//	endif
+//	
+//	switch on territory
+//	case "1232" 
+//		print "TERR123"
+//	case "1332" 
+//		print "TERR123"
+//	case "1432" 
+//		print "TERR123"
+//	case "1532" 
+//		print "TERR123"
+//	else 
+//		print "WHO KNOWS"
+//	endswitch
+
+
+
+detail
+	print trans-type in col 30
+		trans-date in col 42
+		tr-amount in col 60
+	set total-tr-amount += tr-amount
+	set sub-tot-tr-amount += tr-amount
+	set 2sub-tot-tr-amount += tr-amount
+after accountcode
+	print
+		"---------------" in col 60
+	print
+		"Acc:" in col 39
+		accountcode in col 44
+		sub-tot-tr-amount in col 60
+	skip
+after territory
+	print
+		"---------------" in col 60
+	print
+		"Terr:" in col 39
+		territory in col 44
+		2sub-tot-tr-amount in col 60
+	skip
+report footer
+	print
+		"---------------" in col 60
+	print
+		total-tr-amount in col 60

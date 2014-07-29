@@ -1,0 +1,49 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/cretender
+//  Program Desc:	
+//  Requested By:	
+//  Request Date:	
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03apr14	rmd	{1}		upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+
+// cretender.spl
+// 080104	rmd	input: accountcode so-order-no so-bo-suffix
+// 				function: sets so-invoice-no = so-order-no, calls m1poscrec refund mode
+
+procedure main
+local field
+	lf-accountcode							like accountcode
+	lf-so-order-no                          like so-order-no
+	lf-so-bo-suffix                         like so-bo-suffix
+	//
+	set lf-accountcode    = get-param(1)
+	set lf-so-order-no    = num(get-param(2))
+	set lf-so-bo-suffix   = get-param(3)
+	if lf-so-order-no > 0
+		spl
+			//"rmd/so/soreconsol"   //{1}
+			"pvi-snz/so/soreconsol"	//{1}
+		parameters
+			lf-so-order-no
+		spl
+			"deb/m1poscrec"
+		parameters
+			"-refund"
+			"          0.00"
+			lf-accountcode
+			"N"
+			lf-so-order-no
+			lf-so-bo-suffix
+	else
+		exit
+	endif
+endprocedure // main ----------------------------------------------------------
+// cretender.spl

@@ -1,0 +1,3 @@
+delete from bankrec-cash-trans
+where
+	( bct-user-only-alpha4-1 = "DS"  )

@@ -1,0 +1,73 @@
+// stats-str
+// to list those sales in the current month with a code of U or Y
+// 
+select
+	stock-code
+	stock-group
+	stk-user-group[2] 
+	stk-description
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ash-qty
+	ytd-value = sum-array (ash-value 1 9) 
+	ytd-qty = sum-array (ash-qty 1 9) 
+from
+	stock-master
+	stock-aged-sales-history
+where
+	(stk-user-group[2] = 'W' or stk-user-group[2] = 'U' or stk-user-group[2] = 'Y')
+	and ash-years-ago = 0 
+	and ytd-value = 0
+order by ash-whse stock-code 
+format is lst
+title line 1 is 'Captn Snooze' 
+title line 2 is 'Stats-str.enq ' 
+title line 3 is 'List of codes with U or Y codes for the Current Year' 
+stock-group
+suppress ash-type
+suppress ash-years-ago
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ash-cost[1]
+suppress ash-cost[2]
+suppress ash-cost[3]
+suppress ash-cost[4]
+suppress ash-cost[5]
+suppress ash-cost[6]
+suppress ash-cost[7]
+suppress ash-cost[8]
+suppress ash-cost[9]
+suppress ash-cost[10]
+suppress ash-cost[11]
+suppress ash-cost[12]
+suppress ash-cost[13]
+suppress ash-qty[1]
+suppress ash-qty[2]
+suppress ash-qty[3]
+suppress ash-qty[4]
+suppress ash-qty[5]
+suppress ash-qty[6]
+suppress ash-qty[7]
+suppress ash-qty[8]
+suppress ash-qty[9]
+suppress ash-qty[10]
+suppress ash-qty[11]
+suppress ash-qty[12]
+suppress ash-qty[13]
+display pic of ytd-value is z(7)9v99
+display pic of ytd-qty is z(7)9v99
+new page on ash-whse

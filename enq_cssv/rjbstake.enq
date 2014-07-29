@@ -1,0 +1,12 @@
+select
+	whse-code
+	stv-bin-location
+	stock-code
+	stv-whse-qty
+	stv-count-qty
+	stv-freeze-whse-cost
+	ws-total = stv-count-qty * stv-freeze-whse-cost 
+from
+	stock-take-variance
+order by stock-code stv-bin-location 
+format is lotus

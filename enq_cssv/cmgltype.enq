@@ -1,0 +1,8 @@
+select
+	gl-accountcode
+	gl-account-type
+from
+	gl-master
+where
+	gl-account-type = 'R' 
+format is lst

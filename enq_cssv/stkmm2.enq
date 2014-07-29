@@ -1,0 +1,11 @@
+select
+	stock-code
+	whse-avg-cost
+	whse-date-last-change
+from
+	stock-warehouse-detail
+where
+	whse-avg-cost = 168 
+format is lst
+field title of stock-code is "stock-code"
+field title of whse-avg-cost is "Average-cost"

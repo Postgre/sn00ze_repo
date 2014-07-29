@@ -1,0 +1,68 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/ssmwhse.spl
+//  Program Desc:	write whse changes to Snooze Stock Master
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reservedl
+// 30aug. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	09may14	rmd			upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+// ssmwhse.spl
+// 19may09	rmd can only allow for 6 warehouses until the ssm object is extended to allow more
+// 15may09	rmd	alllow for 10 warehouses
+// 18Dec07	rmd
+
+field
+	ws-whse-count			type numeric
+	ws-whse-code			like whse-code occurs 10 //6
+	ws-whse-desc			like sys-description occurs 10 //6
+	i						type numeric
+
+procedure main
+	do determine-whse-count
+	get snooze-stock-master lock
+	on index ssm-stock-code
+	key is get-param(1)
+	on error
+		//message "ssmwhse ssm fail"
+	else
+		//message "ssm whse lookup"
+		extract stock-warehouse-detail
+		on index stock-code whse-code
+		key is ssm-stock-code spaces
+		next same stock-code
+		detail
+			for i = 1 to 6 // ws-whse-count // 4
+				if ws-whse-code[i] = whse-code
+					set ssm-avail-qty[i] = whse-qty-on-hand - whse-current-orders
+					set ssm-avail-qty-whse[i] = whse-code
+				endif
+			endfor
+		endextract
+		update snooze-stock-master
+	endon
+endprocedure // main ----------------------------------------------------------
+
+procedure determine-whse-count
+	set ws-whse-count = 1
+	extract system-table
+	on index sys-tbl-type sys-tbl-code
+	key is "WH" SPACES
+	next same sys-tbl-type
+	detail
+		if sys-tbl-alpha-4[1] = "C"
+			set ws-whse-code[ws-whse-count] = sys-tbl-code
+			set ws-whse-desc[ws-whse-count] = sys-description
+			set ws-whse-count += 1
+		endif
+	endextract
+	//message concat("Found " str(ws-whse-count - 1) " warehouses")
+endprocedure // determine-whse-count ------------------------------------------
+// ssmwhse.spl

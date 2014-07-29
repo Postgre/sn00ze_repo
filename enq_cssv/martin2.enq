@@ -1,0 +1,81 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ash-qty
+	ws-qty-value = sum-array (ash-qty 1 12) 
+	ws-cost-value = sum-array (ash-cost 1 12) 
+	ws-sales-value = sum-array (ash-value 1 12) 
+	stock-group
+	sys-gl-per
+from
+	stock-aged-sales-history
+	stock-master
+	system-control
+where
+	ash-type = 'O' 
+	and stock-group in { 'IN' 'IS' } 
+	and ash-years-ago = 0 
+order by stock-code 
+format is rpt
+field total-ws-qty-value like ws-qty-value
+field sub-tot-ws-qty-value like ws-qty-value
+field total-ws-cost-value like ws-cost-value
+field sub-tot-ws-cost-value like ws-cost-value
+field total-ws-sales-value like ws-sales-value
+field sub-tot-ws-sales-value like ws-sales-value
+report header
+	page
+	set total-ws-qty-value = 0
+	set total-ws-cost-value = 0
+	set total-ws-sales-value = 0
+header
+	print "Sales Figures for Bedding Category for the last 12 months"  in col 37 
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip
+	skip 1
+	print
+		"stock-code" in col 2
+		"stk-description" in col 21
+		"stk-desc-line-2" in col 54
+		"ws-qty-value" in col 72
+		"ws-cost-value" in col 92
+		"ws-sales-value" in col 112
+	skip 1
+before stock-code
+	set sub-tot-ws-qty-value = 0
+	set sub-tot-ws-cost-value = 0
+	set sub-tot-ws-sales-value = 0
+
+detail
+	print
+		stock-code in col 2
+		stk-description in col 21
+		stk-desc-line-2 in col 54 pic is x(15) no newline
+	set total-ws-qty-value += ws-qty-value
+	set sub-tot-ws-qty-value += ws-qty-value
+	set total-ws-cost-value += ws-cost-value
+	set sub-tot-ws-cost-value += ws-cost-value
+	set total-ws-sales-value += ws-sales-value
+	set sub-tot-ws-sales-value += ws-sales-value
+after stock-code
+	print
+		sub-tot-ws-qty-value in col 72
+		sub-tot-ws-cost-value in col 92
+		sub-tot-ws-sales-value in col 112
+report footer
+	print
+		"-----------------" in col 72
+		"-----------------" in col 92
+		"-----------------" in col 112
+	print
+		total-ws-qty-value in col 72
+		total-ws-cost-value in col 92
+		total-ws-sales-value in col 112

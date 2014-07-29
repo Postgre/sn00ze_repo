@@ -1,0 +1,12 @@
+select
+	stock-code
+	stk-user-group
+	stk-description
+	stk-abc-class
+	stk-condition-code
+from
+	stock-master
+where
+	stk-user-group[2] = "X" 
+	and stk-condition-code != "O"
+format is lst

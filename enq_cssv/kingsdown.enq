@@ -1,0 +1,32 @@
+select
+	accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	so-processing-date
+	ws-start-date = add-month (today () -1 1) 
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-status
+	stock-code
+	stk-description
+	na-type
+from
+	sales-order-archive
+	sales-order-line-archive
+	stock-master
+	name-and-address-master
+where
+	accountcode = so-cust-code 
+	and na-type = 'C' 
+	and so-order-status = '90' 
+	and so-processing-date >= ws-start-date 
+	and so-processing-date < today () 
+	and stk-description like "%KINGSDOWN%" 
+	and sub-string (stock-code 1 3) = 'SOP' 
+group by accountcode
+format is external

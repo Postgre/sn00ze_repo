@@ -1,0 +1,150 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/stk/stkkwupd
+//  Program Desc:	Stock keyword update routine
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reservedl
+// 30aug. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	08may14	rmd			upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+// 30aug13	rmd add batchable mode
+//				prospl rmd/stk/stkkwupd -batched
+// 15jul08	rmd	add standalone mode
+
+field
+	ws-stock-code							like stock-code
+	ws-stk-description                      like stk-description
+	ws-stk-desc-line-2                      like stk-desc-line-2
+	ws-stk-desc-line-3                      like stk-desc-line-3
+	ws-stock-key-word						like stock-key-word occurs 15
+
+procedure main
+	if strlen(get-param(1)) = 0
+		do standalone-mode
+	elseif get-param(1) = "-batched"
+		do batched-mode
+	else
+		set ws-stock-code = get-param(1)
+		set ws-stk-description  = get-param(2)
+		set ws-stk-desc-line-2  = get-param(3)
+		set ws-stk-desc-line-3  = get-param(4)
+		do clear-keywords
+		do create-keywords
+	endif
+endprocedure // main ----------------------------------------------------------
+
+procedure batched-mode
+	extract stock-master
+	detail
+	if stk-condition-code not in {"A" SPACES}
+		//don't rebuild obsolete items
+		continue
+	endif
+	set ws-stock-code 		= stock-code
+	set ws-stk-description  = stk-description
+	set ws-stk-desc-line-2  = stk-desc-line-2
+	set ws-stk-desc-line-3  = stk-desc-line-3
+	do clear-keywords
+	do create-keywords
+	endextract
+endprocedure // standalone-mode -----------------------------------------------
+
+procedure standalone-mode
+local field
+	lf-accept				pic x
+window	@5,5 to @12,35 title is "Keyword Rebuild"
+	accept lf-accept @6,27 title is "Full Rebuild Y/N?"
+		uppercase
+		allowed "Y" "N"
+		default "N"
+	if lf-accept = "Y"
+		extract stock-master
+		// don't rebuild obsolete items
+		detail
+		if stk-condition-code not in {"A" SPACES}
+			continue
+		endif
+		display concat("Now at: " stock-code) @7,14 background
+		set ws-stock-code 		= stock-code
+		set ws-stk-description  = stk-description
+		set ws-stk-desc-line-2  = stk-desc-line-2
+		set ws-stk-desc-line-3  = stk-desc-line-3
+		do clear-keywords
+		do create-keywords
+		endextract
+	else
+		exit
+	endif
+endprocedure // standalone-mode -----------------------------------------------
+
+procedure clear-keywords
+	extract stock-key-words lock
+	on index stock-code stock-key-word
+	key is ws-stock-code SPACES
+	next same stock-code
+	detail
+		delete stock-key-words
+		on error
+		endon
+	endextract
+endprocedure // clear-keywords ------------------------------------------------
+
+procedure create-keywords
+local field
+	i										type numeric
+	lf-str-to-split							pic x(92)
+	lf-str									pic x(93) occurs 15
+	lf-word-count							type numeric
+	//i										type numeric
+	p										type numeric
+	l										type numeric
+	r										type numeric
+	//get stock-master
+	//on index stock-code
+	//key is ws-stock-code
+	//set lf-str-to-split = concat(strconcat(stk-description) " " strconcat(stk-desc-line-2) " " strconcat(stk-desc-line-3))
+	set lf-str-to-split = concat(strconcat(ws-stk-description) " " strconcat(ws-stk-desc-line-2) " " strconcat(ws-stk-desc-line-3))
+	//message lf-str-to-split
+	set p = 0
+	set l = strlen(lf-str-to-split)
+	set lf-word-count = 0
+	// multi pass
+	for r = 1 to 15
+		if l > p
+			set p = pattern(lf-str-to-split," ")
+			set lf-str[r] = substring(lf-str-to-split,1,p - 1)
+			set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+			set lf-word-count += 1
+			if lf-str[r] != SPACES
+				do
+					insert-stock-key-word
+				parameters
+					ws-stock-code
+					uppercase(lf-str[r])
+			endif
+		endif
+	endfor
+endprocedure // create-keywords -----------------------------------------------
+
+procedure insert-stock-key-word
+parameters
+	lp-stock-code							like stock-code
+	lp-stock-key-word						like stock-key-word
+	set stock-code = lp-stock-code
+	set stock-key-word = lp-stock-key-word
+    //message "dbg: insert - " stock-code stock-key-word
+	get stock-key-words lock
+	on index stock-code stock-key-word
+	on error
+		insert stock-key-words
+	else
+	endon
+endprocedure // insert-deb-key-word -------------------------------------------
+// stkkwupd.spl

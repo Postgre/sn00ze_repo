@@ -1,0 +1,18 @@
+// an example of the use of pattern, which is similar to like
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	stk-desc-line-3
+	stk-sort-analysis-code
+	cre-accountcode
+	ws-pattern = "BED OF ROSES"
+from
+	stock-master
+	stock-supplier
+where
+	pattern(stk-description,ws-pattern) != 0
+	or pattern(stk-desc-line-2,ws-pattern) != 0
+	or pattern(stk-desc-line-3,ws-pattern) != 0
+format is lst
+suppress ws-pattern

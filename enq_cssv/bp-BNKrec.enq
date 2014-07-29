@@ -1,0 +1,45 @@
+update bankrec-deposit-summary
+	set bds-bank-account = "3M3061230" 
+where	
+	(bds-bank-account <> "3M3061230" and bds-on-statement <> "Y" and (bds-date
+ between 01-MAY-2012 and 04-JUN-2012))
+
+//select
+//	bds-bank-account
+//	bds-date
+//	bds-on-statement
+//	bds-deposit-total
+//from
+//	bankrec-deposit-summary
+//where	
+//	(bds-bank-account <> "3M3061230" and bds-on-statement <> "Y" and (bds-date
+// between 03-JUL-2011 and 04-JUN-2012))
+//format is lst
+//total on bds-deposit-total
+
+
+//update bankrec-cash-trans
+//	set bct-bank-gl-account = "3M3151230" 
+//	set bct-user-only-alpha4-1 = "X"
+//where
+//	(bct-bank-gl-account = "3M3061230" and (bct-date between 03-JUL-2011 and 04//-JUN-2012) and bct-user-only-alpha4-1 = "X" and bct-on-statement = 0 and bct-//receipt-location = "306")
+
+
+//select
+//	bct-bank-gl-account
+//	bct-date
+//	bct-batch-ref
+//	bct-local-amount
+//	bct-receipt-location
+//	bct-on-statement
+//	bct-user-only-alpha4-1
+//from
+//	bankrec-cash-trans
+
+//where
+//	(bct-bank-gl-account = "3M3061230" and (bct-date between 03-JUL-2011 and 04//-JUN-2012) and bct-user-only-alpha4-1 = "X" and bct-on-statement = 0)
+//order by bct-receipt-location
+//format is lst
+//subtotal on bct-local-amount
+//	with breaks on bct-receipt-location
+//total on bct-local-amount

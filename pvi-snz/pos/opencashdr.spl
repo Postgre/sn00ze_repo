@@ -1,0 +1,172 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/pos/opencashdr
+//  Program Desc:	Open Cash Drawer report
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03apr14	rmd	{1}		upgrade to 710
+///////////////////////////////////////////////////////////////////////////////
+// opencashdr.spl
+
+object tmp-cash-drawer-detail
+type is memory
+	record
+		tmp-cd-batch-ref            like cd-batch-ref
+		tmp-cd-store-id             like cd-store-id
+		tmp-cd-terminal             like cd-terminal
+		tmp-cd-opened-by			like cd-opened-by
+		tmp-cd-daily-float			like cd-daily-float
+		tmp-cd-current-balance		like cd-current-balance
+		tmp-cd-money-type           like cd-money-type
+		tmp-cd-money-amount			like cd-money-amount
+	endrecord
+	key is tmp-cd-batch-ref tmp-cd-store-id tmp-cd-terminal tmp-cd-money-type
+
+procedure main
+	get system-control first
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+	if get-param(1) != SPACES
+		set user-store-id = get-param(1)
+	endif
+	do build-dataset
+	do print-report
+	//do display-in-grid
+endprocedure // main ----------------------------------------------------------
+
+procedure build-dataset
+	open tmp-cash-drawer-detail truncate temporary
+	extract cash-draw
+	on index cd-store-id cd-terminal
+	key is user-store-id num(user-store-id)
+	next same cd-store-id cd-terminal
+	detail
+		if cd-opened-by != SPACES and cd-closed-by = SPACES
+			initialise tmp-cash-drawer-detail
+			set tmp-cd-batch-ref            = cd-batch-ref   
+			set tmp-cd-store-id             = cd-store-id    
+			set tmp-cd-terminal             = cd-terminal	
+			set tmp-cd-opened-by			= cd-opened-by
+			set tmp-cd-daily-float			= cd-daily-float
+			set tmp-cd-current-balance		= cd-current-balance
+			extract cash-draw-money-trans
+			on index cd-batch-ref cd-store-id cd-terminal cd-trans-seq-no cd-money-seq-no
+			key is cd-batch-ref cd-store-id cd-terminal 0 0
+			next same cd-batch-ref cd-store-id cd-terminal
+			detail
+				set tmp-cd-money-type           = cd-money-type  
+				set tmp-cd-money-amount			= cd-money-amount * -1	
+				insert tmp-cash-drawer-detail	
+			endextract
+		endif
+	endextract
+endprocedure // build-dataset -------------------------------------------------
+	
+procedure print-report
+local field
+	st-cd-money-amount			like cd-money-amount		
+	report "Cash Drawer Summary"
+	header is top-of-page
+	page
+	extract tmp-cash-drawer-detail
+	before tmp-cd-terminal
+		print
+			"Cash Drawer:" 		bold
+			tmp-cd-terminal		bold
+			"   Opened By:"		bold
+			tmp-cd-opened-by	bold
+		skip
+	before tmp-cd-money-type
+		set st-cd-money-amount = 0
+	detail
+		set st-cd-money-amount += tmp-cd-money-amount
+	after tmp-cd-money-type
+		get tender-type-detail
+		on index ttd-tender-type
+		key is tmp-cd-money-type
+		on error
+			set ttd-tender-description = "* Unknown Tender Type *"
+		endon
+		print
+			tmp-cd-money-type 				in col 1
+			ttd-tender-description			in col 5
+			st-cd-money-amount				in col 35 pic $,$$$,$$9.99-
+	after tmp-cd-terminal
+		skip
+		print
+			"H"								in col 1
+			"Cash Float"					in col 5
+			tmp-cd-daily-float 				in col 35 pic $,$$$,$$9.99-
+        skip
+		print
+			"-------------"					in col 35
+		print
+			"Total:"						bold
+			tmp-cd-current-balance			in col 35 pic $,$$$,$$9.99- bold
+		print
+			"-------------"					in col 35
+	skip 3
+	endextract
+endprocedure // print-report --------------------------------------------------
+
+procedure print-report-simple
+	report "Cash Drawer Summary"
+	header is top-of-page
+	page
+	extract cash-draw
+	on index cd-store-id cd-terminal
+	//key is user-store-id num(user-store-id)
+	//next same cd-store-id cd-terminal
+	detail
+		if cd-opened-by != SPACES and cd-closed-by = SPACES
+			print
+				"Cash Drawer:" 	bold
+				cd-terminal		bold
+				"   Opened By:"	bold
+				cd-opened-by	bold
+				//"   Closed By:"	bold
+				//cd-closed-by	bold
+			skip
+			print
+				"Hard Cash:"
+				cd-total-cash - cd-daily-float 		in col 15 pic $,$$$,$$9.99-
+			print
+				"Cheque:"
+				cd-total-cheques 					in col 15 pic $,$$$,$$9.99-
+			print
+				"Credit:"
+				cd-total-credit						in col 15 pic $,$$$,$$9.99-
+			print
+				"Float"
+				cd-daily-float						in col 15 pic $,$$$,$$9.99-
+			print
+				"-------------"						in col 15
+			print
+				"Total:"
+				cd-current-balance					in col 15 pic $,$$$,$$9.99- bold
+			print
+				"-------------"						in col 15
+		endif
+	endextract
+endprocedure // print-report-simple -------------------------------------------
+	
+procedure top-of-page
+		print
+			strconcat(company-name " Cash Drawer Breakdown") in col 1 font 15 bold // scale 200 bold
+		// skip
+		print
+			"Prepared:" in col 1
+	       	today() in col 16 // 11
+			tod() in col 28 // 23 pic HH:MM
+			"by" in col 34 // 29
+			login-id() in col 37 // 32
+endprocedure // top-of-page ---------------------------------------------------
+// opencashdr.spl

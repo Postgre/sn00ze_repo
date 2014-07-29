@@ -1,0 +1,14 @@
+// backorder on cash accounts for WA Company owned stores
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-date
+	so-order-status
+from
+	sales-order
+where
+	((so-cust-code <= "700" ) and 
+	(so-order-status = "11" ) ) 
+order by so-order-date 
+format is lst

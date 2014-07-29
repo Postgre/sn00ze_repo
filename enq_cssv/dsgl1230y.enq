@@ -1,0 +1,4 @@
+delete from gl-trans
+where
+	( ( gl-accountcode = "3M3461230"  ) AND
+	( gl-trans-date = 0  ) )

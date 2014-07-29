@@ -1,0 +1,4 @@
+update cre-master
+set
+	cr-auto-rq-flag = 'Y'
+	cr-clearing-flag = 'O'

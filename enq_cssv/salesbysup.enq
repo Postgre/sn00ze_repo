@@ -1,0 +1,173 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-actual-delivery-date
+	so-territory-code
+	so-rep-code
+	sol-line-type
+	stock-code
+	sol-shipped-sales-tax-amt
+	sol-shipped-qty
+	sol-shipped-amount
+	stk-description
+	cre-accountcode
+	ws-start-date = input
+		date
+		prompt is "Start Delivery Date"
+	ws-end-date = input
+		date
+		prompt is "End   Delivery Date"
+	ws-start-store = input
+		string
+		uppercase
+		prompt is "Start Store No.    "
+	ws-end-store = input
+		string
+		uppercase
+		prompt is "End   Store No.    "
+	ws-start-supplier = input
+		string
+		uppercase
+		prompt is "Start Supplier Code"
+	ws-end-supplier = input
+		string
+		uppercase
+		prompt is "End   Supplier Code"
+	ws-sales-ex-gst = sol-shipped-amount - sol-shipped-sales-tax-amt 
+	rep-code
+	rep-description
+from
+	sales-order-archive
+	sales-order-line-archive
+	stock-master
+	stock-supplier
+	rep-master
+where
+	sol-line-type = "SN" 
+	and so-actual-delivery-date between ws-start-date and ws-end-date 
+	and cre-accountcode between ws-start-supplier and ws-end-supplier 
+	and so-territory-code between ws-start-store and ws-end-store 
+	and stock-code not = "ZROUNDDISC" 
+	and so-rep-code = rep-code 
+order by so-rep-code so-order-no 
+format is rpt
+field new-so-rep-code pic 9
+field total-sol-shipped-sales-tax-amt like sol-shipped-sales-tax-amt
+field sub-tot-sol-shipped-sales-tax-amt like sol-shipped-sales-tax-amt
+field total-sol-shipped-amount like sol-shipped-amount
+field sub-tot-sol-shipped-amount like sol-shipped-amount
+field total-ws-sales-ex-gst like ws-sales-ex-gst
+field sub-tot-ws-sales-ex-gst like ws-sales-ex-gst
+field new-rep-code pic 9
+report header
+	page
+	set total-sol-shipped-sales-tax-amt = 0
+	set total-sol-shipped-amount = 0
+	set total-ws-sales-ex-gst = 0
+header
+	print 
+		"DELIVERED SALES BY SUPPLIER REPORT" in col 32
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 125
+	skip 1
+	print
+		"Rep" in col 1
+		"Rep Name" in col 5
+		"S/Order" in col 26
+		"Deliver" in col 35
+		"Store" in col 46
+		"Stock" in col 52
+		"Stock" in col 64
+		"Qty" in col 95
+		"Sales" in col 103
+		"GST" in col 114
+		"Sales" in col 124
+	print
+		"Code" in col 1
+		"Number" in col 26
+		"Date" in col 35
+		"No." in col 47
+		"Code" in col 52
+		"Description" in col 64
+		"Inc.GST" in col 102
+		"Ex.GST" in col 124
+	print "==================================================================================================================================" in col 1
+	skip 1
+before so-rep-code
+	set new-so-rep-code = 1
+	set sub-tot-sol-shipped-sales-tax-amt = 0
+	set sub-tot-sol-shipped-amount = 0
+	set sub-tot-ws-sales-ex-gst = 0
+
+detail
+	if (new-so-rep-code)
+		print so-rep-code in col 1 no newline
+		print rep-description in col 5 pic is x(20) no newline
+	endif
+	print so-order-no in col 26 no newline
+	print so-actual-delivery-date in col 35 no newline
+	print so-territory-code in col 47 no newline
+	print stock-code in col 52 pic is x(11) no newline
+	print stk-description in col 64 no newline
+	print sol-shipped-qty in col 95 pic is zz9- no newline
+	print sol-shipped-amount in col 100 pic is zz,zz9.99- no newline
+	print sol-shipped-sales-tax-amt in col 111 pic is z,zz9.99- no newline
+	print ws-sales-ex-gst in col 121 pic is zz,zz9.99- no newline
+	skip
+	set new-so-rep-code = 0
+	set total-sol-shipped-sales-tax-amt += sol-shipped-sales-tax-amt
+	set sub-tot-sol-shipped-sales-tax-amt += sol-shipped-sales-tax-amt
+	set total-sol-shipped-amount += sol-shipped-amount
+	set sub-tot-sol-shipped-amount += sol-shipped-amount
+	set total-ws-sales-ex-gst += ws-sales-ex-gst
+	set sub-tot-ws-sales-ex-gst += ws-sales-ex-gst
+	set new-rep-code = 0
+after so-rep-code
+	print
+		"----------" in col 100
+		"---------" in col 111
+		"----------" in col 121
+	print
+		"Total for :" in col 61 bold 
+		so-rep-code in col 73 bold 
+		rep-description in col 77 pic x(20) bold 
+		sub-tot-sol-shipped-amount in col 100 pic is zz,zz9.99- bold 
+		sub-tot-sol-shipped-sales-tax-amt in col 111 pic is z,zz9.99- bold 
+		sub-tot-ws-sales-ex-gst in col 121 pic is zz,zz9.99- bold 
+	skip
+report footer
+	print
+		"----------" in col 100
+		"---------" in col 111
+		"----------" in col 121
+	print
+		"TOTAL" in col 92 bold 
+		total-sol-shipped-amount in col 100 pic is zz,zz9.99- bold 
+		total-sol-shipped-sales-tax-amt in col 111 pic is z,zz9.99- bold 
+		total-ws-sales-ex-gst in col 121 pic is zz,zz9.99- bold 
+	skip
+	print
+		"Report Name        :" in col 10
+		"salesbysup.enq" in col 31
+	skip
+	print
+		"Start Delivery Date:" in col 10
+		ws-start-date in col 31
+	print
+		"End   Delivery Date:" in col 10
+		ws-end-date in col 31
+	print
+		"Start Store No.    :" in col 10
+		ws-start-store in col 31 pic x(3)
+	print
+		"End   Store No.    :" in col 10
+		ws-end-store in col 31 pic x(3)
+	print
+		"Start Supplier Code:" in col 10
+		ws-start-supplier in col 31 pic x(5)
+	print
+		"End   Supplier Code:" in col 10
+		ws-end-supplier in col 31 pic x(5)

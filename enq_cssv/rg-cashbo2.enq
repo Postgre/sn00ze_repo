@@ -1,0 +1,16 @@
+// backorders on cash accounts for NSW company owned stores
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-date
+	so-order-status
+	so-rep-code
+	so-order-total-amount
+from
+	sales-order
+where
+	((so-cust-code <= "200" ) and 
+	(so-order-status = "11" ) ) 
+order by so-cust-code 
+format is lst

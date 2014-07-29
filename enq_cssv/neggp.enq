@@ -1,0 +1,25 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-date
+	so-whse-code
+	so-territory-code
+	so-order-total-amount
+	so-order-total-tax
+	so-ordered-total-cost
+	ws-amount = so-order-total-amount - so-order-total-tax 
+	ws-gp$ = ws-amount - so-ordered-total-cost 
+	ws-gp% = ((ws-amount - so-ordered-total-cost ) / ws-amount ) * 100 
+from
+	sales-order-archive
+where
+	so-order-status != "99" 
+	and so-whse-code = '301' 
+	and ws-gp% < 0 
+	and so-order-date between 01-jul-2001 and 30-jun-2002 
+format is lst
+suppress so-whse-code
+suppress ws-amount
+display pic of so-cust-code is x(9)
+display pic of so-territory-code is x(3)

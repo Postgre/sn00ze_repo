@@ -1,0 +1,19 @@
+select
+	stock-code
+	stk-user-group
+	stk-description
+	stock-group
+	input-stock-code-start = input alpha "Please enter the start stock-code range"
+	input-stock-code-end = input alpha "Please enter the ending stock-code range"
+	input-stk-user-2 = input alpha "Please enter the stock user group"
+from
+	stock-master
+where
+	stock-code between input-stock-code-start and input-stock-code-end 
+	and input-stk-user-2 = stk-user-group[2]  
+format is lst
+suppress stk-user-group[1]
+suppress input-stock-code-start
+suppress input-stock-code-end
+suppress input-stk-user-2
+field order is stock-code stk-description stk-user-group[2] stock-group

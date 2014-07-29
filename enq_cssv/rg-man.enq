@@ -1,0 +1,43 @@
+// delivery Manifest Report only
+select
+	zcall = spaces 
+	zcall2 = spaces 
+	so-whse-code
+	so-order-no
+	na-name
+	so-cust-code
+	so-delivery-date
+	so-delivery-time
+	so-order-total-amount
+	so-order-total-shipped-amount
+	accountcode
+	na-phone
+	na-mobile-phone
+	na-street
+from
+	sales-order
+	name-and-address-master
+where
+	((so-cust-code = accountcode ) and 
+	(so-delivery-date between input date 
+	prompt is "ENTER BEGINNING DELIVERY DATE" and input date 
+	prompt is "Enter Ending delivery date" ) ) 
+order by so-order-no na-name so-delivery-date 
+format is lst
+report width is 132
+suppress so-cust-code
+suppress accountcode
+field title of zcall is "Call"
+field title of zcall2 is "Install"
+field title of so-whse-code is "Store"
+field title of so-order-no is "Order No"
+field title of na-name is "Customer"
+field title of so-delivery-date is "Del Date"
+field title of so-delivery-time is "Del Time"
+field title of so-order-total-amount is "Total Order"
+field title of so-order-total-shipped-amount is "Total shipped"
+field title of na-phone is "Phone 1"
+field title of na-mobile-phone is "Phone 2"
+field title of na-street is "Suburb"
+display pic of so-order-total-amount is zzzz9.99
+display pic of so-order-total-shipped-amount is zzzz9.99

@@ -1,0 +1,509 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/globalwhseterrlist.spl
+//  Program Desc:	List all warehouses and territories for each dataset
+//  Requested By:	Chris Ward
+//  Request Date:	17oct12
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	04jun14	mb		{1}	upgrade to 710.3 - external file in EXT_WHSE
+//	17oct12	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+version-number "140604.000" //"CUSTOM pvi-snz/sys/globalwhseterrlist 140604" //{1}
+/*
+notes
+extract to run across multiple datasets and pickup warehouses and territories
+show last so, last deb trans for terr
+show last so, last po for whse
+*/
+
+object tmp-global-list type memory
+	record
+		tgl-sys-consolidation-division	like sys-consolidation-division
+		tgl-div-desc					pic x(40)
+		tgl-entry-type					pic x(4)
+		tgl-entry-code                  pic x(4)
+		tgl-entry-description           pic x(30)
+		tgl-last-so						pic x(10)
+		tgl-last-so-date				type date
+		tgl-last-po						pic x(10)
+		tgl-last-po-date				type date
+		tgl-last-dt						pic x(10)
+		tgl-last-dt-date				type date
+	endrecord
+	key is tgl-sys-consolidation-division tgl-entry-type tgl-entry-code
+
+object ism-global-list like tmp-global-list type memory //type isam {1}
+/* // < {1}
+	file "/data/common/ism-global-list"
+*/ // > {1}
+
+// < {1}
+//#define EXT_WHSE "/pro/data/mas/ext_globalwhseterrlist"		//{1} option 1 - use program name to name external file.
+//#define EXT_WHSE "/pro/data/mas/ism-global-list"				//{1} option 2 - use original name to name external file.
+//object ext-obj
+//	type external
+//	like ism-global-list
+//	file EXT_WHSE
+//
+// instead of EXTERNAL approach, created COMMON custom table: snooze-ism-global-list
+#define SNZ_COMMON snooze-ism-global-list
+#define SNZ_COMMON_TXT "snooze-ism-global-list"
+// > {1}
+
+object tmp-system-user like system-user type memory //{2} for user/company sort seq -user-user-only-spare-flag2-1 for tag
+
+mode md-build-all
+	prompt "Build Extract"
+	help "Build Analysis Extract"
+	//when login-id() in {"robd"}
+
+mode md-global-audit
+	prompt "Global Audit"
+	help "Review Global Audit"
+	//when login-id() in {"robd"}
+
+mode md-maintain-datasets-for-inclusion
+	prompt "Maintain Dataset List"
+	help "Maintain Datasets for inclusion"
+
+mode md-tag
+	prompt "Incl/Excl"
+	help "Should this Dataset be included in the extract?"
+
+field
+	ws-max-datasets			type numeric
+	ws-confirm				type boolean
+
+procedure main
+	get system-control first
+	open tmp-global-list truncate temporary
+	open ism-global-list
+		truncate temporary //{1}
+/* // < {1}
+	on error
+		message "Cannot open ism-global-list, will create new instance"
+		open ism-global-list create permanent
+	endon
+*/ // > {1}
+// < {1} store ism-global-list to permanent common file
+//	open ext-obj
+//	on error
+//		message concat("Cannot open " EXT_WHSE ", creating new instance..." )
+//		open ext-obj create permanent
+//	endon
+	open SNZ_COMMON
+	on error
+		message concat("Cannot open " SNZ_COMMON_TXT ", creating new instance..." )
+		open SNZ_COMMON create permanent
+		on error
+			message concat("Create error: " error-description(file-status()) ": on table " SNZ_COMMON_TXT )
+		endon //open create SNZ_COMMON
+	endon //open SNZ_COMMON
+	do load-temp //{1}
+// > {1} 
+	do get-local-list
+	do sync-with-master
+	if get-param(1) = "-buildonly"
+	else
+		//do dig-tfa
+		do load-temp //{1}
+		do dig-global-audit
+	endif
+	do unload-temp //{1}
+endprocedure // main ----------------------------------------------------------
+
+// < {1} store ism-global-list to permanent common file
+procedure load-temp
+//local lf-count type numeric
+//message "zaz b4 load-temp ext-obj"
+//	extract ext-obj
+//	detail
+//		insert ism-global-list
+//		set lf-count += 1
+//	endextract
+//message "zaz b4 after: load-temp ext-obj  count = " lf-count
+	//--
+	//-- wipe data table first :
+	extract ism-global-list
+	detail
+		delete ism-global-list
+	endextract
+	//--
+	//-- restore memory object ism-global-list from custom common data table
+	extract SNZ_COMMON //ext-ffaudit
+	detail
+		set tgl-sys-consolidation-division	= sig-sys-consolidation-division
+		set tgl-div-desc							= sig-div-desc				
+		set tgl-entry-type						= sig-entry-type				
+		set tgl-entry-code						= sig-entry-code                 
+		set tgl-entry-description				= sig-entry-description          
+		set tgl-last-so							= sig-last-so					
+		set tgl-last-so-date						= sig-last-so-date			
+		set tgl-last-po							= sig-last-po					
+		set tgl-last-po-date						= sig-last-po-date			
+		set tgl-last-dt							= sig-last-dt					
+		set tgl-last-dt-date						= sig-last-dt-date			
+		insert ism-global-list
+			on error endon //ignore duplicates
+//		set lf-count += 1
+	endextract //SNZ_COMMON
+endprocedure // load-temp -----------------------------------------
+// > {1} 
+
+// < {1} store ism-global-list to permanent common file
+procedure unload-temp
+local lf-count type numeric
+//message "zaz b4 unload-temp ext-obj"
+	//--
+	//-- wipe custom common data table first :
+	extract SNZ_COMMON
+	detail
+		delete SNZ_COMMON
+	endextract //SNZ_COMMON
+	//--
+	//-- save memory object to custom common data table
+	extract ism-global-list
+	detail
+//		insert ext-obj
+//		set lf-count += 1
+		set sig-sys-consolidation-division	= tgl-sys-consolidation-division
+		set sig-div-desc							= tgl-div-desc				
+		set sig-entry-type						= tgl-entry-type				
+		set sig-entry-code						= tgl-entry-code                 
+		set sig-entry-description				= tgl-entry-description          
+		set sig-last-so							= tgl-last-so					
+		set sig-last-so-date						= tgl-last-so-date			
+		set sig-last-po							= tgl-last-po					
+		set sig-last-po-date						= tgl-last-po-date			
+		set sig-last-dt							= tgl-last-dt					
+		set sig-last-dt-date						= tgl-last-dt-date			
+		insert SNZ_COMMON
+	endextract
+//message "zaz b4 after: unload-temp ext-obj  count = " lf-count
+endprocedure // load-temp -----------------------------------------
+// > {1} 
+
+procedure get-local-list
+	get system-control first
+	get system-companies
+		on index sys-comp-code
+		key is sys-consolidation-division
+	on error
+		set sys-comp-desc = "UNKNOWN"
+	endon
+	extract system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "TC" SPACES
+		next same sys-tbl-type
+	detail
+		initialise tmp-global-list
+		set tgl-sys-consolidation-division 	= sys-consolidation-division
+		set tgl-div-desc					= sys-comp-desc
+		set tgl-entry-type		    		= "TERR"
+		set tgl-entry-code          		= sys-tbl-code
+		set tgl-entry-description			= sys-description
+		do get-last-trans
+		insert tmp-global-list
+	endextract
+	extract system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "WH" SPACES
+		next same sys-tbl-type
+	detail
+		initialise tmp-global-list
+		set tgl-sys-consolidation-division 	= sys-consolidation-division
+		set tgl-div-desc					= sys-comp-desc
+		set tgl-entry-type		    		= "WHSE"
+		set tgl-entry-code          		= sys-tbl-code
+		set tgl-entry-description			= sys-description
+		do get-last-trans
+		insert tmp-global-list
+	endextract
+endprocedure // get-local-list ------------------------------------------------
+
+procedure get-last-trans
+	if tgl-entry-type = "TERR"
+		set tgl-last-so 		= SPACES
+		set tgl-last-so-date 	= 0
+		extract sales-order-archive
+			on index so-territory-code so-order-no so-bo-suffix
+			key is tgl-entry-code 0 SPACES
+			next same so-territory-code
+		detail
+			if so-order-date > tgl-last-so-date
+				set tgl-last-so-date 	= so-order-date
+				set tgl-last-so 		= strconcat(str(so-order-no) so-bo-suffix)
+			endif
+		endextract
+		set tgl-last-dt			= SPACES
+		set tgl-last-dt-date	= 0
+/* // < {1} 710.3 no longer has archive table object :
+		extract deb-trans-archive
+		detail
+			if dr-tr-territory = tgl-entry-code and trans-date > tgl-last-dt-date
+				set tgl-last-dt-date 	= trans-date
+				set tgl-last-dt 		= trans-ref
+			endif
+		endextract
+*/ // > {1}
+		extract deb-trans
+		detail
+			if dr-tr-territory = tgl-entry-code and trans-date > tgl-last-dt-date
+				set tgl-last-dt-date 	= trans-date
+				set tgl-last-dt 		= trans-ref
+			endif
+		endextract
+	elseif tgl-entry-type = "WHSE"
+		set tgl-last-so 		= SPACES
+		set tgl-last-so-date 	= 0
+		extract sales-order-archive
+			on index so-territory-code so-order-no so-bo-suffix
+			key is tgl-entry-code
+			next same so-territory-code
+		detail
+			if so-order-date > tgl-last-so-date
+				set tgl-last-so-date 	= so-order-date
+				set tgl-last-so 		= strconcat(str(so-order-no) so-bo-suffix)
+			endif
+		endextract
+		set tgl-last-po			= SPACES
+		set tgl-last-po-date    = 0
+		extract purchase-order-archive
+			on index po-whse-code po-order-no po-backorder-flag
+			key is tgl-entry-code 0 SPACES
+			next same po-whse-code
+		detail
+			if po-order-date > tgl-last-po-date
+				set tgl-last-po-date	= po-order-date
+			    set tgl-last-po		    = strconcat(str(po-order-no) po-backorder-flag)
+			endif
+  		endextract
+  		extract purchase-order
+			on index po-whse-code po-order-no po-backorder-flag
+			key is tgl-entry-code 0 SPACES
+			next same po-whse-code
+		detail
+			if po-order-date > tgl-last-po-date
+				set tgl-last-po-date	= po-order-date
+			    set tgl-last-po		    = strconcat(str(po-order-no) po-backorder-flag)
+			endif
+  		endextract
+	endif
+endprocedure // get-last-trans ------------------------------------------------
+
+procedure build-all
+local field
+	i		type numeric
+	j		type numeric
+	//do get-date-range entry once
+	//do get-user-input entry once
+	//if ws-confirm = TRUE
+		//clear existing values
+		open ism-global-list truncate temporary //permanent //{1}
+		//do unload-temp //{1}
+		//--
+		//-- wipe custom common data table first :
+		extract SNZ_COMMON
+		detail
+			delete SNZ_COMMON
+		endextract //SNZ_COMMON
+		//--
+		report "Global Price Anal"
+			spool-only
+			set i = 1
+			//set j = ws-max-datasets//5 //100 //for testing
+			set j = 300
+			//do unload-temp //{1}
+			extract system-companies
+			detail
+				//message "i: " i "  j:" j
+				if i > j
+					break
+				endif
+				if sys-comp-spare2 = "Y"
+					print
+						today()
+						tod()
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"Global extract called"
+					command "sh"
+						parameters
+							"-c"
+							concat("cd " strconcat(sys-comp-path) ";prospl pvi-snz/sys/globalwhseterrlist -buildonly")
+					set i += 1
+				else
+					print
+						today()
+						tod()
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"Global extract not called"
+				endif
+			endextract
+			//do load-temp //{1}
+		report finished
+		do load-temp //{1}
+	//endif
+endprocedure // build-all -----------------------------------------------------
+
+procedure sync-with-master
+	extract tmp-global-list
+	detail
+		push tmp-global-list
+		get ism-global-list lock
+			on index tgl-sys-consolidation-division tgl-entry-type tgl-entry-code
+			key is tgl-sys-consolidation-division tgl-entry-type tgl-entry-code
+		on error
+			pop tmp-global-list
+			insert ism-global-list
+		else
+			pop tmp-global-list
+			update ism-global-list
+		endon
+	endextract
+endprocedure // sync-with-master ----------------------------------------------
+
+screen dig-global-audit
+	window @1,1 to @24,130
+		title concat("Global Sale Price Analysis")
+		primary ism-global-list
+		datagrid occurs 20
+	allowed search md-maintain-datasets-for-inclusion md-build-all //md-mode
+	review-from-start
+detail
+	display tgl-sys-consolidation-division	@1,010 title  "Div"
+	display tgl-div-desc				  	@1,014 title  "Div Description"
+	display tgl-entry-type				  	@1,020 title  "Type"
+	display tgl-entry-code                	@1,024 title  "Code"
+	display tgl-entry-description         	@1,028 title  "Description"
+	display tgl-last-so		                @1,032 title  "Last SO"
+	display tgl-last-so-date                @1,036 title  "Last SO Date"
+	display tgl-last-po		                @1,040 title  "Last PO"
+	display tgl-last-po-date                @1,044 title  "Last PO Date"
+	display tgl-last-dt		                @1,048 title  "Last Deb Trans"
+	display tgl-last-dt-date				@1,052 title  "Last Deb Trans Date"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-maintain-datasets-for-inclusion
+			open tmp-system-user truncate temporary
+			//like system-user type memory //{2} for user/company sort seq -user-user-only-spare-flag2-1 for tag
+			extract system-user
+				on index user-id sys-comp-code
+				key is login-id() SPACES
+				next same user-id
+			detail
+				get system-companies
+					on index sys-comp-code
+				on error
+					continue
+				endon
+				set user-position 					= sys-comp-desc
+				set user-user-only-spare-flag2-1	= sys-comp-spare2
+				insert tmp-system-user
+			endextract
+			do maintain-datasets-for-inclusion
+		case md-build-all
+			if sys-consolidation-division = "MAS"
+				do build-all
+				do dig-global-audit
+				exit
+			else
+				message "Cannot run Build All in " sys-consolidation-division
+			endif
+	endswitch
+endconfirm
+endscreen // dig-global-audit -------------------------------------------------
+
+screen maintain-datasets-for-inclusion
+	window @1,1 to @24,50
+		title concat("Maintain Datasets for inclusion")
+		//primary system-companies
+		primary tmp-system-user
+			on index user-id user-menu-seq-no
+		datagrid occurs 20
+	allowed md-tag search //md-mode
+	review-from-start
+detail
+	display sys-comp-code									@1,010 title "Div"
+	//display sys-comp-desc       							@1,020 title "Name"
+	display user-position 				        			@1,020 title "Name"
+	//display concat(sys-comp-spare2 "        ")			@1,030 title "Include"
+	display concat(user-user-only-spare-flag2-1 "     ")    @1,030 title "Include"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-tag
+			get system-companies lock
+				on index sys-comp-code
+			on error
+				message "Cannot Find Company " sys-comp-code
+			else
+				if sys-comp-spare2 = SPACES
+					set sys-comp-spare2 = "Y"
+					set user-user-only-spare-flag2-1 = "Y"
+				else
+					set sys-comp-spare2 = SPACES
+					set user-user-only-spare-flag2-1 = SPACES
+				endif
+				update system-companies
+				update tmp-system-user
+				refresh review
+			endon
+	endswitch
+endconfirm
+endscreen // maintain-datasets-for-inclusion ----------------------------------
+
+
+
+/* $CUS/BP-zcard
+// BP aged Z-card report
+select
+	territory
+	accountcode
+//	balance
+//	open-bal
+	aged-balance
+	accountshort = substring (accountcode 1 4)
+	up_to_3per = aged-balance[1] + aged-balance[2] + aged-balance[3]
+	older_3_period = aged-balance[4] + aged-balance[5] + aged-balance[6] + aged-balance[7] + aged-balance[8]+ aged-balance[9]+ aged-balance[10]+ aged-balance[11]+ aged-balance[12]+ aged-balance[13]
+	future-bal
+from
+	deb-master
+where
+	dr-cust-type = "P" and accountshort <> "ZCSM"
+order by territory
+format is lst
+suppress aged-balance[1]
+suppress aged-balance[2]
+suppress aged-balance[3]
+suppress aged-balance[4]
+suppress aged-balance[5]
+suppress aged-balance[6]
+suppress aged-balance[7]
+suppress aged-balance[8]
+suppress aged-balance[9]
+suppress aged-balance[10]
+suppress aged-balance[11]
+suppress aged-balance[12]
+suppress aged-balance[13]
+suppress accountshort
+subtotal on future-bal
+	with breaks on territory
+subtotal on up_to_3per
+	with breaks on territory
+subtotal on older_3_period
+	with breaks on territory
+*/

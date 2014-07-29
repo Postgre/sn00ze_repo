@@ -1,0 +1,11 @@
+select
+	accountcode
+	balance
+	future-bal
+	totalled = balance + future-bal
+from
+	deb-master
+where totalled <> 0
+format is lst
+total on totalled
+

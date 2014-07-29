@@ -1,0 +1,142 @@
+select
+	stock-code
+	stock-group
+	ash-type
+	ash-years-ago
+	ash-value
+	ash-cost
+	ash-qty
+	ws-years-ago = input numeric "Years ago:"
+	ws-period-ago = input numeric "Period ago (1=current):"
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+from
+	stock-master
+	stock-aged-sales-history
+	system-table
+where
+	ash-type = 'O'
+	and ash-years-ago = ws-years-ago
+	and sys-tbl-type = 'PG'
+	and sys-tbl-code = stock-group
+format is lst
+suppress ash-type
+suppress ash-years-ago
+total on ash-value[1]
+total on ash-value[2]
+total on ash-value[3]
+total on ash-value[4]
+total on ash-value[5]
+total on ash-value[6]
+total on ash-value[7]
+total on ash-value[8]
+total on ash-value[9]
+total on ash-value[10]
+total on ash-value[11]
+total on ash-value[12]
+total on ash-value[13]
+total on ash-cost[1]
+total on ash-cost[2]
+total on ash-cost[3]
+total on ash-cost[4]
+total on ash-cost[5]
+total on ash-cost[6]
+total on ash-cost[7]
+total on ash-cost[8]
+total on ash-cost[9]
+total on ash-cost[10]
+total on ash-cost[11]
+total on ash-cost[12]
+total on ash-cost[13]
+total on ash-qty[1]
+total on ash-qty[2]
+total on ash-qty[3]
+total on ash-qty[4]
+total on ash-qty[5]
+total on ash-qty[6]
+total on ash-qty[7]
+total on ash-qty[8]
+total on ash-qty[9]
+total on ash-qty[10]
+total on ash-qty[11]
+total on ash-qty[12]
+total on ash-qty[13]
+subtotal on ash-value[1]
+	with breaks on stock-group
+subtotal on ash-value[2]
+	with breaks on stock-group
+subtotal on ash-value[3]
+	with breaks on stock-group
+subtotal on ash-value[4]
+	with breaks on stock-group
+subtotal on ash-value[5]
+	with breaks on stock-group
+subtotal on ash-value[6]
+	with breaks on stock-group
+subtotal on ash-value[7]
+	with breaks on stock-group
+subtotal on ash-value[8]
+	with breaks on stock-group
+subtotal on ash-value[9]
+	with breaks on stock-group
+subtotal on ash-value[10]
+	with breaks on stock-group
+subtotal on ash-value[11]
+	with breaks on stock-group
+subtotal on ash-value[12]
+	with breaks on stock-group
+subtotal on ash-value[13]
+	with breaks on stock-group
+subtotal on ash-cost[1]
+	with breaks on stock-group
+subtotal on ash-cost[2]
+	with breaks on stock-group
+subtotal on ash-cost[3]
+	with breaks on stock-group
+subtotal on ash-cost[4]
+	with breaks on stock-group
+subtotal on ash-cost[5]
+	with breaks on stock-group
+subtotal on ash-cost[6]
+	with breaks on stock-group
+subtotal on ash-cost[7]
+	with breaks on stock-group
+subtotal on ash-cost[8]
+	with breaks on stock-group
+subtotal on ash-cost[9]
+	with breaks on stock-group
+subtotal on ash-cost[10]
+	with breaks on stock-group
+subtotal on ash-cost[11]
+	with breaks on stock-group
+subtotal on ash-cost[12]
+	with breaks on stock-group
+subtotal on ash-cost[13]
+	with breaks on stock-group
+subtotal on ash-qty[1]
+	with breaks on stock-group
+subtotal on ash-qty[2]
+	with breaks on stock-group
+subtotal on ash-qty[3]
+	with breaks on stock-group
+subtotal on ash-qty[4]
+	with breaks on stock-group
+subtotal on ash-qty[5]
+	with breaks on stock-group
+subtotal on ash-qty[6]
+	with breaks on stock-group
+subtotal on ash-qty[7]
+	with breaks on stock-group
+subtotal on ash-qty[8]
+	with breaks on stock-group
+subtotal on ash-qty[9]
+	with breaks on stock-group
+subtotal on ash-qty[10]
+	with breaks on stock-group
+subtotal on ash-qty[11]
+	with breaks on stock-group
+subtotal on ash-qty[12]
+	with breaks on stock-group
+subtotal on ash-qty[13]
+	with breaks on stock-group

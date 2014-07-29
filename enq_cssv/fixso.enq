@@ -1,0 +1,5 @@
+update sales-order
+set
+	so-add-to-mailer-flag = so-cust-code
+where
+	so-order-no = 10210780

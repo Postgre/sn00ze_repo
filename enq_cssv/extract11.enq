@@ -1,0 +1,9 @@
+select
+	sys-message-code
+	sys-message-line
+	sys-message-text
+from
+	system-messages
+where
+	sys-message-type = 'SX'
+format is external

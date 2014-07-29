@@ -1,0 +1,14 @@
+select
+	stock-code
+	stk-description
+	stk-unit-desc
+	sup-unit-desc
+from
+	stock-master
+	stock-supplier
+where
+	stk-unit-desc not in { "SB" "SBKS" "SBXL" "SBXW" "DB" "QS" "KS" "ALL" "CVAN" "EACH" "PAIR" "DBXL" 
+	"SBXS" } 
+format is lst
+unique record on stock-code
+display pic of stk-description is xxxxxxxxxxxxxxxx

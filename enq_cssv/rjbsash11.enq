@@ -1,0 +1,69 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-value
+	ash-qty
+	ws-ytd-sales = sum-array (ash-value 1 12) 
+	ws-ytd-qty = sum-array (ash-qty 1 12) 
+	ws-supp-code = substring (stock-code 1 3) 
+	company-name
+	stock-group
+	ws-avg-sell = ws-ytd-sales / ws-ytd-qty 
+	ws-start-sell = input numeric "Enter starting sell price:"
+	ws-end-sell = input numeric "Enter ending sell price:"
+from
+	stock-aged-sales-history
+	system-control
+	stock-master
+where
+	ash-type = "S" 
+	and ash-years-ago = 0 
+	and stock-group = "IS" 
+	and ws-supp-code in { "SEA" "SIM" "SLE" "SOP" } 
+	and ws-avg-sell between ws-start-sell and ws-end-sell 
+format is rpt
+field total-ws-ytd-sales like ws-ytd-sales
+field sub-tot-ws-ytd-sales like ws-ytd-sales
+report header
+	page
+	set total-ws-ytd-sales = 0
+header
+	print company-name in col 1
+		"rjbsash11" in col 69
+	skip 1
+	print "TOTAL SALES FOR INNER SPRING" in col 22
+	print "BY PRICE POINT - AVERAGE RETAIL BETWEEN" in col 8
+		"$" in col 48 bold 
+		ws-start-sell in col 49 pic zzz9 bold 
+		"AND" in col 54
+		"$" in col 58 bold 
+		ws-end-sell in col 59 pic zzz9 bold 
+	print "FOR SEA, SIM, SLE & SOP" in col 24
+	print "BETWEEN" in col 20
+		"01-JUN-1995" in col 28 bold 
+		"AND" in col 40
+		"30-JUN-1995" in col 44 bold 
+	skip
+	skip 1
+	print
+		"Supplier" in col 13
+		"ws-ytd-sales" in col 47
+	skip 1
+before ws-supp-code
+	set sub-tot-ws-ytd-sales = 0
+
+detail
+	set total-ws-ytd-sales += ws-ytd-sales
+	set sub-tot-ws-ytd-sales += ws-ytd-sales
+after ws-supp-code
+	print
+		ws-supp-code in col 15 pic x(3)
+		sub-tot-ws-ytd-sales in col 46 pic -zzz,zzz,zz9.99
+	skip
+report footer
+	print
+		"---------------" in col 46
+	print
+		"TOTAL" in col 29 bold 
+		total-ws-ytd-sales in col 46 pic -zzz,zzz,zz9.99 bold 

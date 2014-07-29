@@ -1,0 +1,365 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/stk/apnbook
+//  Program Desc:	
+//  Requested By:	
+//  Request Date:	
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03apr14	rmd	{1}		upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+
+// apnbook.spl
+// 24aug07	rmd	too hard to shoot required apn with 3 columns, reduce to 2
+//				leaving an aisle up the middle to drive the gun through
+// 13mar08	rmd	force print as non-xml
+// 11jun08	rmd	option to ignore stock-master apn flag and only print labels where whse on hand > 0
+
+mode md-run
+	prompt "Run"
+	help "Create APN book for selected departments"
+
+mode md-select
+	prompt "Select"
+	help "Include department in APN book?"
+
+object one-col-stock
+type is memory
+	record
+		ocs-class-code					like sys-tbl-code
+		ocs-stock-code                  like stock-code
+	endrecord
+	key is ocs-class-code ocs-stock-code unique
+
+object two-col-stock
+type is memory
+	record
+		tcs-class-code					like sys-tbl-code
+		stock-code-1                    like stock-code
+		stock-code-2                    like stock-code
+		// stock-code-3                    like stock-code
+		stk-description-1	            like stk-description
+		stk-description-2               like stk-description
+		// stk-description-3               like stk-description
+	endrecord
+	key is tcs-class-code stock-code-1
+
+object class-filter // sys-tbl-type = "OG"
+type is memory
+	record
+		cf-class-code					like sys-tbl-code
+		cf-class-desc					like sys-description
+		cf-class-include				pic x // type boolean
+	endrecord
+	key is cf-class-code unique
+
+
+field
+	ws-header-printed				type boolean
+	ws-return-all					pic x
+	ws-use-whse-on-hand				type boolean
+	ws-whse-code					like whse-code
+
+screen get-options
+	window @1,30 to @23,80
+		title "Create APN Book"
+	primary class-filter
+	datagrid occurs 16
+	// start-on-current-record
+	review-from-start
+	allow md-select md-run search
+before	
+	do initial-class-filter
+//	accept ws-return-all @20,60 title is "Ignore Barcode Book Flag Y/N?"
+//		help "Ignore Barcode Book flag setting and return items regardless"
+//		uppercase
+//		allowed "Y" "N"
+//		default "N"
+	set ws-use-whse-on-hand = TRUE
+	if ws-use-whse-on-hand
+		get system-control
+			do determine-default-store
+			returning
+				ws-whse-code
+		//accept ws-whse-code @1,45 title is "Whse:"	//{1}
+		accept ws-whse-code @2,45 title is "Whse:"      //{1}
+			default ws-whse-code
+	endif
+detail
+	//accept cf-class-code @3,30
+	display concat(cf-class-code) @3,30
+		//help "Dept Code"
+		title "Dept Code"
+		//read-only
+	accept cf-class-desc @3,32
+		help "Dept Description"
+		title "Dept Description"
+		read-only
+	accept cf-class-include @3,36
+		help "Include Dept"
+		title "Include Dept"
+		//uppercase
+		//default "Y"
+		//allowed "Y" "N"
+		read-only
+	confirm auto
+	confirmed
+		if screen-mode() = md-select
+			if cf-class-include = "*"
+				set cf-class-include = SPACES
+			else
+				set cf-class-include = "*"
+			endif
+			update class-filter
+			display cf-class-include @3,36
+		elseif screenmode() = md-run
+			do build-dataset
+			// do build-dataset
+			do print-report
+			exit
+		endif
+	endconfirm
+endscreen // get-options
+
+procedure initial-class-filter
+	open class-filter truncate temporary
+	extract system-table
+	on index sys-tbl-type sys-tbl-code
+	key is "OG" SPACES
+	next same sys-tbl-type
+	detail
+		set cf-class-code = sys-tbl-code
+		set cf-class-desc = sys-description
+		insert class-filter
+	endextract
+endprocedure // intial-class-filter -------------------------------------------
+
+
+procedure build-dataset
+local field
+	lf-col-num				type numeric
+open one-col-stock truncate temporary
+set lf-col-num = 1
+	select *
+	from
+		class-filter
+	when
+		cf-class-include = "*"
+	detail
+		select *
+		from
+			system-table
+		when
+			substring(sys-tbl-alpha-1,5,8) = cf-class-code
+		detail
+			extract stock-master
+			on index stock-group stock-code
+			key is sys-tbl-code SPACES
+			next same stock-group
+			detail
+				if ws-use-whse-on-hand
+					get stock-warehouse-detail
+					on index stock-code whse-code
+					key is stock-code ws-whse-code
+					on error
+					else
+						if whse-qty-on-hand > 0
+							set ocs-class-code = cf-class-code
+							set ocs-stock-code = stock-code
+							insert one-col-stock	
+						endif
+					endon			
+				else
+					if stk-analysis-code-3 = "Y"
+						set ocs-class-code = cf-class-code
+						set ocs-stock-code = stock-code
+						insert one-col-stock
+						//if lf-col-num = 1
+						//	set lf-col-num = 2
+						//	set ocs-stock-code = SPACES
+						//else
+						//	set lf-col-num = 1
+						//endif
+					endif
+				endif
+			endextract // after all stock items within PG
+		endselect // after all PG's within Class - if a record only has one stock code, write it out
+		//if (lf-col-num = 2) and (ocs-stock-code = SPACES)
+		//	insert one-col-stock
+		//endif
+	endselect // After all Classes
+open two-col-stock truncate temporary
+set lf-col-num = 1
+
+	select *
+	from
+		one-col-stock
+	detail
+		get stock-master
+		on index stock-code
+		key is ocs-stock-code
+		on error
+			set stock-code = SPACES
+			set stk-description = SPACES
+		endon
+		if lf-col-num = 1
+			if ocs-class-code != SPACES
+				set tcs-class-code = ocs-class-code
+				set stock-code-1 = stock-code
+				set stk-description-1 = stk-description
+				set lf-col-num = 2
+			endif
+		elseif lf-col-num = 2
+			set stock-code-2 = ocs-stock-code
+			set stk-description-2 = stk-description
+			set lf-col-num = 1
+			insert two-col-stock
+		endif
+	endselect
+	if (strlen(stock-code-1) > 0) and (stock-code-2 = SPACES)
+		insert two-col-stock
+	endif
+endprocedure // build-dataset -------------------------------------------------
+
+procedure build-dataset-old
+local field
+	lf-col-num				type numeric
+open two-col-stock truncate temporary
+set lf-col-num = 1
+	select *
+	from
+		class-filter
+	when
+		cf-class-include = "*"
+	detail
+		select *
+		from
+			system-table
+		when
+			substring(sys-tbl-alpha-1,5,8) = cf-class-code
+		detail
+			extract stock-master
+			on index stock-group stock-code
+			key is sys-tbl-code SPACES
+			next same stock-group
+			detail
+				if stk-analysis-code-3 = "Y"
+					if lf-col-num = 1
+						set tcs-class-code = cf-class-code
+						set stock-code-1 = stock-code
+						set stk-description-1 = stk-description
+						set lf-col-num = 2
+					elseif lf-col-num = 2
+						set stock-code-2 = stock-code
+						set stk-description-2 = stk-description
+						set lf-col-num = 1
+						insert two-col-stock
+					endif
+				endif
+			endextract // after all stock items within PG
+		endselect // after all PG's within Class - if a record only has one stock code, write it out
+		if (strlen(stock-code-1) > 0) and (stock-code-2 = SPACES)
+			insert two-col-stock
+		endif
+	endselect // After all Classes
+endprocedure // build-dataset -------------------------------------------------
+
+procedure print-report
+	report "APN book" spool-only no-xml // 13mar08
+	header is pr-header
+	// footer is pr-footer
+	set ws-header-printed = FALSE
+	extract two-col-stock
+	before tcs-class-code
+		get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "OG" tcs-class-code
+			if ws-header-printed = FALSE
+				page
+				if ws-header-printed = FALSE
+					print "------------------------------"
+					print sys-description
+					print "------------------------------"
+					set ws-header-printed = TRUE
+				endif
+			endif
+	detail
+		need 4
+		print
+			stock-code-1 in col 1
+			stock-code-2 in col 90
+		print
+			stk-description-1 in col 1
+			stk-description-2 in col 90
+		skip 2
+		set ws-header-printed = FALSE
+	endextract
+	message "APN book spooled"
+endprocedure // print-report --------------------------------------------------
+
+procedure pr-header
+	if ws-header-printed = FALSE
+		print "------------------------------"
+		print sys-description
+		print "------------------------------"
+		set ws-header-printed = TRUE
+	endif
+endprocedure // pr-header -----------------------------------------------------
+
+procedure determine-default-store
+	returning
+		lr-default-store				like so-territory-code
+	//
+	local field
+		lf-record-count					pic 9
+	//
+	get system-control first
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+	if user-store-id = SPACES
+		if user-territory = SPACES
+			if user-whse = SPACES
+				set lr-default-store = sys-consolidation-division	
+			else
+				set lr-default-store = user-whse
+			endif
+		else
+			set lr-default-store = user-territory
+		endif
+	else
+		set lr-default-store = user-store-id
+	endif
+endprocedure // determine-default-store ---------------------------------------
+
+procedure determine-default-store-old
+	returning
+		lr-default-store				like so-territory-code
+	//
+	local field
+		lf-record-count					pic 9
+	//
+	set lf-record-count = ZERO
+	select *
+	from
+		system-table
+	order by
+		sys-tbl-type
+		sys-tbl-code
+	when
+		sys-tbl-type = "TC"
+	detail
+		set lf-record-count += 1
+		set lr-default-store = sys-tbl-code
+		if lf-record-count > 1
+			set lr-default-store = SPACES
+			break
+		endif
+	endselect
+endprocedure // determine-default-store ---------------------------------------
+// apnbook.spl

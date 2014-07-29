@@ -1,0 +1,15 @@
+update stock-warehouse-detail
+set
+	whse-bin-location="FURN"
+
+where
+	stock-group in ("B" "BC" "F" "FC" "FU" "IN" "IS" "SF" "SS" "TC" "TM" "WB")
+
+
+
+
+
+from
+	stock-warehouse-detail
+	stock-master
+format is lst

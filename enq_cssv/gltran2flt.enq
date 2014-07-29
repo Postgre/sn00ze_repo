@@ -1,0 +1,36 @@
+select
+	gl-accountcode
+	gl-subledger-code
+	gl-other-side
+	gl-trans-type
+	gl-trans-date
+	gl-reference
+	gl-details
+	gl-batch-ref
+	gl-amount
+	gl-tr-date-stamp
+	gl-tr-time-stamp
+	gl-tr-uid
+	gl-tr-job-code
+	gltr-special-account-name
+	gl-trans-no
+	ws-start-gl = input
+		string
+		uppercase
+		prompt is "Enter Start GL Accountcode:"
+	ws-end-gl = input
+		string
+		uppercase
+		prompt is "Enter End   GL Accountcode:"
+	ws-start-date = input
+		date
+		prompt is "Enter Start Transaction Date:"
+	ws-end-date = input
+		date
+		prompt is "Enter End   Transaction Date:"
+from
+	gl-trans
+where
+	gl-accountcode between ws-start-gl and ws-end-gl 
+	and gl-trans-date between ws-start-date and ws-end-date 
+format is lotus

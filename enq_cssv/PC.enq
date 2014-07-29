@@ -1,0 +1,92 @@
+//////////////////////////////////////////////////////////////////////////////
+// Program: Sales Analysis by Whse and Postcode.
+//=========================================================================//
+// Copyright (C) Prometheus Software Developments Pty Ltd 1987 thru 1995.
+//
+// PRONTO is a registered trademark of Prometheus Software Developments P/L.
+//
+// All Rights Reserved. Unauthorized copying is prohibited.
+//=========================================================================//
+//
+// File: PC.enq
+//
+// Modification History
+// Date		Who	SDR		What
+// 30Jun95	pj		 	Special for Captain Snooze.	
+/////////////////////////////////////////////////////////////////////////////
+
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-territory-code
+	sol-line-amount
+	accountcode
+	postcode
+from
+	sales-order
+	sales-order-line
+	name-and-address-master
+where
+	so-order-date between input date "Enter Start Date" and input date "Enter End   Date" 
+	and sol-line-type in { "SS" "SN" "KN" } 
+	and accountcode = so-cust-code 
+	and na-type = "C" 
+order by so-territory-code postcode so-order-no
+format is rpt
+field total-sales like sol-line-amount
+field total-orders type numeric
+field grand-total-sales like sol-line-amount
+field grand-total-orders type numeric
+report header
+	page
+	set grand-total-sales = 0
+	set grand-total-orders = 0
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"Territory" in col 12
+		"Postcode" in col 29
+		"Total Sales" in col 52
+		"Total" in col 82
+		"Average $ Value" in col 103
+	print
+		"Code" in col 12
+		"Orders" in col 82
+	skip 1
+before so-territory-code
+
+before so-territory-code postcode
+	set total-sales = 0
+	set total-orders = 0
+
+before so-territory-code postcode so-order-no
+
+detail
+	set total-sales += sol-line-amount
+	set grand-total-sales += sol-line-amount
+
+after so-territory-code postcode so-order-no
+	set total-orders += 1
+	set grand-total-orders += 1
+
+after so-territory-code postcode
+	print so-territory-code in col 12
+		postcode in col 29
+		total-sales in col 52
+		total-orders in col 82 pic zzzzz9
+		total-sales / total-orders in col 103 pic z(10)9v99-
+after so-territory-code
+report footer
+	print
+		"---------------" in col 52
+		"------" in col 82
+		"---------------" in col 103
+	print
+		grand-total-sales in col 52
+		grand-total-orders in col 82 pic zzzzz9
+		grand-total-sales / grand-total-orders in col 103 pic z(10)9.99-

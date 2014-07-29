@@ -1,0 +1,7 @@
+update stock-supplier
+set 
+	sup-last-buy-price = sup-new-buy-price
+where
+	sup-new-buy-effective-date <= today
+and
+	sup-new-buy-effective-date != 0

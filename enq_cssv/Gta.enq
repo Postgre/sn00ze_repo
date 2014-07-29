@@ -1,0 +1,8 @@
+//delete
+//from	bankrec-bank-header
+//delete
+//from	bankrec-bank-statement
+//delete
+//from	bankrec-cash-trans
+delete
+from	bankrec-deposit-summary

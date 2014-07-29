@@ -1,0 +1,18 @@
+select
+	stock-code
+	stock-group
+	stk-user-group
+	stk-description
+	stk-desc-line-2
+	stk-stock-status
+from
+	stock-master
+where
+	stk-stock-status != "K" 
+	and 
+	(stk-description like "%ENSEMBLE%" or stk-description like "%SET%" or stk-desc-line-2 like "%ENSEMBLE%" or stk-desc-line-2 like "%SET%") 
+	and 
+	(stk-user-group[2] = "A" or stk-user-group[2] = "B" or stk-user-group[2] = "C") 
+	and 
+	(stock-group = "IN" or stock-group = "IS" ) 
+format is lst

@@ -1,0 +1,24 @@
+select
+	accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	ws-start-date = input date "Enter start delivery date:"
+	ws-end-date = input date "Enter   end delivery date:"
+	ws-start-total = input numeric "Enter start order total:"
+	ws-end-total = input numeric "Enter end order total:"
+from
+	deb-master
+	sales-order
+	name-and-address-master
+where
+	accountcode = so-cust-code 
+	and na-type = 'C' 
+	and so-order-status = '90' 
+	and so-actual-delivery-date between ws-start-date and ws-end-date 
+	and so-order-total-amount between ws-start-total and ws-end-total
+order by accountcode 
+format is external

@@ -1,0 +1,5 @@
+update cre-master
+set
+	cr-default-gl-accountcode = " "
+where
+	substring(cre-accountcode,4,4) = "-"

@@ -1,0 +1,6 @@
+update bankrec-deposit-summary
+set
+	bds-bank-account = "3M3461230" 
+where
+	( ( bds-bank-account = "3M3051230"  ) AND
+	( bds-date > 28/6/09  ) )

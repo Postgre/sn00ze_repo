@@ -1,0 +1,21 @@
+// amex outstanding invoices
+select
+	accountcode
+	trans-type
+	trans-date
+	tr-amount
+	dr-tr-order-no
+from
+	deb-trans
+where
+	((accountcode > "ZAMEX 1" ) and 
+	(accountcode < "ZAMEX 999" ) and 
+	(trans-type = "PD" ) ) 
+order by trans-date 
+format is lst
+suppress trans-type
+field title of accountcode is "Account"
+field title of trans-date is "Invoice Date"
+field title of tr-amount is "Invoice Amount"
+field title of dr-tr-order-no is "Order Number"
+total on tr-amount

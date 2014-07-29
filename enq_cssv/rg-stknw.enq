@@ -1,0 +1,9 @@
+// show stock created since 130308
+select
+	stock-code
+	stk-creation-date
+from
+	stock-master
+where
+	( stk-creation-date >= 12/03/08  )
+format is lst

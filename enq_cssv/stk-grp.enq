@@ -1,0 +1,27 @@
+// program name: ptk-grp
+// purpose: Allows the operator to choose a range to of stock-codes to view
+//          varoious information about 
+// and prints out all neccessary information as requested
+// author: Ellen 27-may-94 
+select
+	stock-code
+	stock-group
+	stk-user-group
+	stk-description
+	stk-sort-analysis-code
+	stk-condition-code
+	stk-pack-desc
+	ws-stock-start = input alpha "Please enter the starting stock code range e.g.SEA123"
+	ws-stock-end = input alpha "Please enter the ending stock range"
+from
+	stock-master
+where
+	stock-code between ws-stock-start and ws-stock-end 
+order by stock-code 
+format is lst
+suppress stk-user-group[1]
+suppress stk-condition-code
+suppress stk-pack-desc
+suppress ws-stock-start
+suppress ws-stock-end
+field order is stock-code stk-description stk-user-group[2] stock-group

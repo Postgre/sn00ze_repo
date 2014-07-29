@@ -1,0 +1,6 @@
+// stock Movements Warehouse fix
+update stock-movements
+set
+	stk-trans-whse = input alpha "Set Warehouse to"
+where
+	( stk-trans-whse LIKE INPUT ALPHA prompt is "Old Warehouse"   )

@@ -1,0 +1,16 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	whse-code
+	whse-qty-on-hand
+	whse-last-receipt-date
+from
+	stock-master
+	stock-warehouse-detail
+where
+	whse-qty-on-hand > 0 
+	and ( whse-last-receipt-date < 01-JUL-2000 and whse-last-receipt-date != 0 )
+order by whse-last-receipt-date descending 
+format is lst
+field order is stock-code stk-description stk-desc-line-2 whse-code whse-qty-on-hand whse-last-receipt-date

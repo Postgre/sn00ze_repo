@@ -1,0 +1,12 @@
+select
+	cre-co-op-advertising
+	cr-shortname
+	cre-accountcode
+	cre-supp-accountcode
+from
+	cre-profile-details
+	cre-master
+format is lst
+field order is cre-accountcode cr-shortname cre-supp-accountcode cre-co-op-advertising
+field title of cre-co-op-advertising is "Breeze - Suppliers"
+field title of cre-supp-accountcode is "Breeze accountcode"

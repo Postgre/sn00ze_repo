@@ -1,0 +1,11 @@
+// testing
+select
+	ssm-stock-code
+	ssm-stk-description
+	ssm-avail-qty-whse
+	na-company
+from
+	snooze-stock-master
+	name-and-address-master
+order by na-company descending 
+format is lst

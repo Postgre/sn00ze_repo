@@ -1,0 +1,89 @@
+select
+	gl-accountcode
+	gl-desc
+	gl-trans-type
+	gl-trans-date
+	gl-reference
+	gl-details
+	gl-amount
+	ws-store = input
+		string
+		prompt is "Enter Store Number:"
+	ws-start-date = input
+		date
+		prompt is "Enter Start Date:"
+	ws-end-date = input
+		date
+		prompt is "Enter   End Date:"
+from
+	gl-master
+	gl-trans
+where
+	gl-trans-date between ws-start-date and ws-end-date 
+	and sub-string (gl-accountcode 6 9) = "1320" 
+	and sub-string (gl-accountcode 3 5) = ws-store 
+format is rpt
+field new-gl-accountcode pic 9
+report header
+	page
+header
+	print today() in col 93
+		tod() in col 106
+		"Pageno." in col 116
+		pageno() in col 124
+	print "CASH DRAWER DISCREPANCY REPORT" in col 41
+	skip
+	print "Trans" in col 7
+		"Trans" in col 19
+	print "Date" in col 7
+		"Type" in col 19
+		"Reference" in col 25
+		"Description" in col 37
+		"Amount" in col 88
+	print "=================================================================================================================================" in col 1
+before gl-accountcode
+	set new-gl-accountcode = 1
+
+detail
+	if (new-gl-accountcode)
+		print gl-accountcode in col 1 pic x(9) no newline
+		print gl-desc in col 12 pic x(16) no newline
+		print ws-store in col 3 bold 
+	endif
+	if gl-reference = "ADJUST"
+	print gl-trans-type in col 20 bold no newline
+	print gl-trans-date in col 7 bold no newline
+	print gl-reference in col 25 bold no newline
+	print gl-details in col 37 bold no newline
+	print gl-amount in col 79 bold no newline
+	skip
+	else
+	print gl-trans-type in col 20 no newline
+	print gl-trans-date in col 7 no newline
+	print gl-reference in col 25 no newline
+	print gl-details in col 37 no newline
+	print gl-amount in col 79 no newline
+	skip
+	endif
+	set new-gl-accountcode = 0
+after gl-accountcode
+report footer
+	skip
+	print "NOTE:" in col 1 bold underlined
+		"Transactions in 'bold' are a result of the cash drawer not balancing" in col 7
+	print "when the 'Finish a Shift' process was completed." in col 7
+	print "A positive amount is a cash shortage. A negative amount is a cash shortage." in col 7 bold
+	print "If there is a opposite transaction (eg: ogirinal trans $100, then a " in col 7
+	print "another transaction for -$100, then it is likely that the discrepancy" in col 7
+	print "has been corrected" in col 7
+	print "'BANK ST' transactions have been posted by Support Centre" in col 7
+	skip 2
+	print "Report Name :" in col 10
+		"cdrawerror.enq" in col 24
+	skip
+	print "Store Number:" in col 10
+		ws-store in col 24 pic x(3)
+	print "Start Date  :" in col 10
+		ws-start-date in col 24
+	print "End   Date  :" in col 10
+		ws-end-date in col 24

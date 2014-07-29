@@ -1,0 +1,5 @@
+// delete Non Territory Transaction History
+delete from deb-trans
+where
+	( dr-tr-territory NOT LIKE INPUT ALPHA 
+	prompt is "Which Territory Transactions Need to STAY"   )

@@ -1,0 +1,25 @@
+select
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+	sys-money-value
+	sys-tbl-alpha-2
+	ws-start = input alpha "Enter the starting sort range code UPPERCASE "
+	ws-end = input alpha "Enter the ending sort code in UPPERCASE "
+from
+	system-table
+where
+	sys-tbl-type = 'SX' 
+	and sys-tbl-code between ws-start and ws-end 
+format is lst
+suppress sys-tbl-type
+suppress ws-start
+suppress ws-end
+field title of sys-tbl-code is "Code"
+field title of sys-description is "Description"
+field title of sys-money-value is "Print order"
+field title of sys-tbl-alpha-2 is "                Range"
+display pic of sys-money-value is 99.99
+display pic of sys-tbl-alpha-2 is xxxx
+display type of sys-money-value is numeric
+display type of sys-tbl-alpha-2 is alpha

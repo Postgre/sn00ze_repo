@@ -1,0 +1,9 @@
+update bankrec-cash-trans
+set
+	bct-presented-flag = "P" 
+	bct-presented-date = 31/10/09 
+where
+	( ( bct-bank-gl-account = "4M2301230"  ) AND
+	( bct-trans-type = "C"  ) AND
+	( bct-date < 1/11/09  ) AND
+	( bct-trans-source = "P"  ) )

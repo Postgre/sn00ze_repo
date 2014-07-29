@@ -1,0 +1,141 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/po/printsopo.spl
+//  Program Desc:	Pronto linked PO's from SO
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	04apr14	rmd	{1}		extra param when called via delsched for confirm-delivery
+//						exit if this is in param(3)
+//	28mar14	rmd			upgraded for 710
+///////////////////////////////////////////////////////////////////////////////
+// printsopo.spl
+// 11Jan08	rmd	added a call to validate cash account, if bo exist force account change
+// 17Jan08	rmd	added rmd/po/getexpdate call prior to each po print..
+// 14mar08	rmd prevent po print more than once for any given po
+
+object tmp-po-list
+type is memory
+	record
+		tmp-po-order-no       					like po-order-no      
+		tmp-po-backorder-flag                   like po-backorder-flag
+		tmp-po-l-seq							like po-l-seq
+	endrecord
+	key is tmp-po-order-no tmp-po-backorder-flag tmp-po-l-seq unique
+	key is tmp-po-order-no tmp-po-backorder-flag
+	
+procedure main
+local field
+	lf-counter									type numeric
+	set lf-counter = 0
+	//message concat("dbg: printsopo has been called P1:" get-param(1) ": P2:" get-param(2) ": P3:" get-param(3) ":")
+	if get-param(3) = "-confirm-delivery"	//{1}
+		//message "dbg: trapped -confirm-delivery"
+		exit
+	endif
+	if strlen(get-param(1)) > 0
+		// run = "pvi-snz/so/cashnobo3" so-order-no so-bo-suffix
+		//message "dbg: run cashnobo"
+		spl
+			"pvi-snz/so/cashnobo"
+		parameters
+			num(get-param(1))
+			get-param(2)
+		// print all po's attached to this order
+		//message "dbg: extract solp on num(get-param(1)): " num(get-param(1))
+		open tmp-po-list truncate temporary
+		extract sales-order-line-purchase
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is num(get-param(1)) get-param(2) 0
+			next same so-order-no so-bo-suffix
+		detail
+			get tmp-po-list
+				on index tmp-po-order-no tmp-po-backorder-flag tmp-po-l-seq
+				key is solp-po-order-no solp-backorder-flag solp-l-seq
+			on error
+				set tmp-po-order-no         = solp-po-order-no      
+				set tmp-po-backorder-flag   = solp-backorder-flag
+				set tmp-po-l-seq			= solp-l-seq
+				set lf-counter += 1
+				insert tmp-po-list
+			else
+			endon
+		endextract
+		//message "dbg: solp counted " str(lf-counter)
+		if lf-counter > 0
+/*
+			extract tmp-po-list
+			// 14mar08
+			// detail
+			//before tmp-po-order-no
+			detail
+				// get expected arrival date for each
+				spl
+					"pvi-snz/po/getexpdate"
+				parameters
+					tmp-po-order-no
+					tmp-po-backorder-flag
+					tmp-po-l-seq
+			after tmp-po-order-no	
+				spl
+					"po/m62custom"
+				parameters
+					// "-s" po-order-no po-backorder-flag "-print"
+					"-s"
+					tmp-po-order-no
+					tmp-po-backorder-flag
+					"-print"
+			// 14mar08
+			//detail
+				// nothing..
+			endextract
+*/
+			// 14mar08 make two passes, one to capture expected date of each po line
+			// the second to print each po - once
+			extract tmp-po-list
+			on index tmp-po-order-no tmp-po-backorder-flag tmp-po-l-seq
+			detail
+				// get expected arrival date for each
+				spl
+					"pvi-snz/po/getexpdate"
+				parameters
+					tmp-po-order-no
+					tmp-po-backorder-flag
+					tmp-po-l-seq
+			endextract
+			extract tmp-po-list
+			on index tmp-po-order-no tmp-po-backorder-flag		
+			// detail
+			before tmp-po-order-no tmp-po-backorder-flag
+				if login-id() in {"robd" "xitrain"}
+					spl
+						"pvi-snz/po/poprint"
+					parameters
+						// "-s" po-order-no po-backorder-flag "-print"
+						"-s"
+						tmp-po-order-no
+						tmp-po-backorder-flag
+						"-print"
+				else
+					spl
+						"po/m62custom"
+					parameters
+						// "-s" po-order-no po-backorder-flag "-print"
+						"-s"
+						tmp-po-order-no
+						tmp-po-backorder-flag
+						"-print"
+				endif
+			endextract
+		endif
+	else
+		exit
+	endif
+endprocedure // main ----------------------------------------------------------
+// printsopo.spl

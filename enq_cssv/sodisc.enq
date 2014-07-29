@@ -1,0 +1,143 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-order-date
+	so-order-status
+	so-territory-code
+	so-rep-code
+	sol-line-type
+	sol-line-amount
+	sol-ordered-qty
+	ws-start-date = input date "Enter start date:"
+	ws-end-date = input date "Enter   end date:"
+	stock-code
+	prc-recommend-retail
+	prc-wholesale-price
+	ws-retail = prc-recommend-retail * sol-ordered-qty 
+	ws-discount = ws-retail - sol-line-amount 
+	company-name
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+	rep-code
+	rep-description
+from
+	sales-order
+	sales-order-line
+	stock-price
+	system-control
+	system-table
+	rep-master
+where
+	sol-line-type = 'SN' 
+	and so-order-status != '99' 
+	and so-order-date between ws-start-date and ws-end-date 
+	and prc-recommend-retail != 0 
+	and sys-tbl-type = 'TC' 
+	and so-territory-code = sys-tbl-code 
+	and so-rep-code = rep-code 
+order by so-territory-code so-rep-code 
+format is rpt
+field new-so-territory-code pic 9
+field total-sol-line-amount like sol-line-amount
+field sub-tot-sol-line-amount like sol-line-amount
+field sub-tot1-sol-line-amount like sol-line-amount
+field total-ws-retail like ws-retail
+field sub-tot-ws-retail like ws-retail
+field total-ws-discount like ws-discount
+field sub-tot-ws-discount like ws-discount
+field sub-tot1-ws-discount like ws-discount
+report header
+	page
+	set total-sol-line-amount = 0
+	set total-ws-retail = 0
+	set total-ws-discount = 0
+header
+	print 
+		company-name in col 1
+		"Sales Orders Discounts by Rep" in col 55
+		today() in col 101
+		"Page No." in col 117
+		pageno() in col 126
+	skip 1
+	print
+		"Sales Orders" in col 55
+		"Discount " in col 78
+		"Discount " in col 100
+	print
+		"Sales Rep" in col 12
+		"Amount" in col 58
+		"$" in col 82
+		"%" in col 104
+	print "=================================================================================================================================" in col 1
+	skip 1
+before so-territory-code
+	set new-so-territory-code = 1
+	set sub-tot1-sol-line-amount = 0
+	set sub-tot1-ws-discount = 0
+before so-rep-code 
+	set sub-tot-sol-line-amount = 0
+	set sub-tot-ws-retail = 0
+	set sub-tot-ws-discount = 0
+
+detail
+	if (new-so-territory-code)
+	print
+		so-territory-code in col 2 bold 
+		sys-description in col 8 bold 
+	endif
+	print
+		so-rep-code in col 12 
+		rep-description in col 16
+		no newline
+	set new-so-territory-code = 0
+	set total-sol-line-amount += sol-line-amount
+	set sub-tot-sol-line-amount += sol-line-amount
+	set sub-tot1-sol-line-amount += sol-line-amount
+	set total-ws-retail += ws-retail
+	set sub-tot-ws-retail += ws-retail
+	set total-ws-discount += ws-discount
+	set sub-tot-ws-discount += ws-discount
+	set sub-tot1-ws-discount += ws-discount
+after so-rep-code
+	print
+		sub-tot-sol-line-amount in col 54 pic zz,zzz,zz9.99-
+		sub-tot-ws-discount in col 75 pic zz,zzz,zz9.99-
+		sub-tot-ws-discount / (sub-tot-sol-line-amount + sub-tot-ws-discount)  * 100 in col 96 pic zz,zzz,zz9.99-
+after so-territory-code
+	print
+		"--------------" in col 54
+		"--------------" in col 75
+		"--------------" in col 96
+	print
+		"Total for" in col 24 bold 
+		sys-description in col 34 pic x(15) bold 
+		sub-tot1-sol-line-amount in col 54 pic zz,zzz,zz9.99-
+		sub-tot1-ws-discount in col 75 pic zz,zzz,zz9.99-
+		sub-tot1-ws-discount / (sub-tot1-sol-line-amount + sub-tot1-ws-discount)  * 100 in col 96 pic zz,zzz,zz9.99-
+	skip
+report footer
+	print
+		"--------------" in col 54
+		"--------------" in col 75
+		"--------------" in col 96
+	print
+		"Grand Total" in col 24 bold 
+		total-sol-line-amount in col 54 pic zz,zzz,zz9.99-
+		total-ws-discount in col 75 pic zz,zzz,zz9.99-
+		total-ws-discount / (total-sol-line-amount + total-ws-discount) * 100 in col 96 pic zz,zzz,zz9.99-
+
+	skip 2
+	print "Sales Orders Discount By Rep Report only includes sales figures for products which have a recommended" in col 5 bold 
+	print "retail price.  Delivery charges are also excluded.  This report should not be used for sales results." in col 5 bold 
+	skip
+	print "Program Name" in col 5
+		":" in col 19
+		"sodisc.enq" in col 22
+	skip
+	print "Start date" in col 5
+		":" in col 19
+		ws-start-date in col 22
+	print "End   date" in col 5
+		":" in col 19
+		ws-end-date in col 22

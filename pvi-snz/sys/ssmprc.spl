@@ -1,0 +1,328 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/ssmprc.spl
+//  Program Desc:	write price changes to Snooze Stock Master
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reservedl
+// 30aug. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	09may14	rmd			upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+// ssmprc.spl
+// 27oct08  rmd	un-force update-all mode
+// 05sep08	rmd		cater for tax code 0
+// 30apr08	rmd		add a routine to update rrp inc pricing
+// 10mar08	rmd		prefer the values being stored here to be inc GST
+// 18Dec07	rmd
+
+
+field
+	ws-price-region					pic x(20)
+	ws-whse-count					type numeric
+	ws-whse-code					like whse-code occurs 6
+	ws-whse-desc					like sys-description occurs 6
+
+procedure main
+	set ws-price-region = uppercase(get-env("PRCREGION"))
+	//message concat("ssm-stock-code:" ssm-stock-code)
+	// debug
+	//27oct08
+	//do update-all
+	//27oct08
+	if get-param(1) = "-all"
+		do update-all
+	endif
+	get stock-price lock
+	on index stock-code
+	//key is ssm-stock-code
+	key is get-param(1)
+	on error
+	else
+		// 09oct08 attempt to repair 0 prices
+		if prc-wholesale-price = 0
+			set prc-wholesale-price = prc-recommend-retail
+		endif
+		if prc-recommend-retail = 0
+			set prc-recommend-retail = prc-wholesale-price
+		endif
+		// 09oct08
+
+		set prc-break-price[3] = 0
+		set prc-break-price[4] = 0
+		if ws-price-region = "REGIONAL"
+			if prc-sales-tax-code = 0
+				set prc-recommend-retail-inc-tax = prc-wholesale-price
+			else
+				set prc-recommend-retail-inc-tax = prc-wholesale-price * 1.1 // prc-break-price[4]
+			endif
+		else
+			if prc-sales-tax-code = 0
+				set prc-recommend-retail-inc-tax = prc-recommend-retail
+			else
+				set prc-recommend-retail-inc-tax = prc-recommend-retail * 1.1 // prc-break-price[4]
+			endif
+		endif
+
+		update stock-price
+	endon
+	get snooze-stock-master lock
+	on index ssm-stock-code
+	key is get-param(1)
+	on error
+		//message "Not in ssm"
+	else
+		//message "found and updating"
+		// 10mar08
+		//set ssm-regional-rrp-inc = prc-wholesale-price
+		//set ssm-metro-rrp-inc    = prc-recommend-retail
+		if prc-sales-tax-code = 0
+			set ssm-regional-rrp-inc = prc-wholesale-price
+			set ssm-metro-rrp-inc    = prc-recommend-retail
+		else
+			set ssm-regional-rrp-inc = prc-wholesale-price * 1.1  // or prc-break-price[3] - once all price routines are using it
+			set ssm-metro-rrp-inc    = prc-recommend-retail * 1.1 // or prc-break-price[4] - ditto
+		endif
+		update snooze-stock-master
+	endon
+endprocedure // main ----------------------------------------------------------
+
+procedure update-all
+	window @1,1 to @5,20 title is "Debug Window"
+local field
+	lf-cutoff-date				type date
+	lf-last-sale				type date
+	lf-stock-code				like stock-code
+	i							type numeric
+	lf-continue					pic x
+	//report "ssm-update-all"
+	//	spool-only
+	//
+	//print
+	//	today()
+	//	tod()
+	//	login-id()
+	//	"ssm-update-all"
+	set lf-cutoff-date = today() - 365 // 1095
+	set lf-last-sale = 1
+	accept lf-continue @3,16 title is "Continue"
+		uppercase
+		allowed "Y" "N"
+	if lf-continue = "N"
+		exit
+	endif
+	// reset Z flag
+	extract stock-master lock
+	detail
+		display "reset z flag" 	@1,3 background
+		display stock-code 		@2,3 background
+		//print
+		//	stock-code
+		//	stk-sort-analysis-code
+		if substring(stk-sort-analysis-code,1,1) = "Z"
+			set stk-sort-analysis-code = stk-desc-line-3
+			update stock-master
+		endif
+	endextract
+	//print
+	//	today()
+	//	tod()
+	//	login-id()
+	//	"Z reset complete"
+
+	// very heavy section
+	extract stock-master
+	detail
+		display "1st pass" 	@1,3 background
+		display stock-code 		@2,3 background
+		if stk-date-last-change > lf-cutoff-date
+			// this one is safe..
+			//set stk-user-only-date1 = stk-date-last-change
+			//update stock-master
+		else
+			// unsure - check sale date in all warehouses
+			set lf-stock-code = stock-code
+			extract stock-warehouse-detail
+			on index stock-code whse-code
+			key is lf-stock-code spaces
+			next same stock-code
+			detail
+				if whse-stock-last-sale > stk-date-last-change
+					// have had sales since the cutoff, update last change date in stock-master
+					get stock-master lock
+					on index stock-code
+					key is lf-stock-code
+					on error
+					else
+						set stk-date-last-change = whse-stock-last-sale
+						update stock-master
+					endon
+				else
+					// no sales within period
+					get stock-master lock
+					on index stock-code
+					key is lf-stock-code
+					on error
+					else
+						set stk-user-only-alpha4-4 = "OBS"
+						// set stk-user-only-date1 = 1
+						// set stk-user-only-date2 = 2
+						update stock-master
+					endon
+				endif
+			endextract
+
+		endif
+	endextract
+	//print
+	//	today()
+	//	tod()
+	//	login-id()
+	//	"1st pass complete"
+	// retest
+	extract stock-master lock
+	detail
+		display "2nd pass" 	@1,3 background
+		display stock-code 		@2,3 background
+
+		if stk-date-last-change > lf-cutoff-date
+			// this one is truly safe..
+			//set stk-user-only-date1 = stk-date-last-change
+			//update stock-master
+		else
+			if substring(stk-sort-analysis-code,1,1) = "Z"
+			else
+				set stk-desc-line-3 = stk-sort-analysis-code
+				set stk-sort-analysis-code = concat("Z" strconcat(stk-sort-analysis-code))
+				update stock-master
+			endif
+		endif
+	endextract
+		display "clearing ssm" 			@1,3 background
+		display "                " 		@2,3 background
+	//print
+	//	today()
+	//	tod()
+	//	login-id()
+	//	"2nd pass complete"
+	extract snooze-stock-master lock
+	detail
+		delete snooze-stock-master
+	endextract
+	//print
+	//	today()
+	//	tod()
+	//	login-id()
+	//	"snooze-stock-master removed"
+		display "whse-count" 	@1,3 background
+		display "                 " 		@2,3 background
+	do determine-whse-count
+		display "whse-count" 	@1,3 background
+		display ws-whse-count	@2,3 background
+	//print
+	//	today()
+	//	tod()
+	//	login-id()
+	//	"whse-count:"
+	//	ws-whse-count
+	open snooze-stock-master
+	extract stock-master
+	on index stk-sort-analysis-code stock-group stock-code
+	key is SPACES SPACES SPACES
+	finish when stk-sort-analysis-code > "YZZZZZZZ"
+	detail
+		display "build ssm" 	@1,3 background
+		display stock-code 		@2,3 background
+		get stock-price lock
+		on index stock-code prc-region-code
+		key is stock-code SPACES
+		on error
+			continue
+		else
+			// repair price record before proceding
+			if prc-wholesale-price = 0
+				set prc-wholesale-price = prc-recommend-retail
+			endif
+			if prc-recommend-retail = 0
+				set prc-recommend-retail = prc-wholesale-price
+			endif
+			set prc-break-price[3] = 0
+			set prc-break-price[4] = 0
+			if ws-price-region = "REGIONAL"
+				if prc-sales-tax-code = 0
+					set prc-recommend-retail-inc-tax = prc-wholesale-price
+				else
+					set prc-recommend-retail-inc-tax = prc-wholesale-price * 1.1 // prc-break-price[4]
+				endif
+			else
+				if prc-sales-tax-code = 0
+					set prc-recommend-retail-inc-tax = prc-recommend-retail
+				else
+					set prc-recommend-retail-inc-tax = prc-recommend-retail * 1.1 // prc-break-price[4]
+				endif
+			endif
+			update stock-price
+		endon
+		initialise snooze-stock-master
+		set ssm-stock-code = stock-code
+		set ssm-stk-description = stk-description
+		set ssm-regional-rrp-inc = prc-wholesale-price * 1.1
+		set ssm-metro-rrp-inc = prc-recommend-retail * 1.1
+		set ssm-activity-date = stk-date-last-change
+		extract stock-warehouse-detail
+		on index stock-code whse-code
+		key is ssm-stock-code spaces
+		next same stock-code
+		detail
+			for i = 1 to ws-whse-count
+				if ws-whse-code[i] = whse-code
+					set ssm-avail-qty[i] = whse-qty-on-hand - whse-current-orders
+					set ssm-avail-qty-whse[i] = whse-code
+				endif
+			endfor
+		endextract
+		insert snooze-stock-master
+		//print
+		//	stock-code
+		//	stk-description
+		//	ssm-activity-date
+		//	ssm-regional-rrp-inc
+		//	ssm-metro-rrp-inc
+		//	"Label RRP:"
+		//	prc-recommend-retail-inc-tax
+	endextract
+	//print
+	//	today()
+	//	tod()
+	//	login-id()
+	//	"report finished"
+	//
+	//report finished
+endprocedure // update-all ----------------------------------------------------
+
+procedure determine-whse-count
+	set ws-whse-count = 1
+	get snooze-stock-master first
+		on error
+		else
+		endon
+// build warehouse set for columns
+	extract system-table
+	on index sys-tbl-type sys-tbl-code
+	key is "WH" SPACES
+	next same sys-tbl-type
+	detail
+		if sys-tbl-alpha-4[1] = "C"
+			set ws-whse-code[ws-whse-count] = sys-tbl-code
+			set ws-whse-desc[ws-whse-count] = sys-description
+			set ws-whse-count += 1
+		endif
+	endextract
+	// message concat("Found " str(ws-whse-count - 1) " warehouses")
+endprocedure // determine-whse-count ------------------------------------------
+// ssmprc.spl

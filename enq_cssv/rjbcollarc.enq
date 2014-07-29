@@ -1,0 +1,65 @@
+select
+	accountcode
+	da-payment-detail
+	da-payment-date
+	da-order-no
+	da-invoice-amount
+	ws-start-date = input date "Start Date:"
+	ws-end-date = input date "End Date:"
+	da-customer-ref
+from
+	deb-trans-archive
+where
+	da-payment-date between ws-start-date and ws-end-date 
+	and da-payment-detail in { "CR" "CP" } 
+	and substring (da-customer-ref 1 2) not in { "CC" "DC" "AC" } 
+order by da-payment-date da-order-no 
+format is rpt
+field total-da-invoice-amount like da-invoice-amount
+report header
+	page
+	set total-da-invoice-amount = 0
+header
+	print
+		"DEBTORS ARCHIVED CASH RECEIPTS/PAYMENTS" in col 7
+		today() in col 55
+		"Page No." in col 67
+		pageno() in col 75
+	skip
+	skip
+	print
+		"  " in col 4
+		"Order" in col 20
+		"Customer" in col 32
+		"Transaction" in col 46
+	print
+		"Date" in col 6
+		"Number" in col 20
+		"  Code" in col 32
+		"   Type" in col 46
+		"Amount" in col 66
+	print "==============================================================================" in col 1
+detail
+	print
+		da-payment-date in col 4
+		da-order-no in col 18
+		accountcode in col 33
+		da-payment-detail in col 50
+		da-invoice-amount in col 62
+	set total-da-invoice-amount += da-invoice-amount
+report footer
+	print
+		"---------------" in col 62
+	print
+		"Total Archived Receipts/Payments:" in col 28 bold 
+		total-da-invoice-amount in col 62 bold 
+skip 5
+	print
+		"Program Name:" in col 10
+		"rjbcollarc" in col 24 bold
+	print
+		"Start Date:" in col 10
+		ws-start-date in col 24 bold
+	print
+		"End Date:" in col 10
+		ws-end-date in col 24 bold

@@ -1,0 +1,11 @@
+// test
+select
+distinct
+	so-order-no
+	so-whse-code
+	stock-code
+	sol-shipped-qty
+from
+	sales-order
+	sales-order-line
+format is lst

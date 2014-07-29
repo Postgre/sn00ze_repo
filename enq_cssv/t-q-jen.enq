@@ -1,0 +1,25 @@
+select
+	stock-code
+	stk-user-group
+	stk-condition-code
+	prc-region-code
+	cre-accountcode
+	cr-type
+from
+	stock-master
+	stock-price
+	cre-master
+where
+	(stk-user-group[2] != "A" ) 
+        and
+	(stk-user-group[2] != "B" ) 
+        and
+	(stk-user-group[2] != "C" ) 
+	and 
+	(stk-condition-code = "O" ) 
+	and 
+	(cr-type = "A" ) 
+group by stock-code
+format is lst
+suppress stk-user-group[1]
+suppress cre-accountcode

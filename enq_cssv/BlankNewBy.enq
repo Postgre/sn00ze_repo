@@ -1,0 +1,5 @@
+update stock-supplier
+set
+	sup-new-buy-price = 0 
+	sup-new-buy-effective-date = 0 
+	sup-stock-code = spaces

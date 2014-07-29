@@ -1,0 +1,22 @@
+// Current sales orders with 0.00 cost lines
+select
+	so-order-date
+	so-order-no
+	so-cust-code
+	stock-code
+	sol-item-cost
+	sol-ordered-qty
+	sol-line-cost
+	sol-line-type
+from
+	sales-order-line
+	sales-order
+where
+	( ( sol-line-type = "SN" ) AND
+	( sol-item-cost <= 0 ) AND
+	( so-order-date >= 17-Mar-2008  ) )
+order by so-order-date so-order-no so-cust-code stock-code sol-item-cost sol-ordered-qty sol-line-cost 
+format is lst
+total on sol-item-cost
+total on sol-ordered-qty
+total on sol-line-cost

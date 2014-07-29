@@ -1,0 +1,14 @@
+select
+	stock-code
+	stk-description
+	whse-code
+	whse-avg-cost
+	whse-avg-tax
+	whse-last-cost
+	whse-date-last-change
+from
+	stock-warehouse-detail
+	stock-master
+where
+	whse-last-cost = 0 
+format is lst

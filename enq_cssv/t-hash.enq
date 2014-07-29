@@ -1,0 +1,13 @@
+select
+	stock-code
+	stock-group
+	stk-user-group
+	stk-abc-class
+	stk-description
+from
+	stock-master
+where
+	stk-description like "%#%" 
+	and
+	(stk-description not like "%PRODUCT%")
+format is lst

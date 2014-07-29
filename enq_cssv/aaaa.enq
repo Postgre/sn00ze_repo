@@ -1,0 +1,61 @@
+// select
+// accountcode
+// shortname
+// balance
+// na-company
+// na-street
+// na-suburb
+// na-country
+// postcode
+// from
+// deb-master
+// name-and-address-master
+// where
+// na-type = 'C' 
+// format is lst
+select
+	accountcode
+	shortname
+	balance
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+from
+	deb-master
+	name-and-address-master
+where
+	na-type = 'C' 
+format is rpt
+report header
+	page
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"accountcode" in col 1
+		"shortname" in col 13
+		"balance" in col 44
+		"na-company" in col 60
+		"na-street" in col 91
+		"na-suburb" in col 122
+		"na-country" in col 153
+		"postcode" in col 184
+	skip 1
+
+detail
+	print
+		accountcode in col 1
+		shortname in col 13
+		balance in col 44
+		na-company in col 60
+	print	na-street in col 60
+	print	na-suburb in col 60
+	print	na-country in col 60
+	print	postcode in col 60
+	skip
+report footer

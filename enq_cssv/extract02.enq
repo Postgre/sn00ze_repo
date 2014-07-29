@@ -1,0 +1,8 @@
+select
+	stock-code
+	cre-accountcode
+	sup-last-buy-price
+	sup-shipping-method-code
+from
+	stock-supplier
+format is external

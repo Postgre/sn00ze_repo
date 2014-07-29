@@ -1,0 +1,5 @@
+update stock-warehouse-detail
+set
+	whse-last-cost = whse-avg-cost
+where
+	whse-last-cost = 0

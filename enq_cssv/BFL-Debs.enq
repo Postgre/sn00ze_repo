@@ -1,0 +1,9 @@
+select
+	count () 
+	accountcode
+from
+	deb-master
+where
+	substring (accountcode 1 3) = '903' 
+format is lst
+suppress accountcode

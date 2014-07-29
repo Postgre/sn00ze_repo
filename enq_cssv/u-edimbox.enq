@@ -1,0 +1,4 @@
+update edi-mailbox
+set edimb-process-all-files = 'V'
+where
+	edi-mailbox-name = '305'

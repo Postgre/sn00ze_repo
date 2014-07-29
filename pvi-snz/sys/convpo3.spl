@@ -1,0 +1,1042 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	convpo.spl
+//  Program Desc:	Convert PO
+//  Requested By:
+//  Request Date:	10jun11
+//===========================================================================//
+//  Copyright (C) ProView IT Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	14jun11	rmd			add gl-trans (within stock-movements procedure)
+//	13jun11	rmd			mod stock-movements to update ref1 and ref2
+//	12jun11	rmd			add stcok-movements
+//	10jun11	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+
+/*
+Not Required
+branch-comms-purchase-lines.po-order-no
+branch-comms-purchase-order.po-order-no
+branch-purchase-order.po-order-no
+branch-purchase-order-lines.po-order-no
+edi-unacknowledged-trans.ediunt-po-order-no
+purchase-asn-tally-detail.po-order-no
+purchase-levy-payable.po-order-no
+purchase-order-receiving.po-order-no
+purchase-order-line-pkg-lots.po-order-no
+purchase-order-tax.po-order-no
+purchase-order-tax-archive.po-order-no
+stock-serial-coil-import.cimp-po-bo-suffix
+stock-serial-repair.po-order-no
+stock-stores-requisition-notes.po-order-no
+tax-1099-trans.t1t-po-order-no
+
+Completed
+stock-movements.stk-document-no
+stock-movements-archive.stk-document-no
+cre-trans.cr-tr-po-order-no
+cre-trans-archive.cr-tr-po-order-no
+purchase-assets-link.po-order-no D E C
+purchase-audit-file.po-order-no
+purchase-order-delivery.po-order-no
+purchase-order-delivery-archiv.po-order-no
+purchase-order-line-allocation.po-order-no
+purchase-order-notes.po-order-no
+purchase-schedule-delivery.po-order-no
+sales-order-line-purchase.solp-po-order-no
+stock-stores-requisition.po-order-no
+
+purchase-order.po-order-no
+purchase-order-archive.po-order-no
+purchase-order-line.po-order-no
+purchase-order-line-archive.po-order-no
+
+
+To Do
+Requires precache
+purchase-order-costing.po-order-no
+
+
+
+
+*/
+
+mode md-tag
+	prompt "Tag"
+	currency
+
+mode md-untag-all
+	prompt "Untag All"
+
+mode md-tag-all
+	prompt "Tag All"
+
+mode md-update-objects
+	prompt "Update Objects"
+
+mode md-po-enq
+	prompt "PO Enq"
+	currency
+
+object tmp-po-order-no
+	type memory
+	record
+		tmp-old-po-order-no     like po-order-no
+		tmp-po-invoice-details	like po-invoice-details //hook to cr-tr-reference
+		tmp-new-po-order-no		like po-order-no
+		tmp-error               pic x(30)
+		tmp-tag                 pic x
+	endrecord
+	key is tmp-old-po-order-no
+
+field
+	ws-date-col			type numeric
+	ws-prefix-digits	type numeric
+	ws-no-table-warn	type boolean occurs 30
+
+procedure main
+	set ws-date-col = 80
+	do get-user-input entry-once
+endprocedure // main ----------------------------------------------------------
+
+
+screen get-user-input
+window @1,1 to @8,40 title "PO Number Conversion"
+box @1,1 to @7,40 title SPACES
+	accept ws-prefix-digits @2,25 title "Prefix Digit(s):" pic zz9
+confirm
+confirmed
+	open tmp-po-order-no truncate temporary
+	if ws-prefix-digits > 0
+		do build-dataset
+	else
+		//do not want to build a set of changes, just show datagrid for manual entry
+	endif
+	do display-in-grid
+endconfirm
+endscreen // get-user-input ---------------------------------------------------
+
+procedure build-dataset
+local field
+	lf-count			type numeric
+	set lf-count = 0
+	display "purchase-order" @6,5 background
+	extract purchase-order
+		on index po-order-no po-backorder-flag
+	after po-order-no
+		set tmp-old-po-order-no    		= po-order-no
+		set tmp-po-invoice-details		= po-invoice-details
+		if num(strconcat(str(ws-prefix-digits) str(po-order-no))) > 99999999
+			set tmp-new-po-order-no		= tmp-old-po-order-no
+			set tmp-error				= strconcat(str(ws-prefix-digits) str(po-order-no) " too large")
+		else
+			set tmp-new-po-order-no		= num(strconcat(str(ws-prefix-digits) str(po-order-no)))
+			set tmp-error				= SPACES
+		endif
+		if po-order-no <> 0
+			set lf-count += 1
+			insert tmp-po-order-no
+		endif
+		display tmp-old-po-order-no @4,25 background
+		display tmp-new-po-order-no @5,25 background
+		display lf-count @6,28 pic zzzz9 background
+	endextract
+	display "purchase-order-archive" @6,5 background
+	extract purchase-order-archive
+		on index po-order-no po-backorder-flag
+	after po-order-no
+		set tmp-old-po-order-no    		= po-order-no
+		set tmp-po-invoice-details		= po-invoice-details
+		if num(strconcat(str(ws-prefix-digits) str(po-order-no))) > 99999999
+			set tmp-new-po-order-no		= tmp-old-po-order-no
+			set tmp-error				= strconcat(str(ws-prefix-digits) str(po-order-no) " too large")
+		else
+			set tmp-new-po-order-no		= num(strconcat(str(ws-prefix-digits) str(po-order-no)))
+			set tmp-error				= SPACES
+		endif
+		if po-order-no <> 0
+			set lf-count += 1
+			insert tmp-po-order-no
+		endif
+		display tmp-old-po-order-no @4,25 background
+		display tmp-new-po-order-no @5,25 background
+		display lf-count @6,28 pic zzzz9 background
+	endextract
+endprocedure // build-dataset -------------------------------------------------
+
+screen display-in-grid
+local field
+	lf-new-po-order-no		like tmp-new-po-order-no
+	window @1,1 to @24,90
+		title concat("PO Number Conversion")
+		primary tmp-po-order-no
+		datagrid occurs 19
+	allowed md-po-enq entry correct remove md-tag md-tag-all md-untag-all search md-update-objects
+	review-from-start
+detail
+	accept 	tmp-old-po-order-no		@1,010 title "Old P/O"	pic zzzzzzzz9
+		validation
+			get purchase-order
+				on index po-order-no po-backorder-flag
+				key is tmp-old-po-order-no SPACES
+			on error
+				get purchase-order-archive
+					on index po-order-no po-backorder-flag
+					key is tmp-old-po-order-no SPACES
+				on error
+					set po-invoice-details = "NOT FOUND"
+				endon
+			endon
+			set tmp-po-invoice-details = po-invoice-details
+		endvalidation
+	accept  tmp-new-po-order-no    	@1,020 title "New P/O"  pic zzzzzzzz9
+	display tmp-po-invoice-details	@1,030 title "Inv Det"  //pic zzzzzzzz9
+	display tmp-error			    @1,040 title "Error"  pic x(20)
+	display tmp-tag					@1,050 title "Tag"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-po-enq
+			spl "po/m6enquiry.op6"
+				parameters
+					"-q"
+					tmp-old-po-order-no
+					SPACES
+		case md-tag
+			if tmp-tag = SPACES
+				set tmp-tag = "*"
+			else
+				set tmp-tag = SPACES
+			endif
+			update tmp-po-order-no
+			refresh review
+		case md-tag-all
+			set lf-new-po-order-no		= tmp-new-po-order-no
+			extract tmp-po-order-no
+			detail
+				set tmp-tag = "*"
+				update tmp-po-order-no
+			endextract
+			refresh review
+			set tmp-new-po-order-no		= lf-new-po-order-no
+			get tmp-po-order-no
+		case md-untag-all
+			set lf-new-po-order-no		= tmp-new-po-order-no
+			extract tmp-po-order-no
+			detail
+				set tmp-tag = SPACES
+				update tmp-po-order-no
+			endextract
+			refresh review
+			set tmp-new-po-order-no		= lf-new-po-order-no
+			get tmp-po-order-no
+		case md-update-objects
+			do update-objects
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+procedure update-objects
+	report "po-order-no conv"
+		spool-only
+	extract tmp-po-order-no
+	detail
+		if tmp-tag = SPACES
+			continue
+		endif
+		display tmp-old-po-order-no		background @20,50 title "Old P/O:"
+		display tmp-new-po-order-no    	background @21,50 title "New P/O:"
+		//
+//		if not ws-no-table-warn[1]
+//			display "contract-master"		background @22,50 title "Object:"
+//			do cnv-contract-master
+//				parameters
+//					tmp-old-po-order-no
+//				    tmp-new-po-order-no
+//		endif
+//		if not ws-no-table-warn[2]
+//			display "cre-promotions-movements"		background @22,50 title "Object:"
+//			do cnv-cre-promotions-movements
+//				parameters
+//					tmp-old-po-order-no
+//				    tmp-new-po-order-no
+//		endif
+//
+//
+		display "cre-trans"		background @22,50 title "Object:"
+		do cnv-cre-trans //cr-tr-po-order-no
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+				tmp-po-invoice-details
+		display "stock-movements"		background @22,50 title "Object:"
+		do cnv-stock-movements
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+				//tmp-po-invoice-details //13jun11 - use po-order-no = stk-trans-ref
+		display "bits-and-bobs"		background @22,50 title "Object:"
+		do cnv-purchase-assets-link
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		do cnv-purchase-audit-file
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		do cnv-purchase-order-costing //#| need to precache?
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		do cnv-purchase-order-delivery
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		display "odds-and-ends"		background @22,50 title "Object:"
+		do cnv-purchase-order-line-allocation
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		do cnv-purchase-order-notes
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+	    do cnv-purchase-schedule-delivery
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		do cnv-sales-order-line-purchase //.solp-po-order-no
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		do cnv-stock-stores-requisition //.po-order-no
+			//po-order-no po-l-seq  requisition-no
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		//do cnv-purchase-order-costing
+		//	parameters
+		//		tmp-old-po-order-no
+		//	    tmp-new-po-order-no
+		//purchase order items
+		display "purchase-order and lines"		background @22,50 title "Object:"
+		do cnv-purchase-order
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		do cnv-purchase-order-line
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		do cnv-purchase-order-archive
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		do cnv-purchase-order-line-archive
+			parameters
+				tmp-old-po-order-no
+			    tmp-new-po-order-no
+		display "complete"		background @22,50 title "Object:"
+	endextract
+	report finished
+endprocedure // update-objects ------------------------------------------------
+
+procedure cnv-cre-trans
+parameters
+	lp-old-po-order-no  	like po-order-no
+	lp-new-po-order-no		like po-order-no
+	lp-po-invoice-details  	like po-invoice-details
+	print
+		"debug cnv-cre-trans:"
+		concat("[" lp-po-invoice-details "]")
+	extract cre-trans
+		on index cr-tr-reference
+		key is lp-po-invoice-details
+		next same cr-tr-reference
+	detail
+		if cr-tr-po-order-no = fstr(lp-old-po-order-no,8,0)
+			print
+				substring(concat("cre-trans" " ****************************"),1,30)
+				cr-tr-po-order-no
+				">"
+				lp-new-po-order-no
+				today()	in col ws-date-col
+				tod()
+			set cr-tr-po-order-no = fstr(lp-new-po-order-no,8,0)
+			update cre-trans
+		else
+			print
+				concat("cr-tr-po-order-no: [" cr-tr-po-order-no "] doesn't match [" fstr(lp-old-po-order-no,8,0) "]")
+		endif
+	endextract
+	print
+		"debug cnv-cre-trans-archive:"
+		concat("[" lp-po-invoice-details "]")
+	extract cre-trans-archive
+		on index cr-tr-reference
+		key is lp-po-invoice-details
+		next same cr-tr-reference
+	detail
+		if cr-tr-po-order-no = fstr(lp-old-po-order-no,8,0)
+			print
+				substring(concat("cre-trans-archive" " ****************************"),1,30)
+				cr-tr-po-order-no
+				">"
+				lp-new-po-order-no
+				today()	in col ws-date-col
+				tod()
+			set cr-tr-po-order-no = fstr(lp-new-po-order-no,8,0)
+			update cre-trans-archive
+		else
+			print
+				concat("A cr-tr-po-order-no: [" cr-tr-po-order-no "] doesn't match [" fstr(lp-old-po-order-no,8,0) "]")
+		endif
+	endextract
+endprocedure // cnv-cre-trans -------------------------------------------------
+
+
+//stk-trans-type stk-trans-ref1
+procedure cnv-stock-movements
+local field
+	lf-stk-trans-ref1		like stk-trans-ref1
+	lf-gl-old-reference		like gl-reference
+	lf-gl-new-reference		like gl-reference
+parameters
+	lp-old-po-order-no  	like po-order-no
+	lp-new-po-order-no		like po-order-no
+	//lp-po-invoice-details  	like po-invoice-details
+	//print
+	//	"debug cnv-stock-movements"
+	//	concat("[" lp-po-invoice-details "]")
+	extract purchase-order
+		on index po-order-no po-backorder-flag
+		key is lp-old-po-order-no SPACES
+		next same po-order-no
+	detail
+		set lf-stk-trans-ref1 = concat(right-justify(str(po-order-no),8) po-backorder-flag)
+		set lf-gl-old-reference = strconcat(str(po-order-no) po-backorder-flag)
+		set lf-gl-new-reference = strconcat(str(lp-new-po-order-no) po-backorder-flag)
+		print
+			"debug:"
+			lf-stk-trans-ref1
+			"cnv-stock-movements"
+		extract stock-movements
+			on index stk-trans-type stk-trans-ref1
+			key is "PO" lf-stk-trans-ref1
+			next same stk-trans-type stk-trans-ref1
+		detail
+			if stk-document-no = lp-old-po-order-no
+				print
+					substring(concat("stock-movements" " ****************************"),1,30)
+					stk-document-no
+					">"
+					lp-new-po-order-no
+					today()	in col ws-date-col
+					tod()
+				push stock-movements
+				set stk-document-no = lp-new-po-order-no
+				set stk-trans-ref1 = right-justify(str(stk-document-no),8)
+				set stk-trans-ref3 = strconcat(right-justify(str(stk-document-no),8) stk-document-suffix)
+				update stock-movements
+				pop stock-movements
+			else
+				print
+					concat("stk-document-no: [" str(stk-document-no) "] doesn't match [" str(lp-old-po-order-no) "]")
+			endif
+		endextract
+		//14jun11
+		print
+			"debug gl-trans lookup"
+			concat("lf-gl-old-reference: [" lf-gl-old-reference "]")
+			concat("   lf-gl-new-reference: [" lf-gl-new-reference "]")
+		extract gl-trans
+			on index gl-batch-ref gl-trans-no
+			key is po-batch-ref 0
+			next same gl-batch-ref
+		detail
+			print
+				"current gl-reference:"
+				concat("[" gl-reference "]")
+			if gl-reference = lf-gl-old-reference
+				print
+					substring(concat("gl-trans" " ****************************"),1,30)
+					gl-reference
+					">"
+					lf-gl-new-reference
+					today()	in col ws-date-col
+					tod()
+				push gl-trans
+				set gl-reference = lf-gl-new-reference
+				update gl-trans
+				pop gl-trans
+			endif
+		endextract
+		print
+			"debug gl-trans-archive lookup"
+			concat("lf-gl-old-reference: [" lf-gl-old-reference "]")
+			concat("   lf-gl-new-reference: [" lf-gl-new-reference "]")
+		extract gl-trans-archive
+			on index gl-batch-ref gl-trans-no
+			key is po-batch-ref 0
+			next same gl-batch-ref
+		detail
+			print
+				"current gl-reference:"
+				concat("[" gl-reference "]")
+			if gl-reference = lf-gl-old-reference
+				print
+					substring(concat("gl-trans-archive" " ****************************"),1,30)
+					gl-reference
+					">"
+					lf-gl-new-reference
+					today()	in col ws-date-col
+					tod()
+				push gl-trans-archive
+				set gl-reference = lf-gl-new-reference
+				update gl-trans-archive
+				pop gl-trans-archive
+			endif
+		endextract
+	endextract
+	//13jun11 copy for archive
+		extract purchase-order-archive
+		on index po-order-no po-backorder-flag
+		key is lp-old-po-order-no SPACES
+		next same po-order-no
+	detail
+		set lf-stk-trans-ref1 = concat(right-justify(str(po-order-no),8) po-backorder-flag)
+		set lf-gl-old-reference = strconcat(str(po-order-no) po-backorder-flag)
+		set lf-gl-new-reference = strconcat(str(lp-new-po-order-no) po-backorder-flag)
+		print
+			"debug:"
+			lf-stk-trans-ref1
+			"cnv-stock-movements (poa)"
+		extract stock-movements
+			on index stk-trans-type stk-trans-ref1
+			key is "PO" lf-stk-trans-ref1
+			next same stk-trans-type stk-trans-ref1
+		detail
+			if stk-document-no = lp-old-po-order-no
+				print
+					substring(concat("stock-movements" " ****************************"),1,30)
+					stk-document-no
+					">"
+					lp-new-po-order-no
+					today()	in col ws-date-col
+					tod()
+				push stock-movements
+				set stk-document-no = lp-new-po-order-no
+				set stk-trans-ref1 = right-justify(str(stk-document-no),8)
+				set stk-trans-ref3 = strconcat(right-justify(str(stk-document-no),8) stk-document-suffix)
+				update stock-movements
+				pop stock-movements
+			else
+				print
+					concat("stk-document-no: [" str(stk-document-no) "] doesn't match [" str(lp-old-po-order-no) "]")
+			endif
+		endextract
+		//14jun11
+		print
+			"debug gl-trans lookup (poa)"
+			concat("lf-gl-old-reference: [" lf-gl-old-reference "]")
+			concat("   lf-gl-new-reference: [" lf-gl-new-reference "]")
+		extract gl-trans
+			on index gl-batch-ref gl-trans-no
+			key is po-batch-ref 0
+			next same gl-batch-ref
+		detail
+			print
+				"current gl-reference:"
+				concat("[" gl-reference "]")
+			if gl-reference = lf-gl-old-reference
+				print
+					substring(concat("gl-trans" " ****************************"),1,30)
+					gl-reference
+					">"
+					lf-gl-new-reference
+					today()	in col ws-date-col
+					tod()
+				push gl-trans
+				set gl-reference = lf-gl-new-reference
+				update gl-trans
+				pop gl-trans
+			endif
+		endextract
+		print
+			"debug gl-trans-archive lookup (poa)"
+			concat("lf-gl-old-reference: [" lf-gl-old-reference "]")
+			concat("   lf-gl-new-reference: [" lf-gl-new-reference "]")
+		extract gl-trans-archive
+			on index gl-batch-ref gl-trans-no
+			key is po-batch-ref 0
+			next same gl-batch-ref
+		detail
+			print
+				"current gl-reference:"
+				concat("[" gl-reference "]")
+			if gl-reference = lf-gl-old-reference
+				print
+					substring(concat("gl-trans-archive" " ****************************"),1,30)
+					gl-reference
+					">"
+					lf-gl-new-reference
+					today()	in col ws-date-col
+					tod()
+				push gl-trans-archive
+				set gl-reference = lf-gl-new-reference
+				update gl-trans-archive
+				pop gl-trans-archive
+			endif
+		endextract
+	endextract
+endprocedure // cnv-stock-movements -------------------------------------------
+
+
+procedure cnv-purchase-assets-link //.po-order-no D E C
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract purchase-assets-link
+		on index pal-type po-order-no po-backorder-flag po-l-seq
+		key is "C" lp-old-po-order-no SPACES 0
+		next same pal-type po-order-no
+	detail
+		print
+			substring(concat("purchase-assets-link C" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-assets-link
+		set po-order-no = lp-new-po-order-no
+		update purchase-assets-link
+		pop purchase-assets-link
+	endextract
+	extract purchase-assets-link
+		on index pal-type po-order-no po-backorder-flag po-l-seq
+		key is "D" lp-old-po-order-no SPACES 0
+		next same pal-type po-order-no
+	detail
+		print
+			substring(concat("purchase-assets-link D" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-assets-link
+		set po-order-no = lp-new-po-order-no
+		update purchase-assets-link
+		pop purchase-assets-link
+	endextract
+	extract purchase-assets-link
+		on index pal-type po-order-no po-backorder-flag po-l-seq
+		key is "E" lp-old-po-order-no SPACES 0
+		next same pal-type po-order-no
+	detail
+		print
+			substring(concat("purchase-assets-link E" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-assets-link
+		set po-order-no = lp-new-po-order-no
+		update purchase-assets-link
+		pop purchase-assets-link
+	endextract
+endprocedure // cnv-purchase-assets-link --------------------------------------
+
+//purchase-audit-file.po-order-no
+procedure cnv-purchase-audit-file
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract purchase-audit-file
+		on index po-order-no po-backorder-flag po-l-seq order-log-date order-log-time paf-dedup-seq
+		key is lp-old-po-order-no SPACES 0 0 0 0
+		next same po-order-no
+	detail
+		print
+			substring(concat("purchase-audit-file" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-audit-file
+		set po-order-no = lp-new-po-order-no
+		update purchase-audit-file
+		pop purchase-audit-file
+	endextract
+endprocedure // cnv-purchase-audit-file ---------------------------------------
+
+
+//purchase-order-delivery.po-order-no
+procedure cnv-purchase-order-delivery
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract purchase-order-delivery
+		on index po-order-no po-backorder-flag po-dl-type
+		key is lp-old-po-order-no SPACES SPACES
+		next same po-order-no
+	detail
+		print
+			substring(concat("purchase-order-delivery" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-order-delivery
+		set po-order-no = lp-new-po-order-no
+		update purchase-order-delivery
+		pop purchase-order-delivery
+	endextract
+	extract purchase-order-delivery-archiv
+		on index po-order-no po-backorder-flag po-dl-type
+		key is lp-old-po-order-no SPACES SPACES
+		next same po-order-no
+	detail
+		print
+			substring(concat("purchase-order-delivery-archiv" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-order-delivery-archiv
+		set po-order-no = lp-new-po-order-no
+		update purchase-order-delivery-archiv
+		pop purchase-order-delivery-archiv
+	endextract
+endprocedure // purchase-order-delivery ---------------------------------------
+
+
+//purchase-order-line-allocation.po-order-no
+procedure cnv-purchase-order-line-allocation //.po-order-no D E C
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract purchase-order-line-allocation
+		on index pal-type po-order-no po-backorder-flag po-l-seq pal-seq-no
+		key is "C" lp-old-po-order-no SPACES 0 0
+		next same pal-type po-order-no
+	detail
+		print
+			substring(concat("purchase-order-line-allocation C" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-order-line-allocation
+		set po-order-no = lp-new-po-order-no
+		update purchase-order-line-allocation
+		pop purchase-order-line-allocation
+	endextract
+	extract purchase-order-line-allocation
+		on index pal-type po-order-no po-backorder-flag po-l-seq pal-seq-no
+		key is "D" lp-old-po-order-no SPACES 0 0
+		next same pal-type po-order-no
+	detail
+		print
+			substring(concat("purchase-order-line-allocation D" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-order-line-allocation
+		set po-order-no = lp-new-po-order-no
+		update purchase-order-line-allocation
+		pop purchase-order-line-allocation
+	endextract
+	extract purchase-order-line-allocation
+		on index pal-type po-order-no po-backorder-flag po-l-seq pal-seq-no
+		key is "E" lp-old-po-order-no SPACES 0 0
+		next same pal-type po-order-no
+	detail
+		print
+			substring(concat("purchase-order-line-allocation E" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-order-line-allocation
+		set po-order-no = lp-new-po-order-no
+		update purchase-order-line-allocation
+		pop purchase-order-line-allocation
+	endextract
+endprocedure // cnv-purchase-order-line-allocation ----------------------------
+
+
+procedure cnv-purchase-order-notes
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract purchase-order-notes
+		on index po-order-no po-backorder-flag po-l-seq po-note-type po-note-seq
+		key is lp-old-po-order-no SPACES 0 SPACES 0
+		next same po-order-no
+	detail
+		print
+			substring(concat("purchase-order-notes" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-order-notes
+		set po-order-no = lp-new-po-order-no
+		update purchase-order-notes
+		pop purchase-order-notes
+	endextract
+endprocedure // cnv-purchase-order-notes --------------------------------------
+
+//purchase-schedule-delivery.po-order-no
+procedure cnv-purchase-schedule-delivery
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract purchase-schedule-delivery
+		on index po-order-no po-backorder-flag po-l-seq
+		key is lp-old-po-order-no SPACES 0
+		next same po-order-no
+	detail
+		print
+			substring(concat("purchase-schedule-delivery" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-schedule-delivery
+		set po-order-no = lp-new-po-order-no
+		update purchase-schedule-delivery
+		pop purchase-schedule-delivery
+	endextract
+endprocedure // cnv-purchase-schedule-delivery --------------------------------
+
+
+//cnv-sales-order-line-purchase
+//solp-po-order-no solp-backorder-flag solp-l-seq
+procedure cnv-sales-order-line-purchase
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract sales-order-line-purchase
+		on index solp-po-order-no solp-backorder-flag solp-l-seq
+		key is lp-old-po-order-no SPACES 0
+		next same solp-po-order-no
+	detail
+		print
+			substring(concat("sales-order-line-purchase" " ****************************"),1,30)
+			solp-po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-line-purchase
+		set solp-po-order-no = lp-new-po-order-no
+		update sales-order-line-purchase
+		pop sales-order-line-purchase
+	endextract
+endprocedure // cnv-purchase-schedule-delivery --------------------------------
+
+
+//cnv-stock-stores-requisition //.po-order-no
+//po-order-no po-l-seq requisition-no
+procedure cnv-stock-stores-requisition
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract stock-stores-requisition
+		on index po-order-no po-l-seq requisition-no
+		key is lp-old-po-order-no 0 0
+		next same po-order-no
+	detail
+		print
+			substring(concat("stock-stores-requisition" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push stock-stores-requisition
+		set po-order-no = lp-new-po-order-no
+		update stock-stores-requisition
+		pop stock-stores-requisition
+	endextract
+endprocedure // cnv-stock-stores-requisition ----------------------------------
+
+procedure cnv-purchase-order-costing
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract purchase-order
+		on index po-order-no po-backorder-flag
+		key is lp-old-po-order-no SPACES
+		next same
+	detail
+		get purchase-order-shipment
+			on index po-shipment-no
+			key is po-shipment-no
+		on error
+			extract purchase-order-costing
+				on index po-shipment-no stock-code po-order-no po-backorder-flag po-l-seq
+				key is po-shipment-no SPACES 0 SPACES 0
+				next same po-shipment-no
+			detail
+				if po-order-no = lp-old-po-order-no
+					print
+						substring(concat("purchase-order-costing" " ****************************"),1,30)
+						po-order-no
+						">"
+						lp-new-po-order-no
+						today()	in col ws-date-col
+						tod()
+					push purchase-order-costing
+					set po-order-no = lp-new-po-order-no //#| may not need to push/pop as the po-order-no is not the primary element of the key
+					update purchase-order-costing
+					pop purchase-order-costing
+				endif
+			endextract
+		endon
+	endextract
+	extract purchase-order-archive
+		on index po-order-no po-backorder-flag
+		key is lp-old-po-order-no SPACES
+		next same
+	detail
+		get purchase-order-shipment
+			on index po-shipment-no
+			key is po-shipment-no
+		on error
+			extract purchase-order-costing
+				on index po-shipment-no stock-code po-order-no po-backorder-flag po-l-seq
+				key is po-shipment-no SPACES 0 SPACES 0
+				next same po-shipment-no
+			detail
+				if po-order-no = lp-old-po-order-no
+					print
+						substring(concat("purchase-order-costing (poa)" " ****************************"),1,30)
+						po-order-no
+						">"
+						lp-new-po-order-no
+						today()	in col ws-date-col
+						tod()
+					push purchase-order-costing
+					set po-order-no = lp-new-po-order-no //#| may not need to push/pop as the po-order-no is not the primary element of the key
+					update purchase-order-costing
+					pop purchase-order-costing
+				endif
+			endextract
+		endon
+	endextract
+endprocedure // cnv-purchase-order-costing ------------------------------------
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+procedure cnv-purchase-order
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract purchase-order
+		on index po-order-no po-backorder-flag
+		key is lp-old-po-order-no SPACES
+		next same po-order-no
+	detail
+		print
+			substring(concat("purchase-order" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-order
+		set po-order-no = lp-new-po-order-no
+		update purchase-order
+		pop purchase-order
+	endextract
+endprocedure // cnv-purchase-order --------------------------------------------
+
+procedure cnv-purchase-order-archive
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract purchase-order-archive
+		on index po-order-no po-backorder-flag
+		key is lp-old-po-order-no SPACES
+		next same po-order-no
+	detail
+		print
+			substring(concat("purchase-order-archive" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-order-archive
+		set po-order-no = lp-new-po-order-no
+		update purchase-order-archive
+		pop purchase-order-archive
+	endextract
+endprocedure // cnv-purchase-order-archive ------------------------------------
+
+procedure cnv-purchase-order-line
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract purchase-order-line
+		on index po-order-no po-backorder-flag po-l-seq
+		key is lp-old-po-order-no SPACES 0
+		next same po-order-no
+	detail
+		print
+			substring(concat("purchase-order-line" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-order-line
+		set po-order-no = lp-new-po-order-no
+		update purchase-order-line
+		pop purchase-order-line
+	endextract
+endprocedure // cnv-purchase-order-line ---------------------------------------
+
+
+procedure cnv-purchase-order-line-archive
+parameters
+	lp-old-po-order-no  like po-order-no
+	lp-new-po-order-no	like po-order-no
+	extract purchase-order-line-archive
+		on index po-order-no po-backorder-flag po-l-seq
+		key is lp-old-po-order-no SPACES 0
+		next same po-order-no
+	detail
+		print
+			substring(concat("purchase-order-line-archive" " ****************************"),1,30)
+			po-order-no
+			">"
+			lp-new-po-order-no
+			today()	in col ws-date-col
+			tod()
+		push purchase-order-line-archive
+		set po-order-no = lp-new-po-order-no
+		update purchase-order-line-archive
+		pop purchase-order-line-archive
+	endextract
+endprocedure // cnv-purchase-order-line-archive -------------------------------

@@ -1,0 +1,51 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	stock-group
+	stk-description
+	stk-desc-line-2
+	ws-ytd-sales = sum-array (ash-value 1 12) 
+	ws-ytd-cost = sum-array (ash-cost 1 12) 
+	ash-qty
+	ws-ytd-gp = sum-array (ash-value 1 12) - sum-array (ash-cost 1 12) 
+	ws-start-whse = input alpha "Enter start warehouse:"
+	ws-end-whse = input alpha "Enter end warehouse:"
+	ws-ytd-gp-percent = sum-array (ash-value 1 12) - sum-array (ash-cost 1 12) 
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = 'S' 
+	and ash-years-ago = 0 
+	and stock-group = 'IS' 
+	and ash-whse between ws-start-whse and ws-end-whse
+format is rpt
+field sub-tot-ws-ytd-sales like ws-ytd-sales
+field sub-tot-ws-ytd-cost like ws-ytd-cost
+field sub-tot-ws-ytd-gp like ws-ytd-gp
+report header
+	page
+header
+before stock-code
+	set sub-tot-ws-ytd-sales = 0
+	set sub-tot-ws-ytd-cost = 0
+	set sub-tot-ws-ytd-gp = 0
+
+detail
+	set sub-tot-ws-ytd-sales += ws-ytd-sales
+	set sub-tot-ws-ytd-cost += ws-ytd-cost
+	set sub-tot-ws-ytd-gp += ws-ytd-gp
+after stock-code
+	print
+		stock-code in col 4
+		stk-description in col 25
+		stk-desc-line-2 in col 60 pic is x(15)
+		sub-tot-ws-ytd-sales in col 80 pic is -zzz,zzz,zz9.99
+		sub-tot-ws-ytd-cost in col 98 pic is -zzz,zzz,zz9.99
+		sub-tot-ws-ytd-gp in col 115 pic is -zzz,zzz,zz9.99
+	skip
+report footer

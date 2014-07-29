@@ -1,0 +1,13 @@
+// update so whse code
+select
+	so-order-no
+	so-bo-suffix
+	so-whse-code
+	so-whse-to
+	so-order-status
+from
+	sales-order
+where so-whse-code = "305"
+and so-territory-code = "346"
+and so-order-status not in {"99" "80"}
+format is lst

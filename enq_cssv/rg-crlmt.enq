@@ -1,0 +1,5 @@
+// update Customer Credit limit to S Snooze COD
+update deb-master
+set
+	credit-limit = "S"
+	dr-user-only-alpha20-1 = "Snooze COD"	

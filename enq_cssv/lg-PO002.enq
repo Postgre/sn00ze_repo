@@ -1,0 +1,12 @@
+// remove Purchase Orders for New dataset
+select
+	purchase-order.po-order-no
+	purchase-order.po-whse-code
+	sales-order-line-purchase.so-order-no
+	sales-order-line-purchase.solp-po-order-no
+from
+	purchase-order
+	sales-order-line-purchase
+where 
+	purchase-order.po-order-no != sales-order-line-purchase.solp-po-order-no
+format is lst

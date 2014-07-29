@@ -1,0 +1,5 @@
+update bankrec-cash-trans
+set
+	bct-local-amount = bct-local-amount * -1 
+where
+	( bct-user-only-alpha4-1 = "DS"  )

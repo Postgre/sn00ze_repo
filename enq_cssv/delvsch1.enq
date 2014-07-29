@@ -1,0 +1,87 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-delivery-date
+	so-order-status
+	sol-line-seq
+	sol-line-type
+	accountcode
+	shortname
+	na-type
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	na-phone
+	ws-delivery-date = input date "Enter the delivery date:"
+	stock-code
+	stk-description
+	stk-pack-desc
+from
+	sales-order
+	sales-order-line
+	deb-master
+	name-and-address-master
+	stock-master
+where
+	so-cust-code = accountcode 
+	and na-type = 'C' 
+	and sol-line-type = 'SN' 
+	and so-order-status < '80' 
+	and so-delivery-date = ws-delivery-date 
+format is rpt
+report header
+	page
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"   so" in col 1
+		"so bo" in col 10
+		"so cust" in col 17
+		"na-name" in col 28
+		"na-company" in col 59
+		"na-street" in col 90
+		"na-suburb" in col 121
+	print
+		"order no" in col 1
+		"suffix" in col 10
+		" code" in col 17
+	skip 1
+
+detail
+	print
+		so-order-no in col 1
+		so-bo-suffix in col 10
+		so-cust-code in col 17
+		na-name in col 28
+		stock-code in col 61
+		stk-description in col 81
+		stk-pack-desc in col 113
+	if na-company != " "
+		print
+			na-company in col 28
+	endif
+	if na-street != " "
+		print
+			na-street in col 28
+	endif
+	if na-suburb != " "
+		print
+			na-suburb in col 28
+	endif
+	if na-country != " "
+		print
+			na-country in col 28
+	endif
+	if na-phone != " "
+		print
+			na-phone in col 28
+	endif
+report footer

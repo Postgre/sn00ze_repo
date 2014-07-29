@@ -1,0 +1,154 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-order-date
+	so-order-status
+	so-territory-code
+	ws-amount = so-order-total-shipped-amount - so-order-total-tax
+	so-order-total-shipped-amount - so-order-total-shipped-tax
+	ws-cost = so-order-total-shipped-cost 
+	so-order-total-shipped-cost
+	so-order-total-charges
+	so-rep-code
+	ws-total-order = so-order-total-shipped-amount + so-order-total-charges - so-order-total-tax
+	ws-gp$ = ws-total-order - so-order-total-shipped-cost 
+	ws-gp% = ws-gp$ / ws-total-order * 100 
+	ws-start-date = input date "Enter start order date:"
+	ws-end-date = input date "Enter end   order date:"
+	company-name
+from
+	sales-order-archive
+	system-control
+where
+	so-order-date between ws-start-date and ws-end-date 
+	and so-order-status != '99' 
+order by so-rep-code so-order-date 
+format is rpt
+//field total-so-order-total-shipped-amount like so-order-total-shipped-amount
+//field sub-tot-so-order-total-shipped-amount like so-order-total-shipped-amount
+//field total-so-order-total-shipped-cost like so-order-total-shipped-cost
+//field sub-tot-so-order-total-shipped-cost like so-order-total-shipped-cost
+field total-ws-amount like ws-amount
+field sub-tot-ws-amount like ws-amount
+field total-ws-cost like ws-cost
+field sub-tot-ws-cost like ws-cost
+field total-so-order-total-charges like so-order-total-charges
+field sub-tot-so-order-total-charges like so-order-total-charges
+field new-so-rep-code pic 9
+field total-ws-total-order like ws-total-order
+field sub-tot-ws-total-order like ws-total-order
+field total-ws-gp$ like ws-gp$
+field sub-tot-ws-gp$ like ws-gp$
+//field total-ws-gp% like ws-gp%
+//field sub-tot-ws-gp% like ws-gp%
+report header
+	page
+//	set total-so-order-total-shipped-amount = 0
+//	set total-so-order-total-shipped-cost = 0
+//	set total-so-order-total-charges = 0
+	set total-ws-amount = 0
+	set total-ws-cost = 0
+	set total-ws-total-order = 0
+	set total-ws-gp$ = 0
+	//set total-ws-gp% = 0
+header
+	print 
+		company-name in col 1
+		"SALES ANALYSIS FOR ARCHIVED ORDERS" in col 52
+		today() in col 101
+		"Page No." in col 116
+		pageno() in col 125
+	skip 1
+	print
+		"Rep" in col 4
+		"Cost" in col 32
+		"Amount" in col 47
+		"Charges" in col 62
+		"Total" in col 77
+		"G.P." in col 97
+		"G.P." in col 112
+	print
+		"Code" in col 4
+		"$" in col 33
+		"$" in col 50
+		"$" in col 65
+		"Amount $" in col 76
+		"$" in col 98
+		"%" in col 113
+	print "==================================================================================================================================" in col 1
+	skip 1
+before so-rep-code
+//	set sub-tot-so-order-total-shipped-amount = 0
+//	set sub-tot-so-order-total-shipped-cost = 0
+	set sub-tot-ws-amount = 0
+	set sub-tot-ws-cost = 0
+	set sub-tot-so-order-total-charges = 0
+	set new-so-rep-code = 1
+	set sub-tot-ws-total-order = 0
+	set sub-tot-ws-gp$ = 0
+	set sub-tot-ws-cost = 0
+//	set sub-tot-ws-gp% = 0
+
+detail
+	if (new-so-rep-code)
+		print so-rep-code in col 4 no newline
+	endif
+//	set total-so-order-total-shipped-amount += so-order-total-shipped-amount
+//	set sub-tot-so-order-total-shipped-amount += so-order-total-shipped-amount
+//	set total-so-order-total-shipped-cost += so-order-total-shipped-cost
+//	set sub-tot-so-order-total-shipped-cost += so-order-total-shipped-cost
+	set total-ws-amount += ws-amount
+	set sub-tot-ws-amount += ws-amount
+	set total-ws-cost += ws-cost
+	set sub-tot-ws-cost += ws-cost
+	set total-so-order-total-charges += so-order-total-charges
+	set sub-tot-so-order-total-charges += so-order-total-charges
+	set new-so-rep-code = 0
+	set total-ws-total-order += ws-total-order
+	set sub-tot-ws-total-order += ws-total-order
+	set total-ws-gp$ += ws-gp$
+	set sub-tot-ws-gp$ += ws-gp$
+	//set total-ws-gp% += ws-gp%
+	//set sub-tot-ws-gp% += ws-gp%
+after so-rep-code
+	print
+//		sub-tot-so-order-total-shipped-amount in col 42 pic z,zzz,zz9.99-
+//		sub-tot-so-order-total-shipped-cost in col 26 pic z,zzz,zz9.99-
+		sub-tot-ws-amount in col 42 pic z,zzz,zz9.99-
+		sub-tot-ws-cost in col 26 pic z,zzz,zz9.99-
+		sub-tot-so-order-total-charges in col 58 pic z,zzz,zz9.99-
+		sub-tot-ws-amount + sub-tot-so-order-total-charges in col 74 pic z,zzz,zz9.99-
+		sub-tot-ws-gp$ in col 91 pic z,zzz,zz9.99-
+		sub-tot-ws-gp$ / sub-tot-ws-total-order * 100 in col 109 pic zz9.99-
+	skip
+report footer
+	print
+		"-------------" in col 42
+		"-------------" in col 26
+		"-------------" in col 58
+		"-------------" in col 74
+		"-------------" in col 91
+		"-------" in col 109
+	print
+//		total-so-order-total-shipped-amount in col 42 pic z,zzz,zz9.99-
+//		total-so-order-total-shipped-cost in col 26 pic z,zzz,zz9.99-
+		total-ws-amount in col 42 pic z,zzz,zz9.99-
+		total-ws-cost in col 26 pic z,zzz,zz9.99-
+		total-so-order-total-charges in col 58 pic z,zzz,zz9.99-
+		total-ws-amount + total-so-order-total-charges in col 74 pic z,zzz,zz9.99-
+		total-ws-gp$ in col 91 pic z,zzz,zz9.99-
+		total-ws-gp$ / total-ws-total-order * 100 in col 109 pic zz9.99-
+	skip 3
+	print "Program Name" in col 10
+		":" in col 25
+		"salesarc.enq" in col 29
+	skip
+	print "Parameters:" in col 10
+	print "Start Order Date :" in col 13
+		ws-start-date in col 32
+	print "End   Order Date :" in col 13
+		ws-end-date in col 32
+//	print "Start Store Code :" in col 13
+//		ws-start-terr in col 32 pic x(4)
+//	print "End   Store Code :" in col 13
+//		ws-end-terr in col 32 pic x(4)

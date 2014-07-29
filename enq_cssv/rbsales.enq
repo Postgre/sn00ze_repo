@@ -1,0 +1,26 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-whse-code
+	sol-line-amount
+	accountcode
+	postcode
+	dr-cust-type
+	sys-tbl-code
+	sys-description
+from
+	sales-order
+	sales-order-line
+	name-and-address-master
+	deb-master
+	system-table
+where
+	so-order-date between input date "Enter Start Date" and input date "Enter End   Date" 
+	and sol-line-type in { "SS" "SN" "KN" } 
+	and accountcode = so-cust-code 
+	and na-type = "C" 
+	and sys-tbl-type = "CT" 
+	and dr-cust-type = sys-tbl-code 
+order by so-whse-code dr-cust-type so-order-no 
+format is lst

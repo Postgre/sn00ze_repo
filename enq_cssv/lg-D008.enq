@@ -1,0 +1,11 @@
+// debtors query records for Transaction Removal
+select
+	accountcode
+	tr-amount
+	trans-date
+from
+	deb-trans
+where
+	( accountcode LIKE INPUT ALPHA 
+	prompt is "Debtor to query for Deletable transactions"   )
+format is lst

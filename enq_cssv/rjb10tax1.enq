@@ -1,0 +1,9 @@
+select
+	stock-code
+	stk-description
+	stk-sales-tax-paid-rate
+from
+	stock-master
+where
+	stk-sales-tax-paid-rate != 0 
+format is lst

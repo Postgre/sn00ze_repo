@@ -1,0 +1,28 @@
+// gmr22.enq
+// list of product not known by store
+// based upon user group[2] of Y W U E
+// for those products with sales this year
+select
+	stock-code
+	stk-description
+	stock-group
+	stk-stock-status
+	ws-group = stk-user-group[2]
+	ash-type
+	ash-years-ago
+	ash-whse
+	stk-creation-date
+	ws-date = input date "Enter the stock creation date to check "
+from
+	stock-master
+	stock-aged-sales-history
+where
+	(ws-group = 'Y' or ws-group = 'W' ) 
+	and stk-creation-date >= ws-date
+order by ash-whse stock-code 
+format is lst
+title line 1 is 'Product not Know by Store for products sold' 
+title line 2 is 'Report new-prod.enq                              Run on ' today () 
+title line 3 is ' ' 
+title line 4 is 'Please provide the missing details ' 
+new page on ash-whse

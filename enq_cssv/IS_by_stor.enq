@@ -1,0 +1,46 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	stock-group
+	sales = sum-array (ash-value 1 12) 
+from
+	stock-aged-sales-history
+	stock-master
+where
+	sales > 0 
+	and 
+	ash-type = "O" 
+	and 
+	ash-years-ago = 0 
+	and 
+	(stock-group = "IN" 
+	or stock-group = "IS" 
+	or stock-group = "SS" 
+	or stock-group = "WB" ) 
+order by ash-whse 
+format is lst
+suppress stock-code
+suppress ash-type
+suppress ash-years-ago
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress stock-group
+unique record on ash-whse
+field title of ash-whse is "Store"
+field title of sales is "Bedding Sales"
+subtotal on sales
+	with breaks on ash-whse

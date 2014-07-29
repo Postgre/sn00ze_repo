@@ -1,0 +1,263 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/pos/refunds
+//  Program Desc:	Description of program
+//  Requested By:	Name of person requesting program
+//  Request Date:	Date requested
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reservedl
+// 12mar. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	22apr14	rmd			upgrade to 710
+///////////////////////////////////////////////////////////////////////////////
+
+// 29jul08	rmd -silent mode, defaults to user-store-id start and end on today
+// 12mar08	rmd	converted from $CUS/refunds.enq
+
+
+object tmp-cash-draw
+type is memory
+	record
+		tmp-cd-terminal          				like cd-terminal
+		tmp-cd-trans-seq-no      				like cd-trans-seq-no
+		tmp-cd-item-seq-no						like cd-item-seq-no
+		tmp-cd-trans-date        				like cd-trans-date
+		tmp-cd-item-reference    				like cd-item-reference
+		tmp-cd-item-accountcode  				like cd-item-accountcode
+		tmp-cd-money-type        				like cd-money-type
+		tmp-cd-money-amount      				like cd-money-amount
+	endrecord
+	key is tmp-cd-terminal tmp-cd-trans-seq-no tmp-cd-item-seq-no //unique
+	key is tmp-cd-terminal tmp-cd-trans-date tmp-cd-item-accountcode tmp-cd-trans-seq-no
+
+field
+	ws-store					type numeric
+	ws-start-date				type date
+	ws-end-date					type date
+	ws-accept					pic x
+	ws-silent					type boolean
+
+procedure main
+window @10,10 to @11,38 title is "Refund Report"
+	if get-param(1) = "-silent"
+		set ws-silent = TRUE
+	endif
+	get system-control first
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+	if ws-silent
+		set ws-store = num(user-store-id)
+		set ws-start-date = today()
+		set ws-end-date = today()
+		display "** Processing **" @10,15 bold background flashing colour is red
+		do build-dataset
+		do refund-report
+	else
+		do get-user-input
+	endif
+endprocedure // main ----------------------------------------------------------
+
+procedure get-user-input
+window @10,10 to @16,38 title is "Refund Report"
+	box @10,10 to @15,37 title is "Enter Details"
+	accept ws-store			@11,20 title is "Store:" pic zzz
+		default num(user-store-id)
+	accept ws-start-date	@12,20 title is "Start Date:"
+		default today() - 7
+	accept ws-end-date		@13,20 title is "End Date:"
+		default today() - 1
+	accept ws-accept		@14,20 title is "Continue?"
+		uppercase
+		allowed "Y" "N"
+		default "Y"
+	if ws-accept = "Y"
+		display "** Processing **" @16,15 bold background flashing colour is red
+		do build-dataset
+		do refund-report
+	endif
+endprocedure // get-user-input ------------------------------------------------
+
+procedure build-dataset
+	open tmp-cash-draw truncate temporary
+	extract cash-draw-trans
+	on index cd-store-id cd-terminal cd-trans-seq-no
+	key is str(ws-store) ws-store 0
+	next same cd-store-id cd-terminal
+	detail
+		if cd-trans-date between ws-start-date and ws-end-date
+			get cash-draw-money-trans
+			on index cd-store-id cd-terminal cd-trans-seq-no cd-money-seq-no
+			key is cd-store-id cd-terminal cd-trans-seq-no 1
+			on error
+				//initialise cash-draw-money-trans
+				set cd-money-type       = "U"
+				set cd-money-amount     = 0
+			else
+			endon
+			extract cash-draw-item-trans
+			on index cd-store-id cd-terminal cd-trans-seq-no cd-item-seq-no
+			key is cd-store-id cd-terminal cd-trans-seq-no 0
+			next same cd-store-id cd-terminal cd-trans-seq-no
+			detail
+				if cd-item-accountcode != "Banking Trans"
+					//get cash-draw-money-trans
+					//on index cd-store-id cd-terminal cd-trans-seq-no cd-money-seq-no
+					//key is cd-store-id cd-terminal cd-trans-seq-no cd-item-seq-no
+					//on error
+					//	//initialise cash-draw-money-trans
+					//	set cd-money-type       = "U"
+					//	set cd-money-amount     = 0
+					//else
+					//endon
+					set tmp-cd-terminal         = cd-terminal
+					set tmp-cd-trans-seq-no     = cd-trans-seq-no
+					set tmp-cd-item-seq-no		= cd-item-seq-no
+					set tmp-cd-trans-date       = cd-trans-date
+					set tmp-cd-item-reference   = cd-item-reference
+					set tmp-cd-item-accountcode = cd-item-accountcode
+					set tmp-cd-money-type       = cd-money-type
+					set tmp-cd-money-amount     = cd-money-amount
+					insert tmp-cash-draw
+				else
+				endif
+			endextract
+		endif
+	endextract
+endprocedure // build-dataset -------------------------------------------------
+
+procedure report-header
+	print
+		company-name in col 1
+		today() in col 104
+		"Page No." in col 117
+		pageno() in col 125
+	print "REFUND REPORT FOR" in col 56 bold
+		bold
+		ws-store in col 74 pic 999
+	print "From" in col 52
+		ws-start-date in col 57
+		"to" in col 69
+		ws-end-date in col 72
+	skip
+	print
+		"Trans" in col 2
+		"Customer" in col 17
+		"Order" in col 37
+		"Trans" in col 50
+		"Amount" in col 79
+	print
+		"Date" in col 2
+		"Code" in col 17
+		"Number" in col 37
+		"Type" in col 50
+		"$" in col 81
+		"Refund?" in col 91
+	print "==================================================================================================================================" in col 1
+	//skip 1
+endprocedure // report-header -------------------------------------------------
+
+procedure refund-report
+	report "Refund Report"
+	header is report-header
+	page
+//before cd-trans-date
+	extract tmp-cash-draw
+	on index tmp-cd-terminal tmp-cd-trans-date tmp-cd-item-accountcode tmp-cd-trans-seq-no
+	detail
+	// ***********************************
+	// ** print bold if a refund
+	// ***********************************
+		if tmp-cd-money-amount > 0
+			print
+				tmp-cd-trans-date in col 1
+				tmp-cd-item-accountcode in col 17 bold
+				//tmp-cd-trans-seq-no in col 26 //pic zzz9
+				tmp-cd-item-reference in col 34 bold
+				tmp-cd-money-type in col 47 bold no newline
+			if tmp-cd-money-type = "T"
+				print "Transfer/Eftpos" in col 49 bold
+				no newline
+			elseif tmp-cd-money-type = "H"
+				print "Cash" in col 49 bold no newline
+			elseif tmp-cd-money-type = "X"
+				print "Amex" in col 49 bold no newline
+			elseif tmp-cd-money-type = "N"
+				print "Diners" in col 49 bold no newline
+			elseif tmp-cd-money-type = "C"
+				print "Finance" in col 49 bold no newline
+			elseif tmp-cd-money-type = "Q"
+				print "Cheque" in col 49 bold no newline
+			endif
+			print
+				tmp-cd-money-amount in col 70 bold no newline
+			if tmp-cd-money-amount > 0
+				print "*** REFUND ***" in col 88 bold no newline
+			endif
+			skip
+	// ***********************************
+	// ** print normal if not a refund
+	// ***********************************
+		else
+			print
+				tmp-cd-trans-date in col 1
+				tmp-cd-item-accountcode in col 17
+				//tmp-cd-trans-seq-no in col 26 //pic zzz9
+				tmp-cd-item-reference in col 34
+				tmp-cd-money-type in col 47 no newline
+			if tmp-cd-money-type = "T"
+				print "Transfer/Eftpos" in col 49
+				no newline
+			elseif tmp-cd-money-type = "H"
+				print "Cash" in col 49 no newline
+			elseif tmp-cd-money-type = "X"
+				print "Amex" in col 49 no newline
+			elseif tmp-cd-money-type = "N"
+				print "Diners" in col 49 no newline
+			elseif tmp-cd-money-type = "C"
+				print "Finance" in col 49 no newline
+			elseif tmp-cd-money-type = "Q"
+				print "Cheque" in col 49 no newline
+			endif
+			print
+				tmp-cd-money-amount in col 70 no newline
+			if tmp-cd-money-amount > 0
+				print "*** REFUND ***" in col 88 no newline
+			endif
+			skip
+		endif
+	after tmp-cd-trans-date
+		skip
+	endextract
+	//report footer
+		skip
+		skip
+		print
+			"Checked by: ___________________     Signature: ______________________" in col 4 bold
+		skip
+		skip
+		print
+			"Report Name: refunds.op6" in col 4
+			"NOTE:" in col 38 bold underline
+			"A normal cash receipt (customer paying money) shows as a credit amount (-)." in col 44
+		print
+			"A refund shows as a positive amount." in col 44
+		print
+			"Store      : " in col 4
+			ws-store in col 17 pic 999
+			"If the store has reversed an amount out because it was processed as the wrong" in col 44
+		print
+			"Start Date :" in col 4
+			ws-start-date in col 17
+			"trans type (eg: should be Transfer not cash), then this reversal would show as" in col 44
+		print
+			"End   Date :" in col 4
+			ws-end-date in col 17
+			"a refund, but there should be 2 other trans for that customer on that day (3 in total)" in col 44
+		print
+			"(original trans as 'H', reversal trans as 'H', then corrected trans as 'T')." in col 44
+endprocedure // refund-report -------------------------------------------------

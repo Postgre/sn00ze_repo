@@ -1,0 +1,21 @@
+select 
+        gl-accountcode 
+        gl-trans-date 
+        gl-batch-ref 
+        gl-amount 
+        ws-start-date = input 
+                date 
+                prompt is "start date" 
+        ws-end-date = input 
+                date 
+                prompt is "end date" 
+from 
+        gl-trans 
+where 
+        gl-trans-date between ws-start-date and ws-end-date 
+order by gl-batch-ref 
+format is lst 
+total on gl-amount 
+subtotal on gl-amount 
+        with breaks on gl-batch-ref
+

@@ -1,0 +1,84 @@
+// select
+// stock-code
+// stk-description
+// stk-desc-line-2
+// sup-shipping-method-code
+// cre-accountcode
+// from
+// stock-master
+// stock-supplier
+// where
+// (sup-shipping-method-code = 'A' or sup-shipping-method-code = 'B' ) 
+// and (stk-description like "%SUITE%" ) 
+// format is lst
+// unique stock-code
+// unique stk-description
+// unique stk-desc-line-2
+// unique sup-shipping-method-code
+// field order is stock-code stk-description stk-desc-line-2 cre-accountcode sup-shipping-method-code
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	sup-shipping-method-code
+	cre-accountcode
+from
+	stock-master
+	stock-supplier
+where
+	(sup-shipping-method-code = 'A' or sup-shipping-method-code = 'B' ) 
+	and (stk-description like "%DRESSING%" ) 
+format is rpt
+field new-stock-code pic 9
+field new-stk-description pic 9
+field new-stk-desc-line-2 pic 9
+field new-sup-shipping-method-code pic 9
+report header
+	page
+header
+	print 
+		"rjbdress" in col 1
+		"List of Dressing Tables with an On Range of A or B " in col 28 bold 
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"Stock-code" in col 6
+		"Description" in col 29
+		"  Supplier" in col 101
+		"  On" in col 119
+	print
+		"Code" in col 105
+		"Range" in col 120
+	skip
+	skip 1
+before stock-code
+	set new-stock-code = 1
+before stk-description
+	set new-stk-description = 1
+before stk-desc-line-2
+	set new-stk-desc-line-2 = 1
+before sup-shipping-method-code
+	set new-sup-shipping-method-code = 1
+
+detail
+	if (new-stock-code)
+		skip
+		print stock-code in col 6 no newline
+		print stk-description in col 29 no newline
+		print stk-desc-line-2 in col 60 no newline
+	endif
+		print cre-accountcode in col 103 no newline
+		print sup-shipping-method-code in col 122 no newline
+	skip
+	set new-stock-code = 0
+	set new-stk-description = 0
+	set new-stk-desc-line-2 = 0
+	set new-sup-shipping-method-code = 0
+after stock-code
+after stk-description
+after stk-desc-line-2
+after sup-shipping-method-code
+report footer

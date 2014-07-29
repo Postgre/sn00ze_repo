@@ -1,0 +1,9 @@
+select
+	cre-accountcode
+	cr-shortname
+	cr-clearing-flag
+from
+	cre-master
+where
+	cr-clearing-flag <> 'O'
+format is lst

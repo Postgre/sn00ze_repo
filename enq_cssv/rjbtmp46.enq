@@ -1,0 +1,9 @@
+select
+	so-order-no
+	so-territory-code
+	so-actual-delivery-date
+from
+	sales-order-archive
+where
+	so-actual-delivery-date between 01-jul-2001 and 31-aug-2001 
+format is external

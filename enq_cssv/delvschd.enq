@@ -1,0 +1,43 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-delivery-date
+	so-order-status
+	sol-line-seq
+	sol-line-type
+	accountcode
+	shortname
+	na-type
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	na-phone
+	ws-delivery-date = input date "Enter the delivery date:"
+	stock-code
+	stk-description
+	stk-pack-desc
+from
+	sales-order
+	sales-order-line
+	deb-master
+	name-and-address-master
+	stock-master
+where
+	so-cust-code = accountcode 
+	and na-type = 'C' 
+	and sol-line-type = 'SN' 
+	and so-order-status < '80' 
+	and so-delivery-date = ws-delivery-date 
+format is lst
+suppress so-delivery-date
+suppress so-order-status
+suppress sol-line-seq
+suppress sol-line-type
+suppress accountcode
+suppress shortname
+suppress na-type
+suppress ws-delivery-date

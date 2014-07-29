@@ -1,0 +1,13 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-cost
+from
+	stock-aged-sales-history
+where
+	sub-string (stock-code 1, 3) = "FUR" 
+	and ash-type = 'O'
+	and ash-years-ago = 2000
+format is lotus

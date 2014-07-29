@@ -1,0 +1,53 @@
+// Program: q-sal-cust.enq
+// author: Ellen Gallagher
+// purpose: To derive the number of customer /transactions for the pronto
+// stores as nothing is automated to retrieve them
+// date:    19-Oct-94
+select
+distinct
+	so-order-no
+	so-bo-suffix
+	so-order-date
+	so-order-status
+	so-territory-code
+	ws-so-order-date = input date "Please enter the starting date"
+	ws-so-end-order-date = input date "Please enter the ending date"
+from
+	sales-order
+where
+	so-order-date between ws-so-order-date and ws-so-end-order-date 
+	and 
+	so-order-status != '99' 
+order by so-territory-code
+format is rpt
+field ws-so-count type numeric
+report header
+	page
+header
+	print today() in col 2
+	tod() in col 20
+		"Pageno." in col 60
+		pageno() in col 70
+	skip 1
+	print
+		"Store No." in col 8
+		"No. of Customers" in col 25
+		"Starting Date" in col 45
+		"Ending Date" in col 60
+	skip 1
+
+before so-territory-code 
+	set ws-so-count = 0
+
+before so-territory-code so-order-no 
+	set ws-so-count += 1
+
+detail
+
+after so-territory-code 
+	print
+		so-territory-code in col 8
+		integer(ws-so-count) in col 25
+		ws-so-order-date in col 45
+		ws-so-end-order-date in col 60
+report footer

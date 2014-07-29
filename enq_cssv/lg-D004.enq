@@ -1,0 +1,4 @@
+// remove Other Territory Debtors
+delete from deb-master
+where
+	territory != '197'

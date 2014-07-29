@@ -1,0 +1,208 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/polinknote
+//  Program Desc:	Write PO Link information to S/O lines
+//  Requested By:	Chris Ward
+//  Request Date:	28dec12
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	29mar14	rmd	{3}		upgrade for 710
+//	02dec13	rmd	{2}		suppress all but the last PO link note for kit sets
+//	03jan13	rmd			release for production, suppress debug spool
+//	28dec12	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+
+object tmp-sol
+type is memory
+record
+	tmp-so-order-no                                     like so-order-no
+	tmp-so-bo-suffix                                    like so-bo-suffix
+	tmp-sol-line-seq                                    like sol-line-seq
+	tmp-type											pic x	//(N)ormal, (K)it or (C)omponent	//{2}
+endrecord
+	key is tmp-so-order-no tmp-so-bo-suffix tmp-sol-line-seq unique
+
+
+fields
+	ws-so-order-no                                      like so-order-no
+	ws-so-bo-suffix                                     like so-bo-suffix
+
+procedure main
+	local field
+		lf-so-order-no									like so-order-no
+		lf-so-bo-suffix									like so-bo-suffix
+		lf-ex-stock-delivery							type boolean
+		lf-cash-account									type boolean
+		lf-include-sol									type boolean
+	if get-param(1) = SPACES
+		exit
+	endif
+	//report "dbg:polinknote" //03jan13
+	//	spool-only
+    set ws-so-order-no = num(get-param(2))
+    set ws-so-bo-suffix = get-param(3)
+    //print
+    //	ws-so-order-no
+    //    ws-so-bo-suffix
+    //    "--------------------------------------------"
+    extract sales-order
+    on index so-order-no so-bo-suffix
+    key is ws-so-order-no SPACES
+    next same so-order-no
+    detail
+   		//message concat("dbg-- SO:" str(so-order-no) "BO:" so-bo-suffix "Stat:" so-order-status)
+   		//print
+   		//	"   "
+   		//	so-order-no
+   		//	so-bo-suffix
+   		//	so-order-status
+    	set lf-so-order-no = so-order-no
+    	set lf-so-bo-suffix = so-bo-suffix
+    	open tmp-sol truncate temporary
+    	extract sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+   	 		key is lf-so-order-no lf-so-bo-suffix 0
+   			next same so-order-no so-bo-suffix
+    	detail
+    		//print
+    		//	"       "
+    		//	sol-line-seq
+    		//	sol-line-type
+    		//	stock-code
+    		//	sol-shipped-qty
+    		//	sol-backorder-qty
+    		//	sol-print-line
+    		//	no newline
+    		if sol-line-type not in ("SN" "KN" "WN")
+    			continue
+    		endif
+    		//<{2}
+    		if sol-line-type = "SN" and sol-chg-type = "D"
+    			//component item - skip then handle at end of routine
+    			continue
+			endif
+    		//>{2}
+			if (sol-backorder-qty > 0) or (sol-print-line in {"2"}) // 2 = Deliver Y = Taken
+				set lf-include-sol = TRUE
+				//print
+				//	"include"
+			elseif sol-shipped-qty > 0 and sol-print-line = SPACES
+				set lf-include-sol = TRUE
+				//print
+				//	"include"
+    		else
+    			set lf-include-sol = FALSE
+				//print
+				//	"exclude"
+			endif
+			if lf-include-sol
+				set tmp-so-order-no   = so-order-no
+				set tmp-so-bo-suffix  = so-bo-suffix
+				set tmp-sol-line-seq  = sol-line-seq
+				insert tmp-sol
+			endif
+    	endextract
+    	//<{2}
+    	//handle kit components, only want to print PO link for last item in kit
+		set tmp-so-order-no   = 0
+		set tmp-so-bo-suffix  = SPACES
+		set tmp-sol-line-seq  = 0
+    	extract sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+   	 		key is lf-so-order-no lf-so-bo-suffix 0
+   			next same so-order-no so-bo-suffix
+    	detail
+    		if sol-line-type = "SN" and sol-chg-type = "D"
+    			//component item - skip then handle at end of routine
+    			set tmp-so-order-no   = so-order-no
+    			set tmp-so-bo-suffix  = so-bo-suffix
+    			set tmp-sol-line-seq  = sol-line-seq
+			endif
+			if sol-line-type = "SN" and sol-chg-type = "D"
+			else
+				if tmp-so-order-no <> 0
+					insert tmp-sol
+					//reset for next round
+					set tmp-so-order-no   = 0
+					set tmp-so-bo-suffix  = SPACES
+					set tmp-sol-line-seq  = 0
+				endif
+			endif
+		endextract
+		if tmp-so-order-no <> 0
+			insert tmp-sol
+			//reset for next round
+			set tmp-so-order-no   = 0
+			set tmp-so-bo-suffix  = SPACES
+			set tmp-sol-line-seq  = 0
+		endif
+		//>{2}
+    	extract tmp-sol
+		detail
+			do
+				write-po-detail-to-sol
+			parameters
+				tmp-so-order-no
+				tmp-so-bo-suffix
+				tmp-sol-line-seq
+    	endextract
+    endextract
+    //report finished
+endprocedure // main ----------------------------------------------------------
+
+procedure write-po-detail-to-sol
+parameters
+	lp-so-order-no                   like so-order-no
+	lp-so-bo-suffix                  like so-bo-suffix
+	lp-sol-line-seq                  like sol-line-seq
+
+	//message concat("Write PO detail to sol:" str(lp-so-order-no) lp-so-bo-suffix "seq:" str(lp-sol-line-seq))
+	get sales-order-line-purchase
+	on index so-order-no so-bo-suffix sol-line-seq
+	key is lp-so-order-no lp-so-bo-suffix lp-sol-line-seq
+	on error
+		// no po link
+		//message "No SO/PO link"
+		// will happen when goods in stock being delivered - no po required.
+	else
+		get purchase-order-line
+		on index po-order-no po-backorder-flag po-l-seq
+		key is solp-po-order-no solp-backorder-flag solp-l-seq
+		on error
+			// #| should throw an error here.
+			message "No PO line"
+		else
+			initialise sales-order-line
+			set so-order-no		= lp-so-order-no
+			set so-bo-suffix	= lp-so-bo-suffix
+			//set sol-line-seq	= (lp-sol-line-seq + 0.99)
+			set sol-line-seq	= (lp-sol-line-seq + 0.11) //29apr10
+			set sol-line-type	= "DN"
+			//start --------------------------------------------- //rc 07jul09
+			//set sol-line-description = concat("On PO " str(po-order-no) po-backorder-flag " due " zstr(day(po-line-date-expected),2,0) "/" zstr(month(po-line-date-expected),2,0) "/" substring(zstr(year(po-line-date-expected),4,0),3,4))
+			set sol-line-description = concat("On PO " str(po-order-no) po-backorder-flag)
+			//end ----------------------------------------------- //rc 07jul09
+			// check if note line exists. (the .99 entry for the line)
+			get sales-order-line lock
+			//on index so-order-no so-bo-suffix sol-line-seq
+			//key is lp-so-order-no lp-so-bo-suffix (lp-sol-line-seq + 0.99)
+			on error
+				// no so/po note, create one
+				//message "No SO note"
+				insert sales-order-line
+			else
+				// existing so/po note, update it?
+				//message "SO note exists - updating"
+				update sales-order-line
+			endon
+			// reset sol-line-seq on return
+			//set sol-line-seq = lp-sol-line-seq
+		endon
+	endon
+endprocedure // write-po-detail-to-sol ----------------------------------------

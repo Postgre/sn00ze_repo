@@ -1,0 +1,9 @@
+select
+	cre-accountcode
+sub-string(cr-shortname,1,7)
+	cr-payment-selection
+from
+	cre-master
+where
+	cr-payment-selection = "L"
+format is lst

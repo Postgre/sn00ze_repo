@@ -1,0 +1,13 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	ws-count = count () 
+from
+	stock-master
+where
+	stk-description = spaces 
+format is lst
+suppress stock-code
+suppress stock-group
+suppress stk-description

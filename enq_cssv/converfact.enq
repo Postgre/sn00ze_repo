@@ -1,0 +1,5 @@
+update stock-master
+set
+	stk-conversion-factor = 1
+where
+	stk-conversion-factor != 1

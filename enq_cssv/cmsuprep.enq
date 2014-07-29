@@ -1,0 +1,72 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-actual-delivery-date
+	so-territory-code
+	so-rep-code
+	sol-line-type
+	stock-code
+	sol-shipped-sales-tax-amt
+	sol-shipped-qty
+	sol-shipped-amount
+	stk-description
+	cre-accountcode
+	ws-start-date = input
+		date
+		prompt is "Start Date"
+	ws-end-date = input
+		date
+		prompt is "End Date"
+	ws-start-store = input
+		string
+		uppercase
+		prompt is "Start Store"
+	ws-end-store = input
+		string
+		uppercase
+		prompt is "End Store"
+	ws-start-supplier = input
+		string
+		uppercase
+		prompt is "Start Supplier"
+	ws-end-supplier = input
+		string
+		uppercase
+		prompt is "End Supplier"
+from
+	sales-order-archive
+	sales-order-line-archive
+	stock-master
+	stock-supplier
+where
+	sol-line-type = "SN" 
+	and so-actual-delivery-date between ws-start-date and ws-end-date 
+	and cre-accountcode between ws-start-supplier and ws-end-supplier 
+	and so-territory-code between ws-start-store and ws-end-store 
+	and stock-code not = "ZROUNDDISC" 
+order by cre-accountcode so-rep-code 
+format is lst
+suppress so-bo-suffix
+suppress so-cust-code
+suppress sol-line-type
+suppress cre-accountcode
+suppress ws-start-date
+suppress ws-end-date
+suppress ws-start-store
+suppress ws-end-store
+suppress ws-start-supplier
+suppress ws-end-supplier
+field title of so-order-no is "Inv" "No."
+field title of so-actual-delivery-date is "Del" "Date"
+field title of so-territory-code is "Store"
+field title of so-rep-code is "Rep"
+field title of stock-code is "Code"
+field title of sol-shipped-sales-tax-amt is "GST"
+field title of sol-shipped-qty is "Qty"
+field title of sol-shipped-amount is "Sale" "Inc" "Tax"
+field title of stk-description is "Desc"
+display pic of stock-code is x(11)
+total on sol-shipped-amount
+subtotal on sol-shipped-amount
+	with breaks on so-rep-code

@@ -1,0 +1,9 @@
+select
+	sys-tbl-code
+	sys-description
+from
+	system-table
+where
+	sys-tbl-type = 'WH' 
+order by sys-tbl-code 
+format is external

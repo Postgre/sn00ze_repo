@@ -1,0 +1,6 @@
+
+update stock-supplier
+set
+	sup-unit-of-measure = 1
+where
+	sup-unit-of-measure <= 0

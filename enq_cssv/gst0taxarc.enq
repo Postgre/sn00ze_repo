@@ -1,0 +1,127 @@
+//23jul13	rmd only want finished sales orders, not quotes or transfers
+//				don't rely on tax code and work from shipped figures
+// select
+// so-order-no
+// so-bo-suffix
+// so-cust-code
+// so-actual-delivery-date
+// so-order-status
+// sol-line-type
+// stock-code
+// sol-ordered-qty
+// sol-line-amount
+// sol-tax-rate
+// stk-description
+// ws-start-date = input
+// date
+// prompt is "Please enter start date:"
+// ws-end-date = input
+// date
+// prompt is "Please enter   end date:"
+// ws-item-amount = sol-line-amount / sol-ordered-qty
+// from
+// sales-order-archive
+// sales-order-line-archive
+// stock-master
+// where
+// so-order-status != "99"
+// and sol-line-type = "SN"
+// and sol-tax-rate = 0
+// and so-actual-delivery-date between ws-start-date and ws-end-date
+// format is lst
+// suppress so-order-status
+// suppress sol-line-type
+// suppress sol-line-amount
+// suppress ws-start-date
+// suppress ws-end-date
+// field order is so-order-no so-bo-suffix so-actual-delivery-date so-cust-code stock-code stk-descrip
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-actual-delivery-date
+	so-order-status
+	sol-line-type
+	stock-code
+	//sol-ordered-qty 	//23jul13
+	sol-shipped-qty     //23jul13
+	sol-line-amount
+	sol-tax-rate
+	stk-description
+	ws-start-date = input
+		date
+		prompt is "Please enter start date:"
+	ws-end-date = input
+		date
+		prompt is "Please enter   end date:"
+	//ws-item-amount = sol-line-amount / sol-ordered-qty		//23jul13
+	ws-item-amount = sol-shipped-amount  / sol-shipped-qty      //23jul13
+	company-name
+from
+	sales-order-archive
+	sales-order-line-archive
+	stock-master
+	system-control
+where
+	//so-order-status != "99"	//23jul13
+	so-order-status = "90"    	//23jul13
+	and sol-line-type = "SN"
+	//and sol-tax-rate = 0				//23jul13
+	and sol-shipped-sales-tax-amt = 0  	//23jul13
+	and ws-item-amount <> 0      		//23jul13
+	and so-actual-delivery-date between ws-start-date and ws-end-date
+format is rpt
+report header
+	page
+header
+	print
+		company-name in col 1
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	print "Completed Sales Orders with Zero Tax Rate" in col 44
+	skip
+	print
+		"Sales" in col 1
+		"B/O" in col 11
+		"Actual" in col 20
+		"Customer" in col 32
+		"Stock" in col 43
+		"Ordered" in col 93
+		"Item" in col 111
+		"Tax" in col 125
+	print
+		"Order No." in col 1
+		"Suf." in col 11
+		"Del. Date" in col 19
+		"Code" in col 32
+		"Code" in col 43
+		"Description" in col 60
+		"Qty" in col 95
+		"Amount" in col 110
+		"Rate" in col 125
+	print "=================================================================================================================================" in col 1
+	skip 1
+
+detail
+	print
+		so-order-no in col 1
+		so-bo-suffix in col 11
+		so-actual-delivery-date in col 17
+		so-cust-code in col 32
+		stock-code in col 43
+		stk-description in col 60
+		//sol-ordered-qty in col 92 pic -zzzzzz9	//23jul13
+		sol-shipped-qty in col 92 pic -zzzzzz9      //23jul13
+		ws-item-amount in col 103
+		sol-tax-rate in col 124
+report footer
+	skip 2
+	print "Program Name :" in col 10
+		"gst0taxarc.enq     " in col 25
+	skip
+	print "Start Date   :" in col 10
+		ws-start-date in col 25
+	print "End Date     :  " in col 10
+		ws-end-date in col 25

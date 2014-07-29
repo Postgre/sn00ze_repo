@@ -1,0 +1,117 @@
+select
+	ws-cre-code = sub-string (stock-code 1 3) 
+	ash-whse
+	stock-code
+	stk-description
+	ash-type
+	ash-years-ago
+	ash-value
+	ash-cost
+	ash-qty
+	ws-ash-value = sum-array (ash-value 5 5) 
+	ws-ash-cost = sum-array (ash-cost 5 5) 
+	ws-ash-qty = sum-array (ash-qty 5 5) 
+from
+	stock-master
+	stock-aged-sales-history
+where
+	ash-type = 'O' 
+	and ash-years-ago = 0 
+	and ws-cre-code in { 'SOP' 'SIB' 'SEA' 'SLE' } 
+	and ash-whse in { '103' '105' '158' '107' '163' '175' '178' '255' '220' '245' '312' '320' '345' }
+order by ws-cre-code ash-whse 
+format is rpt
+field new-ws-cre-code pic 9
+field new-ash-whse pic 9
+field total-ws-ash-value like ws-ash-value
+field sub-tot-ws-ash-value like ws-ash-value
+field sub-tot1-ws-ash-value like ws-ash-value
+field total-ws-ash-cost like ws-ash-cost
+field sub-tot-ws-ash-cost like ws-ash-cost
+field sub-tot1-ws-ash-cost like ws-ash-cost
+field total-ws-ash-qty like ws-ash-qty
+field sub-tot-ws-ash-qty like ws-ash-qty
+field sub-tot1-ws-ash-qty like ws-ash-qty
+report header
+	page
+	set total-ws-ash-value = 0
+	set total-ws-ash-cost = 0
+	set total-ws-ash-qty = 0
+header
+	print 
+		"Sales for November" in col 35
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		" ws" in col 8
+		"ash" in col 21
+		"stock-code" in col 33
+		"ws-ash-value" in col 57
+		"ws-ash-cost" in col 82
+		"ws-ash-qty" in col 107
+	print
+		"cre" in col 8
+		"whse" in col 21
+	print
+		"code" in col 8
+	skip 1
+before ws-cre-code
+	set new-ws-cre-code = 1
+	set sub-tot1-ws-ash-value = 0
+	set sub-tot1-ws-ash-cost = 0
+	set sub-tot1-ws-ash-qty = 0
+before ash-whse
+	set new-ash-whse = 1
+	set sub-tot-ws-ash-value = 0
+	set sub-tot-ws-ash-cost = 0
+	set sub-tot-ws-ash-qty = 0
+
+detail
+	if (new-ws-cre-code)
+		print ws-cre-code in col 8 pic x(4) no newline
+	endif
+//	if (new-ash-whse)
+//		print ash-whse in col 21 no newline
+//	endif
+//	set new-ws-cre-code = 0
+//	set new-ash-whse = 0
+	set total-ws-ash-value += ws-ash-value
+	set sub-tot-ws-ash-value += ws-ash-value
+	set sub-tot1-ws-ash-value += ws-ash-value
+	set total-ws-ash-cost += ws-ash-cost
+	set sub-tot-ws-ash-cost += ws-ash-cost
+	set sub-tot1-ws-ash-cost += ws-ash-cost
+	set total-ws-ash-qty += ws-ash-qty
+	set sub-tot-ws-ash-qty += ws-ash-qty
+	set sub-tot1-ws-ash-qty += ws-ash-qty
+after ash-whse
+	print
+		ash-whse in col 21 
+		sub-tot-ws-ash-value in col 57
+		sub-tot-ws-ash-cost in col 82
+		sub-tot-ws-ash-qty in col 107
+	set new-ws-cre-code = 0
+	set new-ash-whse = 0
+after ws-cre-code
+	skip
+	print
+		"-----------------" in col 57
+		"-----------------" in col 82
+		"-----------------" in col 107
+	print
+		sub-tot1-ws-ash-value in col 57
+		sub-tot1-ws-ash-cost in col 82
+		sub-tot1-ws-ash-qty in col 107
+	skip
+report footer
+	print
+		"-----------------" in col 57
+		"-----------------" in col 82
+		"-----------------" in col 107
+	print
+		total-ws-ash-value in col 57
+		total-ws-ash-cost in col 82
+		total-ws-ash-qty in col 107

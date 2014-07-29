@@ -1,0 +1,29 @@
+//sales-avgqs
+// to list the average sales of QS beds
+select
+	stock-code
+	stock-group
+	stk-abc-class
+	stk-apn-number
+	stk-user-group
+	stk-description
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ash-qty
+	sales = sum-array (ash-value 1 10) 
+	cost = sum-array (ash-cost 1 10) 
+	qty = sum-array (ash-qty 1 10) 
+	avg-sales = sales / qty 
+	stk-pack-desc
+from
+	stock-master
+	stock-aged-sales-history
+where
+	stock-group = 'IS' 
+	and stk-pack-desc = 'QS' 
+	and stk-abc-class != 'Z' 
+	and ash-years-ago = 0 
+order by stock-code ash-whse 
+format is lotus

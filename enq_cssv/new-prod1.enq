@@ -1,0 +1,21 @@
+// new-prod.enq 
+// This will list the new products added from breeze for a certain date
+// 15-jun-94 E.G.
+select
+	stock-code
+	stk-user-group
+	ws-date = input date "Which Months new products would you like to view?"
+	stk-description
+	stk-creation-date
+	stk-replacement-cost
+	stock-group
+	stk-pack-desc
+from
+	stock-master
+where
+	stk-user-group[2] = "W" 
+	and ws-date = stk-creation-date
+order by stock-code ws-date 
+group by stock-code ws-date
+format is lst
+suppress stk-user-group[1]

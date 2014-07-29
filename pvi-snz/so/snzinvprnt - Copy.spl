@@ -1,0 +1,3627 @@
+//Program		: snzinvprnt.spl
+//Written By	: Ranjith
+//Written on 	: 07 May 2009
+//Description 	: Print POS invoices
+//
+// This program prints invoices. Options are print (A)ll invoices
+// print a (S)et of invoices or print (O)ne invoice.
+// If print only one invoice, then program has been called from
+// another routine.
+//	Parameters passed are:  1 - sales order number
+//				2 - sales order suffix
+//				3 - invoice date if set
+//				4 - spool report flag, spool even if
+//					system is setup to print direct
+//	Note : Programmers please update the defined variable
+//		RBTCHPROC_SELECTION_PARAMETERS_VERSION if a new one is entered or
+//		an old one is deleted
+//
+//
+// **** 10sep10rmd APPLY CHANGES TO BOTH snzinvprnt and B100720snzinvprnt until further notice ****
+//
+//
+// Modifcations
+//	When	Who		ChangeID	Changes
+//	26apr13	rmd		{14}		modify printers found in get-printer (F2 lookup)
+//	26jul12	rmd		{13}		cater for 60 char email address
+//								e.g. peterpercivalpattersonspetpig@gmail.com (39 char)
+//	28feb12	rmd					get-last-payment doesn't always return last CR trans
+//	10sep10	rmd					Credit Note: 'Inv GST Amt.' down two lines to line up with standard invoice
+//	18aug10	rmd		14739		Do not convert tender type BC to B, it used to be reserved for BankCard
+//	29jul10	rmd					pick up DI from last suffix in set, stay on screen if copies = 0
+//	27jul10	rmd					force part payments to display PSE screen
+//	25jul10 rmd					102 82266 returned multiple orders with so# = 0 causing dupe error
+//	23jul10	rmd		13860		* if line part shipped across multiple orders, qty does not consolidate
+//								works fine with this version
+//					-----		* only show TrueForm Invoice printers in selection screen
+//								* AttachmentName driven by Fax-Id which uses trigger @F408
+//	20jul10	rmd		14435		GST calculation in footer is incorrect, found DN lines carrying
+//								tax amounts, these should be ignored
+//					-----		Sender email @F111 store000\@snooze.com.au@
+//	27jan10	rmd		12281		GST for Quotations to appear two lines lower to match position
+//								of GST for Invoices
+//	24jan10	rmd		12281		Quotations hang when processed through TrueForm
+//								because the TF footer is triggered by the warranty statment
+//								which does not exist in the quotation (warranty no longer ignored
+//								for quotations
+
+//version-number "CUSTOM LIVE rc/so/snzinvprnt 20090507"
+//version-number "CUSTOM LIVE rmd/so/snzinvprnt 20100124"
+//version-number "CUSTOM LIVE rmd/so/snzinvprnt 20100720" //14435
+version-number "CUSTOM BETA pvi-snz/so/snzinvprnt 20100124.013"
+
+
+link "clib/clib301"
+
+#include "../../../bms/include/i8secabt.spl"
+#include "../../../bms/include/i8secmodok.spl"
+#include "../../../bms/include/bmsdef.spl"
+#define DONT_INCLUDE_TAX_PAID
+#define I5CRLIMIT_DONT_INCLUDE_CHECK_CREDIT_LIMIT
+#include "../../../bms/include/i5sostatii.spl"
+#include "../../../bms/include/i8periodck.spl"
+#include "../../../bms/so/i5period.spl"
+#include "../../../bms/include/i5linecalc.spl"
+#include "../../../bms/include/i5assinvno.spl"
+#include "../../../bms/include/i4getconv.spl"
+#define IENEEDEDI_INVOICE_NEEDED
+#include "../../../bms/include/ieneededi.spl"
+#define I5REPRINT_CREATE_SALES_ORDER_FROM_ARCHIVE
+#include "../../../bms/include/i5reprint.spl"
+#include "../../../bms/include/i8cpdetail.spl"
+#define KIT_PARENT (sol-line-type = "KN" and sol-chg-type = "K")
+#define KIT_COMPONENT (sol-line-type = "SN" and sol-chg-type = "D")
+#include "../../../bms/include/i5postermi.spl"
+#include "../../../bms/include/i8nameadd.spl"		//Append Postcode to Address
+
+//#define LAST_LINE_OF_DETAIL		36
+#define LAST_LINE_OF_DETAIL		35
+#define SERIAL_START_POS	22
+#define MAX_SERIAL_NO_PER_LINE		2
+#define PRINT_SIZE			subscript font 1
+#define INVOICE_PRINTER			"INVOICES"
+#define PRINTERS				"PROPRINTERS"			//rcMay 07, 2009
+#define RBTCHPROC_SELECTION_PARAMETERS_VERSION	"1"
+#define DEL_DOCKET			"-d"
+#define JOB_DELIVERY			get-param(1) = DEL_DOCKET
+#define LAYBY				"-layby"
+#define FINANCIER			"-financier"
+#define LEFT_PAGENO left_justify(str(ws-page-num))
+#define LEFT_ORDER_NO left_justify(concat(str(so-order-no),so-bo-suffix))
+#define LEFT_CREDIT_NO left_justify(str(so-credit-note-no))
+#define LEFT_INVOICE_NO left_justify(so-invoice-no)
+#define DEB_ARCH_IN_FULL_DETAILS	{'D' 'E' 'F' 'G' 'H'}
+
+mode select-mode
+	prompt "Select"
+	currency
+	help "Press [ENTER] to select sequence"
+
+mode md-exit
+	prompt "Exit"
+	help "Close screen when complete"
+
+field
+	ws-select-order-mode				pic x
+	ws-total-due						pic s9(6)v99
+	ws-total-taken						like ws-total-due
+	ws-page-num							pic 9(4)
+	i									pic 99
+	j									pic 9
+	ws-has-any-invoice-been-printed		pic x
+	ws-number-copies					pic 9
+	// NOTE: the 5th element holds any sales tax payable amounts
+	ws-sales-tax-amt					like sol-line-amount occurs 5
+	ws-staxable-amt						like sol-line-amount occurs 5
+	ws-exempt-amt						like sol-line-amount
+	ws-total-charges					like sol-line-amount
+	ws-found-order						pic s9
+	ws-current-status					like so-order-status
+	start-whse							like so-whse-code
+	end-whse							like so-whse-code
+	old-order-priority					like so-order-priority
+	old-delivery-date					like so-delivery-date
+	old-order-no						like so-order-no
+	old-bo-suffix						like so-bo-suffix
+	ws-invoice-date						like so-invoice-date
+	ws-env-printer						type string
+	ws-company-na						type string pic x(30) occurs 7
+	ws-stk-code							like stock-code
+	ws-header-needed					pic 9
+	ws-stk-desc							like stk-description
+	ws-message-1						pic x(40)
+	ws-message-2						pic x(40)
+	ws-message-3						pic x(40)
+	ws-message-4						pic x(40)
+	ws-message-5						pic x(40)
+	ws-letter-head						pic x
+	ws-service-invoice					pic 9
+	ws-postcode							type string pic x(10)
+	postcode-pos						pic s999
+	ws-qty								like sol-shipped-qty
+	ws-line-amt							like sol-shipped-amount
+	ws-disc-amt							like sol-shipped-discount-amt
+	ws-stax-amt							like sol-shipped-sales-tax-amt
+	ws-print-invoice-date				type date
+	ws-na-name							like na-name
+	ws-na-company						like na-company
+	ws-na-street						like na-street
+	ws-na-suburb						like na-suburb
+	ws-na-country						like na-country
+	ws-na-address-6						like na-address-6
+	ws-na-address-7						like na-address-7
+	ws-na-postcode						like postcode
+	ws-curr-rate						like sys-money-value
+	ws-curr-description					like sys-description
+	ws-is-this-a-delivery-docket		pic x
+	ws-spool-report						pic x
+	ws-total-invoice-amt				like so-order-total-shipped-amount
+	ws-does-rma-affect-stock			pic x
+	ws-old-status						like so-order-status
+	prnt-sol-item-price	 				like sol-item-price
+	prnt-sol-item-cost 					like sol-item-cost
+	prnt-sol-line-cost 					like sol-line-cost
+	prnt-sol-shipped-amount 			like sol-shipped-amount
+	prnt-sol-shipped-sales-tax-amt 		like sol-shipped-sales-tax-amt
+	prnt-sol-shipped-discount-amt 		like sol-shipped-discount-amt
+	prnt-sol-line-amount				like sol-line-amount
+	ws-paid-amount						like tr-amount
+	ws-invoice-no 						like so-invoice-no
+	ws-invoice-to-print 				like so-invoice-no
+	ws-order-status 					like so-order-status
+	ws-printed-one						pic 9
+	ws-agent-print						pic 9
+	ws-stk-conv-factor					like stk-conversion-factor
+	ws-confirmation						pic x
+	ws-last-paym-found					pic x
+	ws-first-bo-suffix					like so-bo-suffix
+	ws-last-bo-suffix					like so-bo-suffix		//rmd29jul10
+	ws-first-order						type boolean
+	ws-mord								pic x(7)
+	//
+	ws-deb-country-code 				like na-country-code
+	ws-deb-phone						like na-phone
+	ws-deb-fax-no						like na-fax-no
+	ws-deb-trans-found					type boolean
+	ws-updated-order-found				type boolean
+	ws-first-time						type boolean
+	ws-bulk-weight						like so-order-weight
+	ws-pick-location-info-printed		type boolean
+	ws-lot-details-printed				type boolean
+	ws-temp								pic 9(6)v99
+	ws-total-weight						pic 9(7).9(4)
+	ws-total-packages 					like so-order-packages
+	ws-printing-consolidated-invoice	type boolean
+	ws-whse-type						pic 99
+	ws-prev-line-was-a-note-extension	pic x
+	ws-total-non-taxable				like sol-line-amount
+	ws-total-taxable					like sol-line-amount
+	ws-total-round-benefit-amt			like sol-line-amount
+	ws1stbulkorder						like so-order-no
+	ws1stbulksuffix						like so-bo-suffix
+	ws1stbulkcartons					like so-order-packages
+	ws-title							pic x(25)
+	ws-EDI-licensed						type boolean
+	ws-inv-page-no						type numeric
+	ws-total-consolidated-tax			like so-order-total-shipped-tax
+	ws-email-body						pic x(100) occurs 4
+	//
+
+
+#include "../../../bms/include/rbtchproc.spl"
+#include "../../../bms/include/i5sodesc.spl"
+#include "../../../bms/so/i5rmatype1.spl"
+#include "../../../bms/include/i8agedat.spl"
+//
+#define I5PRCMOD_PM_DEF_FLDS
+#define I5PRCMOD_DEF_FLDS
+#include "../../../bms/include/i5pricemod.spl"
+#define I4GETPRICE
+#define I4GETPRICE_NEED_GET_STOCK_PRICE_RECORD
+#include "../../../bms/include/i4getprice.spl"
+#include "../../../bms/include/i8serprt.spl"
+#include "../../../bms/so/i50statchg.spl"
+#include "../../../bms/so/i50headso.spl"
+
+object	tmp-orders
+	type memory
+	record
+		tmp-order-no		like so-order-no
+		tmp-bo-suffix		like so-bo-suffix
+	endrecord
+	key is tmp-order-no tmp-bo-suffix unique
+
+object tmp-printers
+	type memory
+	record
+		tmp-prt-name		type string
+	endrecord
+	key is tmp-prt-name unique
+
+object sales-order-comms type is external
+	record is
+		so-order-no
+		so-bo-suffix
+	endrecord
+
+procedure main
+	get system-control first
+	// just 2 securitys add ( delivery docket or invoice)
+	do i8cpdetail-company-details
+	initialize purchase-order		//get rid of warnings
+	initialize purchase-order-line	//get rid of warnings
+	set ws-confirmation = NO
+	set rbtchproc-program-name = "Print POS Invoice"
+	set ws-is-this-a-delivery-docket = no
+	set ws-agent-print = FALSE
+	set ws-spool-report = NO
+	set ws-last-paym-found = NO
+	if get-param(3) = DEL_DOCKET
+		set ws-is-this-a-delivery-docket = YES
+		do get-delivery-notes
+	endif
+	do i8secmodok-check-module-ok parameter "EDI"
+		returning ws-EDI-licensed
+	if get-param(1) != "-b"
+		if ws-is-this-a-delivery-docket = YES
+		or JOB_DELIVERY
+			do i8secabt-check-abort parameters
+				sys-consolidation-division login-id()
+				"SO" "R107"
+			set ws-title = "Delivery Docket Print"
+		else
+			do i8secabt-check-abort parameters
+				sys-consolidation-division login-id() "SO" "R100"
+			set ws-title = "Invoice Print"
+		endif
+	endif
+	do i5rma-get-return-authorisation-message
+	set ws-env-printer = getenv(INVOICE_PRINTER)
+	set ws-invoice-date = today()
+	set start-whse = SPACES
+	set end-whse = max-value(end-whse)
+	set ws-select-order-mode = "A"
+	if get-param(1) = "-b"
+		RBTCHPROC_MESSAGE_PROGRAM_HEADER
+		do load-report-parameters
+	elseif get-param(1) = "-r"
+		do get-set-of-orders-window
+	elseif get-param(1) = LAYBY
+		//Test if parameters have been passed
+		set so-order-no = num(get-param(2))
+		set so-bo-suffix = get-param(3)
+		if num(get-param(4)) != ZERO
+			set ws-invoice-date = num(get-param(4))
+		else
+			set ws-invoice-date = today()
+		endif
+		set ws-printed-one = FALSE
+		while not ws-printed-one
+			//do print-one-order-only  	 			//rmd27jul10
+			do build-printers-list                  //rmd27jul10
+			do new-print-one-order-only entry once	//rmd27jul10
+			if not ws-printed-one
+				message "Print the order or enter zero not to print"
+			endif
+		endwhile
+		if so-order-status = I5SO_FORWARD_ORDER
+			if cd-default-printer > SPACES
+				report finished
+			endif
+			spl 'm55layby'	parameters are
+				str(so-order-no) so-bo-suffix
+			on error
+				//Oh well, its not there
+			endon
+		endif
+	elseif get-param(1) = FINANCIER
+	//Test if parameters have been passed
+		set so-order-no = num(get-param(2))
+		set so-bo-suffix = get-param(3)
+		if num(get-param(4)) != ZERO
+			set ws-invoice-date = num(get-param(4))
+		else
+			set ws-invoice-date = today()
+		endif
+		do print-one-order-only
+	elseif get-param(1) = '-agent'
+		set ws-agent-print = TRUE
+		do report-options entry once
+	elseif get-param(1) = '-reprange'
+		open sales-order-comms
+			file is get_param(2)
+		on error
+			message "No file to print the range of invoice"
+		endon
+		extract sales-order-comms all
+		detail
+			do print-one-order-only
+		endextract
+	elseif param-cnt() > ZERO
+	and not JOB_DELIVERY
+		//Test if parameters have been passed
+		set so-order-no = num(get-param(1))
+		set so-bo-suffix = get-param(2)
+		set ws-spool-report = get-param(3)
+		set ws-confirmation = get_param(4)
+		//start-----------------------------------------------rmd24jan10 	//suppress printer prompter for now
+		do build-printers-list							//rcMay 07, 2009
+		////do print-one-order-only
+		do new-print-one-order-only entry once			//rcMay 08, 2009
+		//do print-one-order-only 											// reverting to the core command
+		//end-------------------------------------------------rmd24jan10
+	else
+		do report-options entry once
+	endif
+endprocedure // main ----------------------------------------------------------
+
+
+screen new-print-one-order-only
+	window @14,50 to @20,135
+	title ws-title
+	allow entry md-exit
+local
+	lf-so-order-no				like so-order-no
+	lf-so-bo-suffix				like so-bo-suffix
+	lf-archived-sales-order		type boolean
+	lf-printer-name				pic x(15)
+	lf-printer-name2			pic x(15) // type string
+	lf-print-or-email			pic x
+	//lf-na-name					like na-name	//{13}
+	lf-email-address			pic x(60)           //{13}
+	lf-exit						pic x
+	lf-email-valid				type boolean		//{13}
+	//
+before
+	box @14,50 to @19,135 title SPACES
+	set i5reprint-abort-action = 'A'
+	set lf-archived-sales-order = FALSE
+	set ws-select-order-mode = "O"
+	//if sys-point-of-sale-mode-used = '2'
+		open tmp-orders truncate temporary
+		//undo commenting out from 30332
+		get sales-order
+			on index so-order-no so-bo-suffix
+			key so-order-no so-bo-suffix
+		on error
+			get sales-order-archive
+				on index so-order-no so-bo-suffix
+				key is so-order-no so-bo-suffix
+			on error
+				message "Lost sales order, exiting " so-order-no so-bo-suffix
+				exit
+			endon
+		endon
+		set ws-invoice-to-print = so-invoice-no
+		//rmd29jul10 get suffix for 'last' order
+		save sales-order
+		do get-last-open-order
+			parameters
+				so-order-no
+		restore sales-order
+		//rmd29jul10 ------------------------- end
+		if not (get-param(3) = '-i5reprint')
+			extract sales-order-archive
+				on index so-order-no so-bo-suffix
+				key is so-order-no SPACES
+				next same so-order-no
+				where so-invoice-no = ws-invoice-to-print
+			detail
+				set lf-archived-sales-order = TRUE
+				do i5reprint-create-sales-order-from-archive
+					parameter so-order-no so-bo-suffix
+					returning lf-so-order-no lf-so-bo-suffix
+				set tmp-order-no = lf-so-order-no
+				set tmp-bo-suffix = lf-so-bo-suffix
+				if tmp-order-no <> 0 	//rmd25jul10
+					insert tmp-orders
+				endif					//rmd25jul10
+			endextract
+		endif
+		//
+		set ws-invoice-to-print = so-invoice-no
+	if so-order-status = I5SO_FORWARD_ORDER
+	or so-order-status in I5SOSTATII_SO_CREDIT_NOTE_STATII
+		set ws-number-copies = 2
+	else
+		set ws-number-copies = 1
+	endif
+	if so-order-status in I5SOSTATII_OUTSTANDING_TRANSFERS_STATII
+		set ws-is-this-a-delivery-docket = YES
+	endif
+		//
+detail
+	accept lf-print-or-email	@15,72	title "Print or Email:"
+		//help "Would you like to (P)rint, (S)pool or (E)mail this invoice?"
+		help "Would you like to (P)rint or (E)mail this invoice?"
+		uppercase
+		allowed "P" "S" "E"
+		default "P"
+	if lf-print-or-email = "E"
+		// test for valid email address
+		get name-and-address-master
+			on index accountcode na-type
+			key is so-cust-code "E"
+		on error
+			set na-name = SPACES
+			set na-company = SPACES
+		endon
+		set lf-email-address = strconcat(na-name na-company)    //{13}
+		if lf-email-address = SPACES or pattern(lf-email-address, "@") = 0
+			message "No valid email address, please provide one"
+		endif
+		//set lf-na-name = na-name   `							//{13}
+			display "Email Address:"	@16,57 background
+			//{13} ------------------------------------------------------ start
+			//accept lf-na-name 			@16,72
+			//	default lf-na-name
+			//validation
+			//	if lf-na-name = SPACES or pattern(lf-na-name, "@") = 0
+			//		message "Invalid email address, please amend"
+			//		reenter lf-na-name
+			//	else
+			//		set accountcode = so-cust-code
+			//		set na-type = "E"
+			//		get name-and-address-master
+			//		on error
+			//			set na-name = lf-na-name
+			//			insert name-and-address-master
+			//		else
+			//			set na-name = lf-na-name
+			//			update name-and-address-master
+			//		endon
+			//	endif
+			//endvalidation
+			accept lf-email-address		@16,72
+				default lf-email-address
+			validation
+				do validate-email-address //{13}
+					parameters
+						lf-email-address
+					returning
+						lf-email-valid
+				if not lf-email-valid													//{13}
+				//if lf-email-address = SPACES or pattern(lf-email-address, "@") = 0    //{13}
+				//	message "Invalid email address, please amend"                       //{13}
+					reenter lf-email-address
+				else
+					//if lf-email-address <> strconcat(na-name na-country)
+						//prompt for email address update?
+						//for now update or insert without question
+						//we can't 'pass' the email address to the faxmail process
+						//faxmail needs to grab the email address from NA 'E' record
+						//concat of na-name na-country to achieve 60 char
+						set accountcode = so-cust-code
+						set na-type = "E"
+						get name-and-address-master
+						on error
+							//message "dbg: inserting " accountcode
+							set na-name 	= substring(lf-email-address,1,30)
+							set na-company 	= substring(lf-email-address,31,60)
+							insert name-and-address-master
+						else
+							//message "dbg: updating " accountcode
+							set na-name 	= substring(lf-email-address,1,30)
+							set na-company 	= substring(lf-email-address,31,60)
+							update name-and-address-master
+						endon
+					//endif
+				endif
+			endvalidation
+			//{13} -------------------------------------------------------- end
+		//endif
+		set lf-printer-name = "tf_faxmail"
+		set ws-env-printer = lf-printer-name
+		set ws-spool-report = NO
+		set ws-number-copies = 1
+	elseif lf-print-or-email = "P"
+		set lf-printer-name = getenv("INVOICES")
+		set lf-printer-name2 = getenv("INVOICES")
+		display "Choose Printer:"	@16,56 background
+		accept lf-printer-name @16,72
+			default lf-printer-name
+			//show-value
+		on help-key
+			do get-printer
+				returning lf-printer-name2
+			set lf-printer-name = lf-printer-name2
+			refresh lf-printer-name
+			reenter optional
+		endon
+		validation
+			set lf-printer-name = lf-printer-name2
+			if lf-printer-name = SPACES
+				message "Please choose a printer"
+				reenter lf-printer-name
+			else
+				refresh lf-printer-name
+			endif
+		endvalidation
+		set ws-env-printer = lf-printer-name
+		set ws-spool-report = NO
+		display 'Number of Copies :' @17,53 background
+		set ws-printed-one = FALSE
+		accept ws-number-copies @17,72
+			help 'Enter the number of copies required'
+			default ws-number-copies
+	elseif lf-print-or-email = "S"
+		set ws-spool-report = YES
+	endif
+		if screen-mode() = entry
+			set ws-printed-one = TRUE
+			if ws-number-copies = 0
+				if ws-confirmation <> YES
+					do update-sales-order-anyway
+				endif
+				if lf-archived-sales-order
+					extract tmp-orders
+						all
+					detail
+						do i5reprint-remove-dummy-sales-order
+						parameter tmp-order-no tmp-bo-suffix
+					endextract
+				endif
+				if lf-exit = "Y" //29jul10
+					exit
+				endif
+			endif
+		endif
+		display "Now printing:" @18,55 background
+		display so-order-no @18,69
+		display so-bo-suffix @18,77
+		for j = 1 to ws-number-copies
+			if so-order-type-code = I5SO_TYPE_RMA
+				do i5rma-print-return-auth
+			else
+				do print-invoice
+			endif
+		endfor
+		//
+		if lf-archived-sales-order
+			extract tmp-orders
+				all
+			detail
+				do i5reprint-remove-dummy-sales-order
+				parameter tmp-order-no tmp-bo-suffix
+			endextract
+		endif
+		set i5reprint-abort-action = ' '
+		//
+		clear @17,54 to @19,79
+		do finish-up-message
+		display "Complete?:" @18,91 background
+		accept lf-exit	@18,102
+			uppercase
+			allowed "Y" "N"
+			default "Y"
+after
+	if lf-exit = "Y"
+		exit
+	else
+		do new-print-one-order-only entry once
+	endif
+//confirm
+//	auto
+//confirmed
+//endconfirm
+endscreen //new-print-one-order-only  ---------------------------------------------
+
+//screen display-printers
+screen get-printer
+returning
+	lr-prnt-name				pic x(15) // type string
+	//
+	window @1,1 to @8,15
+		title "Printers"
+	//
+	primary tmp-printers
+		allowed select-mode search
+		datagrid occurs 5
+		review-from-start
+detail
+	display tmp-prt-name @2,1 pic x(15)
+		title "Printer"
+confirm auto
+confirmed
+	if screen-mode() = select-mode
+		set lr-prnt-name = strconcat(tmp-prt-name)
+		exit
+	endif
+endconfirm
+endscreen //get-printer  ---------------------------------------------
+
+procedure build-printers-list						//rcMay 07, 2009
+local field
+	lf-all-printer				pic x(300) //type string
+	j							type numeric
+	//
+	open tmp-printers truncate temporary
+	//
+	set lf-all-printer = getenv(PRINTERS)
+	//set lf-all-printer = 'ho_tfq_inv:31T_tfq_po:31T_tfqapn:31T_tfqinv:31Ttfqinvwh'
+	if lf-all-printer = SPACES
+		//set lf-all-printer = "ho_tfq_inv:tf_faxmail"             	//{14}
+		set lf-all-printer = "ho_finlaser:ho_tfq_inv:tf_faxmail"	//{14}
+	endif
+	//
+	set lf-all-printer = strconcat(lf-all-printer ":XX")           	//{14}
+	set j = pattern(lf-all-printer,':')
+	//
+	while j >= 1
+     	set j = pattern(lf-all-printer,':')
+        set tmp-prt-name = substring(lf-all-printer,1,j - 1)
+        //if pattern(tmp-prt-name,'tfq') and pattern(tmp-prt-name,'inv') 	//rmd23jul10
+        //if pattern(tmp-prt-name,'inv') 	//rmd23jul10
+        if pattern(tmp-prt-name,'inv') or pattern(tmp-prt-name,'finlaser') or pattern(tmp-prt-name,'tf_faxmail')	//{14}
+        	//could have duplicated printers in PROPRINTERS
+        	get tmp-printers
+        	on error
+        		insert tmp-printers
+        	endon
+        endif													//rmd23jul10
+        set lf-all-printer = substring(lf-all-printer,j + 1,strlen(lf-all-printer))
+        set j = pattern(lf-all-printer,':')
+    endwhile
+	//set tmp-prt-name = lf-all-printer
+	//insert tmp-printers
+endprocedure  // build-printers-list  ---------------------------------------
+
+procedure print-one-order-only
+	window @14,53 to @22,80
+	title ws-title
+local
+	lf-so-order-no				like so-order-no
+	lf-so-bo-suffix				like so-bo-suffix
+	lf-archived-sales-order		type boolean
+	//
+	set i5reprint-abort-action = 'A'
+	set lf-archived-sales-order = FALSE
+	set ws-select-order-mode = "O"
+	//if sys-point-of-sale-mode-used = '2'
+		open tmp-orders truncate temporary
+		//undo commenting out from 30332
+		get sales-order
+			on index so-order-no so-bo-suffix
+			key so-order-no so-bo-suffix
+		on error
+			get sales-order-archive
+				on index so-order-no so-bo-suffix
+				key is so-order-no so-bo-suffix
+			on error
+				message "Lost sales order, exiting " so-order-no so-bo-suffix
+				exit
+			endon
+		endon
+		set ws-invoice-to-print = so-invoice-no
+		if not (get-param(3) = '-i5reprint')
+			extract sales-order-archive
+				on index so-order-no so-bo-suffix
+				key is so-order-no SPACES
+				next same so-order-no
+				where so-invoice-no = ws-invoice-to-print
+			detail
+				set lf-archived-sales-order = TRUE
+				do i5reprint-create-sales-order-from-archive
+					parameter so-order-no so-bo-suffix
+					returning lf-so-order-no lf-so-bo-suffix
+				set tmp-order-no = lf-so-order-no
+				set tmp-bo-suffix = lf-so-bo-suffix
+				insert tmp-orders
+			endextract
+		endif
+		//
+		set ws-invoice-to-print = so-invoice-no
+	if so-order-status = I5SO_FORWARD_ORDER
+	or so-order-status in I5SOSTATII_SO_CREDIT_NOTE_STATII
+		set ws-number-copies = 2
+	else
+		set ws-number-copies = 1
+	endif
+	if so-order-status in I5SOSTATII_OUTSTANDING_TRANSFERS_STATII
+		set ws-is-this-a-delivery-docket = YES
+	endif
+	display 'Number of Copies :' @15,53 background
+	set ws-printed-one = FALSE
+	accept ws-number-copies @15,72
+		help 'Enter the number of copies required'
+		default ws-number-copies
+	if screen-mode() = entry
+		set ws-printed-one = TRUE
+		if ws-number-copies = 0
+			if ws-confirmation <> YES
+				do update-sales-order-anyway
+			endif
+			if lf-archived-sales-order
+				extract tmp-orders
+					all
+				detail
+					do i5reprint-remove-dummy-sales-order
+					parameter tmp-order-no tmp-bo-suffix
+				endextract
+			endif
+			exit
+		endif
+	endif
+	display "Now printing:" @17,55 background
+	display so-order-no @17,69
+	display so-bo-suffix @17,77
+	for j = 1 to ws-number-copies
+		if so-order-type-code = I5SO_TYPE_RMA
+			do i5rma-print-return-auth
+		else
+			do print-invoice
+		endif
+	endfor
+	//
+	if lf-archived-sales-order
+		extract tmp-orders
+			all
+		detail
+			do i5reprint-remove-dummy-sales-order
+			parameter tmp-order-no tmp-bo-suffix
+		endextract
+	endif
+	set i5reprint-abort-action = ' '
+	//
+	clear @17,54 to @19,79
+	do finish-up-message
+endprocedure //print-one-order-only --------------------------------------------
+
+
+
+procedure update-sales-order-anyway
+	extract sales-order
+		key is so-order-no SPACES
+		next same so-order-no
+	detail
+		get sales-order current lock
+		if so-order-status = I5SO_CNOTE_RDY_TO_PRINT
+			if so-credit-note-no = 0
+				BMSDEF_NEXT_SERIAL_NUMBER('CN',next-cn-no,
+					so-credit-note-no)
+			endif
+			if so-invoice-date = 0
+				set so-invoice-date = ws-invoice-date
+			endif
+			set so-processing-date = ws-invoice-date
+		elseif so-order-status in {I5SO_RDY_TO_PRINT_INVOICE
+		I5SO_RDY_TO_ASSEMBLE I5SO_ASSEMBLY_IN_PROGRESS }
+			if so-invoice-no = SPACES
+				get deb-master
+					key is so-cust-code
+				on error
+					set dr-clearflag = "O"
+				endon
+				if so-order-source = I5SOURCE_INTERNAL_POS
+					do get-pos-invoice-number
+				else
+					//do i5assinvno-sales-invoice-no	//{15}
+				endif
+				set ws-invoice-no = so-invoice-no
+			endif
+			set so-credit-note-no = 0
+			set so-invoice-date = ws-invoice-date
+			set so-processing-date = ws-invoice-date
+		elseif so-order-status = I5SO_CONSIGNMENT_RDY_TO_PRINT
+			set so-invoice-date = ws-invoice-date
+			set so-processing-date = ws-invoice-date
+		endif
+		set ws-old-status = so-order-status
+		if so-order-status = I5SO_CNOTE_RDY_TO_PRINT
+			set so-order-status = I5SO_CNOTE_RDY_TO_UPDATE
+		elseif so-order-status = I5SO_RDY_TO_PRINT_INVOICE
+			set so-order-status = I5SO_RDY_TO_UPDATE
+		elseif so-order-status = I5SO_CONSIGNMENT_RDY_TO_PRINT
+			set so-order-status = I5SO_CONSIGNMENT_RDY_TO_UPDATE
+		elseif so-order-status = I5SO_RMA_APPROVED_FOR_PRINTING
+			if ws-does-rma-affect-stock = YES
+				set so-order-status = I5SO_RMA_IN_PROGRESS
+			else
+			//stock not affected
+				set so-order-status = I5SO_RMA_GOODS_RECEIVED
+			endif
+		elseif so-order-status = I5SO_RDY_TO_ASSEMBLE
+			set so-order-status = I5SO_ASSEMBLY_IN_PROGRESS
+		elseif so-order-status = I5SO_ASSEMBLY_IN_PROGRESS
+			set so-order-status = I5SO_RDY_TO_UPDATE
+		endif
+		update sales-order
+		AUDIT_SO_STATUS_CHANGE(ws-old-status, so-order-status)
+	endextract
+endprocedure //update-sales-order-anyway ---------------------------------------
+
+procedure get-pos-invoice-number
+	get system-table
+		key is 'YY' concat('INPOS',
+			so-territory-code)
+	on error
+		get system-table
+			key is 'YY' 'INPOS'
+		on error
+			//do i5assinvno-sales-invoice-no	//{15}
+		else
+			BMSDEF_NEXT_SERIAL_NUMBER_ALPHA('INPOS',
+				so-invoice-no,so-invoice-no)
+		endon
+	else
+		BMSDEF_NEXT_SERIAL_NUMBER_ALPHA(concat('INPOS',
+			so-territory-code),
+			so-invoice-no, so-invoice-no)
+	endon
+endprocedure //get-pos-invoice-number ------------------------------------------
+
+screen report-options
+	window @4,1 to @22,80
+	title ws-title
+before
+	if o-sys-tax-type != 'S'
+		display "Consumer " @11,55 background
+		display "Tax rate:" @12,58 background
+		display o-sys-consumer-tax-rate @12,68 pic z(3)vz(4)%
+	endif
+	display "Invoice date    :" @5,3
+	display "Start warehouse :" @6,3
+	display "End   warehouse :" @7,3
+	display "Select" @12,3
+	display "(A)ll orders         :" @12,12
+	display "(S)et of orders      :" @13,12
+	display "Message :" @9,3
+	if  JOB_DELIVERY
+		do get-delivery-notes
+	else
+		get name-and-address-master
+			on index accountcode na-type
+			key is "INV COND" "IN"
+		on error
+			set ws-message-1 = SPACES
+			set ws-message-2 = SPACES
+		else
+			set ws-message-1 = na-name
+			set ws-message-2 = na-company
+		endon
+	endif
+detail
+	accept ws-invoice-date @5,21
+		default today()
+		help "Enter the date to invoice this order"
+	validation
+		set i5period-date = ws-invoice-date
+		do i5period-check
+		if i5period-validation-ok = no
+			reenter optional
+		endif
+	endvalidation
+	accept start-whse @6,21
+		default SPACES
+		help "Enter start of warehouse range to process"
+		uppercase
+		when (param-cnt() = ZERO or JOB_DELIVERY or ws-agent-print)
+		and ws-is-this-a-delivery-docket != YES
+	accept end-whse @7,21
+		default start-whse
+		help "Enter end of warehouse range to process"
+		uppercase
+		fill with trailing "~"
+		when (param-cnt() = ZERO or JOB_DELIVERY or ws-agent-print)
+		and ws-is-this-a-delivery-docket != YES
+	accept ws-message-1 @9,13
+		help "Enter invoice message or press [ENTER] if no message"
+		default ws-message-1
+		optional
+		when (param-cnt() = ZERO or JOB_DELIVERY or ws-agent-print)
+		and ws-is-this-a-delivery-docket != YES
+	accept ws-message-2 @10,13
+		help "Enter invoice message or press [ENTER] if no message"
+		default ws-message-2
+		optional
+		when (param-cnt() = ZERO or JOB_DELIVERY or ws-agent-print)
+		and ws-is-this-a-delivery-docket != YES
+		and ws-message-2 != SPACES
+	accept ws-select-order-mode @13,35
+		allow "A" "S"
+		default "S"
+		help "(A)ll orders rdy to print or (S)et of orders"
+		upper_case
+		when (param-cnt() = ZERO or JOB_DELIVERY or ws-agent-print)
+		and ws-is-this-a-delivery-docket != YES
+	confirm auto
+	confirmed
+		if JOB_DELIVERY
+			set ws-is-this-a-delivery-docket = YES
+		endif
+		if ws-select-order-mode = "A"
+			RBTCHPROC_EXECUTION_CTRL(reenter ws-select-order-mode optional,
+				print-all-invoices-now,
+				str(ws-invoice-date) start-whse end-whse
+				ws-select-order-mode str(so-order-no)
+				so-bo-suffix ws-letter-head )
+		else
+			do get-set-of-orders
+			do finish-up-message
+		endif
+	endconfirm
+endscreen // report-options ---------------------------------------------------
+
+procedure print-all-invoices-now
+	box @16,53 to @22,80
+	display "Now at :" @17,55
+	set ws-has-any-invoice-been-printed = no
+	do scan-for-valid-status
+	do finish-up-message
+endprocedure //print-all-invoices-now ------------------------------------------
+
+procedure load-report-parameters
+	RBTCHPROC_CHECK_SELECTION_PARAM_COUNT
+	set ws-invoice-date = num( get-param(3) )
+	set start-whse = get-param(4)
+	set end-whse = get-param(5)
+	set ws-select-order-mode = get-param(6)
+	set so-order-no = num( get-param(7) )
+	set so-bo-suffix = get-param(8)
+	set ws-message-1 = get-param(9)
+	set ws-message-2 = get-param(10)
+	set ws-letter-head = get-param(11)
+	do scan-for-valid-status
+	do finish-up-message
+endprocedure // load-report-parameters ----------------------------------------
+
+procedure set-report-parameters
+	set rs-description = rbtchproc-program-name
+	set rs-description = "Invoice Print"
+	set rs-no-of-parameters = num( RBTCHPROC_SELECTION_PARAMETERS_VERSION )
+	set rs-parameters[1] = str( ws-invoice-date )
+	set rs-parameters[2] = start-whse
+	set rs-parameters[3] = end-whse
+	set rs-parameters[4] = ws-select-order-mode
+	set rs-parameters[5] = str( so-order-no )
+	set rs-parameters[6] = so-bo-suffix
+	set rs-parameters[7] = ws-message-1
+	set rs-parameters[8] = ws-message-2
+	set rs-parameters[10] = ws-letter-head
+endprocedure // set-report-parameters -----------------------------------------
+
+procedure finish-up-message
+	if ws-has-any-invoice-been-printed = YES
+		if get-param(1) = "-b"
+			do start-report
+			RBTCHPROC_MESSAGE_REPORT_FINISHED
+		elseif ws-env-printer = SPACES
+		or ws-spool-report = YES
+			clear @17,54 to @21,79
+			do start-report
+			if ws-is-this-a-delivery-docket = YES
+				display "Delivery Dockets in" @17,54 background
+			else
+				display "Invoices printed in" @17,54 background
+			endif
+			display "spoolfile" @18,54 background
+			display spoolfilename() @18,64
+			report finished
+		endif
+	endif
+	if i5rma-return-auth-flag = "Y"
+		if get-param(1) = "-b"
+			do i5rma-start-return-report
+			message "Report      : Returns Authorised"
+			message "Spoofile    : " spoolfilename()
+			message " "
+		else
+			clear @19,54 to @21,79
+			do i5rma-start-return-report
+			display "Returns Authorised printed" @19,54 background
+			display "spoolfile" @20,54 background
+			display spoolfilename() @20,64
+			report finished
+		endif
+	endif
+	if i5rma-return-auth-flag = "N"
+	and ws-has-any-invoice-been-printed = no
+		if get-param(1) = "-b"
+			RBTCHPROC_MESSAGE_NO_REPORT_GENERATED
+		else
+			clear @17,54 to @21,79
+			if ws-is-this-a-delivery-docket = YES
+				display "No Delivery Dockets" @17,54 background
+			else
+				display "No invoice/credit notes" @17,54 background
+			endif
+			display "have been printed." @18,54 background
+		endif
+	endif
+	if (ws-env-printer = SPACES
+	or ws-spool-report = YES)
+	and (i5rma-return-auth-flag = YES
+	or ws-has-any-invoice-been-printed = YES)
+		pause
+	endif
+endprocedure // finish-up-message ---------------------------------------------
+
+procedure scan-for-valid-status
+	set ws-current-status = I5SO_RDY_TO_PRINT_INVOICE
+	do get-next-order
+	set ws-current-status = I5SO_CONSIGNMENT_RDY_TO_PRINT
+	do get-next-order
+	set ws-current-status = I5SO_CNOTE_RDY_TO_PRINT
+	do get-next-order
+	set ws-current-status = I5SO_RDY_TO_ASSEMBLE
+	do get-next-order
+endprocedure // scan-for-valid-status -----------------------------------------
+
+procedure get-next-order
+	set ws-found-order = TRUE
+	position sales-order on index 3
+		key is ws-current-status 0 0 0 space
+	while ws-found-order
+		get sales-order on index 3 lock next
+		on error
+			set ws-found-order = FALSE
+		else
+			if so-order-status <> ws-current-status
+				set ws-found-order = FALSE
+			endif
+		end
+		if so-order-status in { I5SO_TRANSFER_HOLD_FOR_APPROVAL
+								I5SO_ENTERED_CREDIT_HOLD
+								I5SO_ENTERED_ON_HOLD
+								I5SO_ENTERED_CNOTE_ON_HOLD
+								I5SO_REQUISITION_ON_HOLD
+								I5SO_ASSEMBLY_ON_HOLD }
+			continue
+		endif
+		if ws-found-order
+		and so-whse-code >= start-whse
+		and so-whse-code <= end-whse
+			set old-order-priority = so-order-priority
+			set old-delivery-date = so-delivery-date
+			set old-order-no = so-order-no
+			set old-bo-suffix = so-bo-suffix
+			if get-param(1) != "-b"
+				display so-order-no @17,65
+				display so-bo-suffix @17,74
+			endif
+			set ws-invoice-to-print = so-invoice-no
+			if so-order-type-code = I5SO_TYPE_RMA
+				do i5rma-print-return-auth
+			else
+				do print-invoice
+			endif
+			get sales-order on index 3
+				key is ws-current-status old-order-priority
+					old-delivery-date old-order-no
+					old-bo-suffix
+			on error
+			end
+		endif
+	endwhile
+endprocedure //get-next-order ------------------------------------------------
+
+procedure start-report
+	local field
+		lf-store-id				like cd-store-id
+		lf-terminal				like cd-terminal
+	if get-param(1) = LAYBY
+		do i5postermi-get-cash-draw-number
+			returning lf-store-id lf-terminal
+		get cash-draw
+			on index cd-store-id cd-terminal
+			key lf-store-id lf-terminal
+		on error
+			set ws-spool-report = YES
+		else
+			set ws-env-printer = cd-default-printer
+			set ws-spool-report = no
+		endon
+	endif
+		//
+	if ws-is-this-a-delivery-docket = YES
+		set rbtchproc-report-name = "Delivery Dockets"
+	else
+		set rbtchproc-report-name = "Invoices"
+	endif
+		//
+	set ws-inv-page-no = 0
+	//if login-id() = "robd"
+	//	message "Hi Rob"
+	//	message "1:" get-param(1) "2:" get-param(2) "3:" get-param(3)
+	//	message "4:" get-param(4) "5:" get-param(5) "6:" get-param(6)
+	//	set ws-spool-report = NO
+	//	set ws-env-printer = "tf_faxmail"
+	//endif
+	if ws-env-printer <> SPACES
+	and ws-spool-report != YES		// can print direct
+		report rbtchproc-report-name
+			width is 140
+			depth is 66
+			length is 66
+			header is invoice-header
+			no-message
+			direct to ws-env-printer
+			no-xml
+	else
+		report rbtchproc-report-name
+			width is 140
+			depth is 66
+			length is 66
+			header is invoice-header
+			no-message
+			no-xml
+	endif
+endprocedure // start-report ------------------------------------------------
+
+procedure get-set-of-orders-window
+	window @16,1 to @23,80
+	title 'Orders'
+	do get-set-of-orders
+endprocedure //get-set-of-orders ---------------------------------------------
+
+screen get-set-of-orders
+	local field
+		lf-archived-sales-order	type boolean
+	//
+	allow entry
+before
+	display "Order No." @17,8
+	position sales-order
+		key is ZERO space
+detail
+	set i5reprint-abort-action = 'A'
+	set lf-archived-sales-order = FALSE
+	set i5sodesc-so-status-desc = SPACES
+	clear @18,19 to @18,19 + sizeof(i5sodesc-so-status-desc)
+	set so-order-no = 0
+	accept so-order-no @17,19
+		help "Enter the sales order number you want an invoice for"
+		default so-order-no
+	on up-arrow
+		get sales-order previous
+		on error
+			message "At start of file"
+		else
+			display so-bo-suffix @17,28
+			do i5sodesc-get-status-desc
+			display i5sodesc-so-status-desc @18,19 bold foreground prompt
+		end
+		reenter optional
+	end
+	on down-arrow
+		get sales-order next
+		on error
+			message "At end of file"
+		else
+			display so-bo-suffix @17,28
+			do i5sodesc-get-status-desc
+			display i5sodesc-so-status-desc @18,19 bold foreground prompt
+		end
+		reenter optional
+	end
+	accept so-bo-suffix @17,28
+		help "Enter the sales order backorder suffix, if any"
+		default so-bo-suffix
+	get sales-order
+		key is so-order-no so-bo-suffix
+	on error
+		get sales-order-archive
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error
+			message "Sales order not valid " so-order-no so-bo-suffix
+			reenter so-order-no optional
+		else
+			set lf-archived-sales-order = TRUE
+		endon
+	endon
+	if so-order-status in { I5SO_TRANSFER_HOLD_FOR_APPROVAL
+							I5SO_ENTERED_CREDIT_HOLD
+							I5SO_ENTERED_ON_HOLD
+							I5SO_ENTERED_CNOTE_ON_HOLD
+							I5SO_REQUISITION_ON_HOLD
+							I5SO_ASSEMBLY_ON_HOLD }
+		message "Sales order has an on hold status"
+		reenter so-order-no optional
+	endif
+	if so-whse-code < start-whse
+	or so-whse-code > end-whse
+		message "Sales order not in specified warehouse range"
+		reenter so-order-no optional
+	end
+	do i5sodesc-get-status-desc
+	display i5sodesc-so-status-desc @18,19 bold foreground prompt
+	if so-order-status in {I5SO_RDY_TO_PRINT_INVOICE,
+		I5SO_CONSIGNMENT_RDY_TO_PRINT ,I5SO_CNOTE_RDY_TO_PRINT,
+		I5SO_RDY_TO_ASSEMBLE,I5SO_ASSEMBLY_IN_PROGRESS
+		,I5SO_QUOTATION ,I5SO_QUOTATION_ACCEPTED
+		,I5SO_FORWARD_ORDER,I5SO_RMA_APPROVED_FOR_PRINTING}
+	then
+	elseif so-order-type-code = I5SO_TYPE_RMA
+	and so-order-status < I5SO_RMA_APPROVED_FOR_PRINTING
+		message 'RMA must be approved for printing before continuing'
+		reenter so-order-no optional
+	elseif so-order-status >= I5SO_TRANSFER_GOODS_RECEIVED
+		message "Are you sure you want to print an invoice for order "
+			so-order-no so-bo-suffix
+	else
+		message "Are you sure you want to print an invoice for order "
+			so-order-no so-bo-suffix
+	endif
+	confirm auto
+	confirmed
+		do check-for-possible-consolidation parameters
+				so-order-no so-bo-suffix so-invoice-no
+					lf-archived-sales-order
+	endconfirm
+endscreen //get-set-of-orders ------------------------------------------------
+
+object tmp-possible-consolidation type memory
+	record is
+		tpc-order-no		like so-order-no
+		tpc-bo-suffix		like so-bo-suffix
+		tpc-cust-code		like so-cust-code
+		tpc-cust-reference	like so-cust-reference
+		tpc-archived		type boolean
+		tpc-selected		type boolean
+	endrecord
+	key is tpc-order-no tpc-bo-suffix
+	key is tpc-selected
+
+procedure check-for-possible-consolidation
+	//This consolidation will work regardless
+	// of the order-num = invoice-num flag
+	parameters
+		lp-order-no						like so-order-no
+		lp-bo-suffix					like so-bo-suffix
+		lp-invoice-no					like so-invoice-no
+		lp-archived-sales-order			type boolean
+	local field
+		lf-consolidation-needed			type boolean
+		lf-saved-billto					like bill-to
+		lf-get-set-of-confirm-prompt	pic x(80)
+		lf-confirmed					pic x
+		lf-so-order-no					like so-order-no
+		lf-so-bo-suffix					like so-bo-suffix
+		lf-archived-loaded				type boolean
+	//
+	set ws-updated-order-found = FALSE
+	open tmp-possible-consolidation truncate temporary
+	if lp-invoice-no <> SPACES
+		get deb-master
+			on index accountcode
+			key is so-cust-code
+		on error
+			set bill-to = so-cust-code
+		endon
+		set lf-saved-billto = bill-to
+		extract deb-master
+			on index bill-to accountcode
+			key is lf-saved-billto SPACES
+			next same bill-to
+		detail
+			extract sales-order
+				on index so-cust-code so-order-no so-bo-suffix
+				key is accountcode ZERO SPACES
+				next same so-cust-code
+				when so-invoice-no = lp-invoice-no
+				and (lp-archived-sales-order
+				or (not lp-archived-sales-order
+				and not (so-order-no = lp-order-no
+					and so-bo-suffix = lp-bo-suffix)))
+			detail
+				set tpc-order-no = so-order-no
+				set tpc-bo-suffix = so-bo-suffix
+				set tpc-cust-code = so-cust-code
+				set tpc-cust-reference = so-cust-reference
+				set tpc-archived = FALSE
+				set tpc-selected = FALSE
+				insert tmp-possible-consolidation
+			endextract
+		endextract
+		extract sales-order-archive
+			on index so-invoice-no
+			key is lp-invoice-no
+			next same so-invoice-no
+			when ((lp-archived-sales-order
+			and not (so-order-no = lp-order-no
+			and so-bo-suffix = lp-bo-suffix))
+			or not lp-archived-sales-order)
+			and so-order-status = I5SO_UPDATED
+		detail
+			get deb-master
+				on index accountcode
+				key is so-cust-code
+			on error
+			else
+				if bill-to = lf-saved-billto
+					set ws-updated-order-found = TRUE
+					set tpc-order-no = so-order-no
+					set tpc-bo-suffix = so-bo-suffix
+					set tpc-cust-code = so-cust-code
+					set tpc-cust-reference = so-cust-reference
+					set tpc-archived = TRUE
+					set tpc-selected = FALSE
+					insert tmp-possible-consolidation
+				endif
+			endon
+		endextract
+	endif
+	set lf-consolidation-needed = FALSE
+	get tmp-possible-consolidation first
+	on error
+	else
+		do review-possible-consolidations
+			parameters are lp-invoice-no lf-saved-billto
+		position tmp-possible-consolidation
+			on index tpc-selected
+			key is TRUE
+		get tmp-possible-consolidation next
+			on index tpc-selected
+		on error
+		else
+			if tpc-selected  //eithier 1 or 2
+				set lf-consolidation-needed = TRUE
+			endif
+		endon
+	endon
+	if lf-consolidation-needed
+		set lf-get-set-of-confirm-prompt = ' and print?:'
+		if lp-bo-suffix <> SPACES
+			string lf-get-set-of-confirm-prompt
+				inserting str-concat(lp-bo-suffix) at 1
+		endif
+		string lf-get-set-of-confirm-prompt inserting
+			concat('Consolidate with ',str(lp-order-no)) at 1
+	else
+		set lf-get-set-of-confirm-prompt = 'Print this order?:'
+	endif
+	clear @21,2 to @21,46
+	display str-concat(lf-get-set-of-confirm-prompt) @21,2 background prompts
+	accept lf-confirmed @21,strlen(lf-get-set-of-confirm-prompt) + 4
+		help 'Yes/No'
+		allow YES no
+		default YES
+		uppercase
+	if lf-confirmed = YES
+		clear @21,2 to @21,46
+		box @16,53 to @22,80
+		display "Now at :" @17,55 background prompts
+		set ws-invoice-to-print = so-invoice-no
+		if lp-archived-sales-order = TRUE
+			do load-archive-into-live
+				parameters
+					lp-order-no lp-bo-suffix
+				returning
+					lf-archived-loaded
+					lf-so-order-no lf-so-bo-suffix
+			if not lf-archived-loaded
+				exit
+			endif
+		else
+			set lf-so-order-no = lp-order-no
+			set lf-so-bo-suffix = lp-bo-suffix
+		endif
+		get sales-order
+			on index so-order-no so-bo-suffix
+			key is lf-so-order-no lf-so-bo-suffix
+		on error
+			message 'Lost order ' lf-so-order-no lf-so-bo-suffix
+			exit
+		endon
+		if lf-consolidation-needed
+			set tpc-order-no = lf-so-order-no
+			set tpc-bo-suffix = lf-so-bo-suffix
+			set tpc-cust-code = so-cust-code
+			set tpc-cust-reference = so-cust-reference
+			set tpc-archived = TRUE
+			//load original order and flag it as 'TRUE' so gets processed
+			// first. others they selected are flag as '2' ie, not FALSE
+			set tpc-selected = TRUE
+			insert tmp-possible-consolidation
+			do consolidate-orders-and-print
+		else
+			if get-param(1) <> "-b"
+				display so-order-no @17,65
+				display so-bo-suffix @17,74
+			endif
+			if so-order-status in I5SOSTATII_OUTSTANDING_TRANSFERS_STATII
+				set ws-is-this-a-delivery-docket = YES
+			endif
+			if so-order-type-code = I5SO_TYPE_RMA
+				do i5rma-print-return-auth
+			else
+				do print-invoice
+			endif
+		endif
+		if lp-archived-sales-order
+			do i5reprint-remove-dummy-sales-order
+				parameter lf-so-order-no lf-so-bo-suffix
+		endif
+		set i5reprint-abort-action = ' '
+	endif
+endprocedure //check-for-possible-consolidation ------------------------------
+
+procedure load-archive-into-live
+	parameters
+		lp-order-no				like so-order-no
+		lp-bo-suffix			like so-bo-suffix
+	returning
+		lr-archived-load-status	type boolean
+		lr-so-order-no			like so-order-no
+		lr-so-bo-suffix			like so-bo-suffix
+	//
+	set lr-archived-load-status = TRUE
+	get sales-order-archive
+		on index so-order-no so-bo-suffix
+		key is lp-order-no lp-bo-suffix
+	on error
+		message 'Lost order ' lp-order-no lp-bo-suffix
+		exit
+	else
+		do i5reprint-create-sales-order-from-archive
+			parameter lp-order-no lp-bo-suffix
+			returning lr-so-order-no lr-so-bo-suffix
+		if (lr-so-order-no = 0 and lr-so-bo-suffix = SPACES)
+			message "Lost order " lp-order-no lp-bo-suffix
+			set lr-archived-load-status = FALSE
+		endif
+	endon
+endprocedure //load-archive-into-live ----------------------------------------
+
+mode md-selection-complete
+	prompt 'Quit'
+	help 'Selection complete proceed with printing invoice'
+mode md-select
+	prompt 'Consolidate'
+	help 'Select/De-select this order to consolidate with original order selected'
+	currency
+
+screen review-possible-consolidations
+	parameter
+		lp-invoice-no		like so-invoice-no
+		lp-billto			like bill-to
+	//
+	window @1,1 to @16,51
+	title 'Consolidations'
+	primary tmp-possible-consolidation
+		on index tpc-order-no tpc-bo-suffix
+	allow md-selection-complete md-select search
+	datagrid occurs 10
+	review-from-start
+	no-prompt-for-search
+before
+	display concat("Sales Orders with Invoice Number "
+		,str-concat(left-justify(lp-invoice-no))) @1,5
+	display concat('and same Bill-to code '
+		,str-concat(lp-billto)) @2,5
+	if ws-updated-order-found
+		display "U - Updated Order" @4,31 bold foreground
+	endif
+detail
+	if screenmode() = md-select
+		get tmp-possible-consolidation current lock
+		if tpc-selected
+			set tpc-selected = FALSE
+		else
+			set tpc-selected = 2 //set piggy-back orders as 2 and original as 1
+		endif
+		update tmp-possible-consolidation
+		refresh data
+	endif
+	if tpc-selected
+		display '**' @5,2
+			title 'Selected'
+	else
+		display ' ' @5,2
+	endif
+	if tpc-archived
+		display 'U' @5,4 background
+			title 'Archived'
+	else
+		display ' ' @5,4
+	endif
+	accept tpc-order-no @5,6
+		title 'Order No'
+	accept tpc-bo-suffix @5,8
+	display tpc-cust-code @5,10
+		title 'Customer'
+	display tpc-cust-reference @5,12
+		title 'Reference'
+	confirm auto
+	confirmed
+		if screenmode() = md-selection-complete
+			exit
+		endif
+	endconfirm
+endscreen //review-possible-consolidations -----------------------------------
+
+object tmp-sol-consolidate-file type is memory
+	record is
+		tmp-solcf-stock-code 			like stock-code
+		tmp-solcf-seq-no				like sol-line-seq
+		tmp-solcf-original-seq-no		like sol-line-seq
+		tmp-solcf-item-price 			like sol-item-price
+		tmp-solcf-price-uom 			like sol-price-uom
+		tmp-solcf-stk-unit-desc 		like sol-stk-unit-desc
+		tmp-solcf-disc-rate 			like sol-disc-rate
+		tmp-solcf-tax-code 				like o-sol-tax-rate-code
+		//
+		tmp-solcf-order-no 				like so-order-no
+		tmp-solcf-bo-suffix 			like so-bo-suffix
+		//
+		tmp-solcf-ordered-qty 			like sol-ordered-qty
+		tmp-solcf-ship-qty 				like sol-shipped-qty
+		tmp-solcf-bo-qty 				like sol-backorder-qty
+		tmp-solcf-ship-amt 				like sol-shipped-amount
+		tmp-solcf-line-amt 				like sol-line-amount
+		tmp-solcf-ship-tax-amt			like sol-shipped-sales-tax-amt
+		tmp-solcf-ship-disc-amt			like sol-shipped-discount-amt
+	endrecord
+	key is tmp-solcf-stock-code tmp-solcf-item-price
+		tmp-solcf-price-uom tmp-solcf-stk-unit-desc
+		tmp-solcf-disc-rate tmp-solcf-tax-code
+		tmp-solcf-seq-no
+
+//This will hold all the original order number and lines of the
+//serialised stock which is consolidated onto one consolidated invoice
+//When printing the serials we can read through this object to get all
+//the original order lines
+object tmp-sol-consolidate-serial-links type memory
+	record is
+		tmp-solcf-stock-code
+		tmp-solcf-item-price
+		tmp-solcf-price-uom
+		tmp-solcf-stk-unit-desc
+		tmp-solcf-disc-rate
+		tmp-solcf-tax-code
+		tmp-solcf-seq-no
+		//
+		tmp-solcf-order-no
+		tmp-solcf-bo-suffix
+		tmp-solcf-original-seq-no
+	endrecord
+	key is tmp-solcf-stock-code tmp-solcf-item-price
+		tmp-solcf-price-uom tmp-solcf-stk-unit-desc
+		tmp-solcf-disc-rate tmp-solcf-tax-code
+		tmp-solcf-seq-no
+
+procedure consolidate-orders-and-print
+	local field
+		lf-so-order-no					like so-order-no
+		lf-so-bo-suffix					like so-bo-suffix
+		lf-archived-loaded				type boolean
+	//
+	open tmp-sol-consolidate-file truncate temporary
+	open tmp-sol-consolidate-serial-links truncate temporary
+	extract tmp-possible-consolidation all
+		when tpc-selected
+	detail
+		if tpc-archived
+		and tpc-selected = 2 //we've already loaded the original if it was
+			do load-archive-into-live  //an archived order originally.
+				parameters
+					tpc-order-no tpc-bo-suffix
+				returning
+					lf-archived-loaded
+					lf-so-order-no lf-so-bo-suffix
+			if not lf-archived-loaded
+				continue
+			endif
+		else
+			set lf-so-order-no = tpc-order-no
+			set lf-so-bo-suffix = tpc-bo-suffix
+		endif
+		get sales-order lock
+			on index so-order-no so-bo-suffix
+			key is lf-so-order-no lf-so-bo-suffix
+		if ws-first-time = TRUE
+			set ws-first-time = FALSE
+			set ws1stbulkorder = so-order-no
+			set ws1stbulksuffix = so-bo-suffix
+			set ws1stbulkcartons += so-order-packages
+			set ws-bulk-weight += so-order-weight
+		endif
+		do get-job-cost-commitments
+		do insert-consolidate-so-line-file
+		//if tpc-archived
+		//and tpc-selected = 2 //we've already loaded the original if it was
+		//	do i5reprint-remove-dummy-sales-order//an archived order originally.
+		//		parameter so-order-no so-bo-suffix
+		//endif
+		set i5reprint-abort-action = ' '
+	endextract
+	set ws-total-consolidated-tax = ZERO
+	get sales-order lock
+		on index so-order-no so-bo-suffix
+		key is lf-so-order-no lf-so-bo-suffix
+	do print-consolidated-invoice-lines
+	extract tmp-possible-consolidation all
+		when tpc-selected
+	detail
+		if tpc-archived
+		and tpc-selected = 2 //we've already loaded the original if it was
+			do i5reprint-remove-dummy-sales-order//an archived order originally.
+				parameter tpc-order-no tpc-bo-suffix
+		endif
+		set i5reprint-abort-action = ' '
+	endextract
+endprocedure //consolidate-orders-and-print ----------------------------------
+
+procedure insert-consolidate-so-line-file
+	local field
+		lf-prev-stk-code					like stock-code
+		lf-prev-item-price					like sol-item-price
+		lf-prev-price-uom 					like sol-price-uom
+		lf-prev-unit-desc					like sol-stk-unit-desc
+		lf-prev-disc-rate					like sol-disc-rate
+		lf-prev-tax-code					like o-sol-tax-rate-code
+		lf-prev-shipped-sales-tax-amt		like sol-shipped-sales-tax-amt
+		lf-prev-shipped-disc-amt			like sol-shipped-discount-amt
+	//
+	set lf-prev-stk-code = SPACES
+	set lf-prev-item-price = ZERO
+	set lf-prev-price-uom = ZERO
+	set lf-prev-unit-desc = SPACES
+	set lf-prev-disc-rate = ZERO
+	set lf-prev-tax-code = ZERO
+ 	set	lf-prev-shipped-sales-tax-amt = ZERO
+	set lf-prev-shipped-disc-amt = ZERO
+	//
+	extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix ZERO
+		next same so-order-no so-bo-suffix
+		where not KIT_COMPONENT
+	detail
+		get stock-master
+			on index stock-code
+			key is stock-code
+		on error
+			initialise stock-master
+				leaving stock-code
+		endon
+		//
+		set ws-pick-location-info-printed = FALSE
+		set ws-lot-details-printed = FALSE
+		if sol-line-type = 'DN' and sol-print-line <> 'J'
+			set tmp-solcf-seq-no = ZERO
+			extract tmp-sol-consolidate-file
+				on index tmp-solcf-stock-code tmp-solcf-item-price
+					tmp-solcf-price-uom tmp-solcf-stk-unit-desc
+					tmp-solcf-disc-rate tmp-solcf-tax-code
+					tmp-solcf-seq-no
+				key is lf-prev-stk-code lf-prev-item-price
+					lf-prev-price-uom lf-prev-unit-desc
+					lf-prev-disc-rate lf-prev-tax-code ZERO
+				next same tmp-solcf-stock-code tmp-solcf-item-price
+					tmp-solcf-price-uom  tmp-solcf-stk-unit-desc
+					tmp-solcf-disc-rate tmp-solcf-tax-code
+			detail
+				//Search for the last record within this key
+			endextract
+			set tmp-solcf-stock-code = lf-prev-stk-code
+			set tmp-solcf-stk-unit-desc = lf-prev-unit-desc
+			set tmp-solcf-item-price = lf-prev-item-price
+			set tmp-solcf-price-uom = lf-prev-price-uom
+			set tmp-solcf-disc-rate = lf-prev-disc-rate
+			set tmp-solcf-tax-code = lf-prev-tax-code
+			set tmp-solcf-ship-tax-amt = lf-prev-shipped-sales-tax-amt
+			set tmp-solcf-ship-disc-amt	= lf-prev-shipped-disc-amt
+			//
+			set tmp-solcf-order-no = so-order-no
+			set tmp-solcf-bo-suffix = so-bo-suffix
+			set tmp-solcf-original-seq-no = sol-line-seq
+			//
+			set tmp-solcf-seq-no += 1
+			set tmp-solcf-ordered-qty = sol-ordered-qty
+			set tmp-solcf-ship-qty = sol-shipped-qty
+			set tmp-solcf-bo-qty = sol-backorder-qty
+			set tmp-solcf-ship-amt = sol-shipped-amount
+			set tmp-solcf-line-amt = sol-line-amount
+			set tmp-solcf-ship-tax-amt = sol-shipped-sales-tax-amt
+			set tmp-solcf-ship-disc-amt = sol-shipped-discount-amt
+			insert tmp-sol-consolidate-file
+		else
+			if stk-stock-status != 'K'
+				do accum-pack-and-weight-volume
+			else
+				// for kits make sure the conversion factor is
+				// setup as you can have alternates for kit!!
+				do b690-get-conversion-factor
+			endif
+			//
+			set lf-prev-stk-code = stock-code
+			set lf-prev-unit-desc = sol-stk-unit-desc
+			set lf-prev-item-price = sol-item-price
+			set lf-prev-price-uom = sol-price-uom
+			set lf-prev-disc-rate = sol-disc-rate
+			set lf-prev-tax-code = o-sol-tax-rate-code
+			set	lf-prev-shipped-sales-tax-amt = sol-shipped-sales-tax-amt
+			set lf-prev-shipped-disc-amt = sol-shipped-discount-amt
+			//
+			get tmp-sol-consolidate-file lock
+				on index tmp-solcf-stock-code tmp-solcf-item-price
+					tmp-solcf-price-uom tmp-solcf-stk-unit-desc
+					tmp-solcf-disc-rate tmp-solcf-tax-code
+					tmp-solcf-seq-no
+				key is stock-code sol-item-price
+					sol-price-uom sol-stk-unit-desc
+					sol-disc-rate o-sol-tax-rate-code
+					1
+			on error
+				set tmp-solcf-seq-no = 1
+				set tmp-solcf-stock-code = stock-code
+				set tmp-solcf-item-price = sol-item-price
+				set tmp-solcf-price-uom = sol-price-uom
+				set tmp-solcf-stk-unit-desc = sol-stk-unit-desc
+				set tmp-solcf-disc-rate = sol-disc-rate
+				set tmp-solcf-tax-code = o-sol-tax-rate-code
+				//
+				set tmp-solcf-order-no = so-order-no
+				set tmp-solcf-bo-suffix = so-bo-suffix
+				set tmp-solcf-original-seq-no = sol-line-seq
+				//
+				set tmp-solcf-ordered-qty = sol-ordered-qty
+				set tmp-solcf-ship-qty = sol-shipped-qty
+				set tmp-solcf-bo-qty = sol-backorder-qty
+				set tmp-solcf-ship-amt = sol-shipped-amount
+				set tmp-solcf-line-amt = sol-line-amount
+				set tmp-solcf-ship-tax-amt = sol-shipped-sales-tax-amt
+				set tmp-solcf-ship-disc-amt = sol-shipped-discount-amt
+				insert tmp-sol-consolidate-file
+
+			else
+				set tmp-solcf-ordered-qty += sol-ordered-qty
+				set tmp-solcf-ship-qty += sol-shipped-qty
+				set tmp-solcf-bo-qty += sol-backorder-qty
+				set tmp-solcf-ship-amt += sol-shipped-amount
+				set tmp-solcf-line-amt += sol-line-amount
+				set tmp-solcf-ship-tax-amt += sol-shipped-sales-tax-amt
+				set tmp-solcf-ship-disc-amt += sol-shipped-discount-amt
+				update tmp-sol-consolidate-file
+			endon
+		endif
+		//
+		if stk-serialized-flag = YES
+			set tmp-solcf-order-no = so-order-no
+			set tmp-solcf-bo-suffix = so-bo-suffix
+			set tmp-solcf-original-seq-no = sol-line-seq
+			insert tmp-sol-consolidate-serial-links
+		endif
+	endextract
+endprocedure //insert-consolidate-so-line-file --------------------------------
+
+procedure accum-pack-and-weight-volume
+	if stk-pack-qty = ZERO
+		set stk-pack-qty = 1
+	endif
+	set ws-temp = (sol-shipped-qty / stk-pack-qty ) + .49
+	//now use automatic rounding
+	set ws-total-packages += ws-temp
+	//
+	do b690-get-conversion-factor
+	set ws-total-weight += (sol-shipped-qty * stk-pack-weight
+			/ stk-pack-qty * ws-stk-conv-factor)
+	//
+	set ws1stbulkcartons += ws-temp
+	//Total weight for multiple orders
+	set ws-bulk-weight += (sol-shipped-qty * stk-pack-weight
+				/ stk-pack-qty * ws-stk-conv-factor)
+	//
+endprocedure //accum-pack-and-weight-volume ------------------------------------
+
+procedure get-job-cost-commitments
+	if sys-job-used-flag != 'N'
+		get job-cost-commitments
+			on index job-commitment-type job-order-no job-order-suffix
+			key is 'S' so-order-no so-bo-suffix
+		on error
+			set job-code = SPACES
+		endon
+	else
+		set job-code = SPACES
+	endif
+endprocedure //get-job-cost-commitments --------------------------------------
+
+procedure print-consolidated-invoice-lines
+	extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no SPACES ZERO
+		next same so-order-no
+	detail
+		set ws-total-consolidated-tax = sol-ordered-sales-tax-amt
+	endextract
+	set ws-printing-consolidated-invoice = TRUE
+	set ws-has-any-invoice-been-printed = YES
+	do start-report
+	if ws-EDI-licensed
+		IENEEDEDI_CHECK_EDI_INVOICE_NEEDED
+	endif
+	if edicd-test-mode <> 'P'
+		get deb-master
+			key is so-cust-code
+		on error
+			set dr-mail-control-code = SPACES
+		endon
+		//{15}
+		//I85CURCONV_GET_EXCHANGE_RATE(so-curr-code,ws-curr-rate,ws-mord,
+		//	set ws-curr-rate = 1
+		//	set sys-description = SPACES)
+		set ws-curr-description = sys-description
+	endif
+	if edicd-test-mode <> 'P'
+		page
+	endif
+	IWTYPE_DETERMINE_WHSE_TYPE(so-whse-code,ws-whse-type)
+	set ws-prev-line-was-a-note-extension = NO
+	set ws-total-non-taxable = 0
+	set ws-total-taxable = 0
+	set ws-total-weight = 0
+	set ws-total-packages = 0
+	for i = 1 to 5
+		set ws-sales-tax-amt[i] = 0
+		set ws-staxable-amt[i] = 0
+	endfor
+	set ws-exempt-amt = 0
+	set ws-total-charges = 0
+	set ws-total-due = ZERO
+	set ws-total-taken = ZERO
+	set ws-page-num = ZERO
+	if edicd-test-mode <> 'P'
+		extract tmp-sol-consolidate-file
+			all
+		detail
+			if ws-first-order
+				set ws-first-bo-suffix = so-bo-suffix
+				set ws-first-order = FALSE
+			endif
+			get sales-order-line
+				on index so-order-no so-bo-suffix sol-line-seq
+				key is tmp-solcf-order-no tmp-solcf-bo-suffix
+					tmp-solcf-original-seq-no
+			on error
+				continue //unlikely to happen
+			else
+				get stock-master
+					on index stock-code
+					key is stock-code
+				on error
+					initialise stock-master
+						leaving stock-code
+				endon
+				if sol-line-type != 'DN' or sol-print-line = 'J'
+					set sol-ordered-qty = tmp-solcf-ordered-qty
+					set sol-shipped-qty = tmp-solcf-ship-qty
+					set sol-backorder-qty = tmp-solcf-bo-qty
+					set sol-shipped-amount = tmp-solcf-ship-amt
+					set sol-line-amount = tmp-solcf-line-amt
+					set sol-shipped-sales-tax-amt = tmp-solcf-ship-tax-amt
+					set sol-shipped-discount-amt = tmp-solcf-ship-disc-amt
+				endif
+			endon
+			//
+			do setup-prnt-field-for-sale-lines
+			if substring (tmp-solcf-stock-code,1,11) = 'ZRNDBENEFIT'
+				set ws-total-round-benefit-amt += tmp-solcf-line-amt
+			endif
+			do print-an-invoice-line
+		endextract
+	endif
+	set ws-printing-consolidated-invoice = FALSE
+	//
+	if ws-EDI-licensed
+		IENEEDEDI_FINISH_CHECK_EDI_NEEDED
+		if edicd-test-mode = 'P'
+			exit
+		endif
+	endif
+	do print-layby-bottom
+	if spoolfilename() = ws-env-printer
+		report finished
+	endif
+endprocedure //print-consolidated-invoice-lines ------------------------------
+
+procedure setup-prnt-field-for-sale-lines
+	set prnt-sol-item-price = sol-item-price
+	set prnt-sol-item-cost = sol-item-cost
+	set prnt-sol-line-cost = sol-line-cost
+	set prnt-sol-line-amount = sol-line-amount
+	set prnt-sol-shipped-amount = sol-shipped-amount
+	set prnt-sol-shipped-sales-tax-amt = sol-shipped-sales-tax-amt
+	set prnt-sol-shipped-discount-amt = sol-shipped-discount-amt
+	//
+	if sol-line-type in { "SN","RR","RN","KN" "WN","SS","SC"}
+	or (sol-line-type = 'DN' and sol-print-line = 'J')
+		if o-sol-tax-rate-code = 0
+			set ws-total-non-taxable += sol-shipped-amount
+				- sol-shipped-sales-tax-amt
+		else
+			//For kit items, tax is calculated on kit components only
+			if not KIT_PARENT
+				set ws-total-taxable += sol-shipped-amount
+					- sol-shipped-sales-tax-amt
+			endif
+		endif
+	endif
+endprocedure //setup-prnt-field-for-sale-lines ---------------------------------
+
+procedure print-invoice
+	if ws-agent-print
+	and so-order-status < I5SO_RDY_TO_UPDATE
+		do re-price-the-order
+	endif
+	//{15}
+	//I85CURCONV_GET_EXCHANGE_RATE(so-curr-code,ws-curr-rate,ws-mord,
+	//	set ws-curr-rate = 1
+	//	set sys-description = SPACES)
+	set ws-curr-description = sys-description
+	//Check this order - it may be a SERVICE invoice
+	set ws-service-invoice = FALSE
+	extract sales-order-line
+		next same so-order-no so-bo-suffix
+		key so-order-no so-bo-suffix 0
+	detail
+		if sol-line-type = "RN"
+			set ws-service-invoice = TRUE
+			break
+		endif
+	endextract
+	//assume currency on sales order.
+	set ws-has-any-invoice-been-printed = YES
+	do start-report
+	if get-param(1) = "-b"
+		RBTCHPROC_MESSAGE_REPORT_STARTED
+	endif
+	for i = 1 to 5
+		set ws-sales-tax-amt[i] = 0
+		set ws-staxable-amt[i] = 0
+	endfor
+	set ws-exempt-amt = 0
+	set ws-total-charges = 0
+	set ws-total-due = ZERO
+	set ws-total-taken = ZERO
+	set ws-page-num = ZERO
+	set ws-does-rma-affect-stock = no
+	//Note point of sale relies on printing all orders regardless of suffix
+	set ws-header-needed = TRUE
+	set ws-order-status = so-order-status
+	set ws-first-order = TRUE
+	extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key so-order-no SPACES 0
+		next same so-order-no
+	detail
+		get sales-order lock
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error
+		else
+			if ws-invoice-to-print != so-invoice-no
+				continue // exclude this order
+			endif
+			//if sys-point-of-sale-mode-used = '2'
+			//and so-order-status in I5SOSTATII_OUTSTANDING_TRANSFERS_STATII
+			if so-order-status in I5SOSTATII_OUTSTANDING_TRANSFERS_STATII
+			and so-bo-suffix != spaces
+				continue
+			endif
+			if ws-first-order
+				set ws-first-bo-suffix = so-bo-suffix
+				set ws-first-order = FALSE
+			endif
+		endon
+		if ws-confirmation <> YES
+			if so-order-status = I5SO_CNOTE_RDY_TO_PRINT
+				if so-credit-note-no = 0
+					BMSDEF_NEXT_SERIAL_NUMBER('CN',next-cn-no,so-credit-note-no)
+				endif
+				if so-invoice-date = 0
+					set so-invoice-date = ws-invoice-date
+				endif
+				set so-processing-date = ws-invoice-date
+				if so-invoice-no = SPACES
+					set so-invoice-no = right-justify(str(so-credit-note-no)
+						,size-of(so-invoice-no))
+					set ws-invoice-to-print = so-invoice-no
+				endif
+			elseif so-order-status in {I5SO_RDY_TO_PRINT_INVOICE
+			I5SO_RDY_TO_ASSEMBLE
+			I5SO_ASSEMBLY_IN_PROGRESS }
+				if so-invoice-no = SPACES
+					get deb-master
+						key is so-cust-code
+					on error
+						set dr-clearflag = "O"
+					endon
+					//do i5assinvno-sales-invoice-no	//{15}
+					set ws-invoice-to-print = so-invoice-no
+				endif
+				set so-credit-note-no = 0
+				set so-invoice-date = ws-invoice-date
+				set so-processing-date = ws-invoice-date
+			elseif so-order-status = I5SO_CONSIGNMENT_RDY_TO_PRINT
+				set so-invoice-date = ws-invoice-date
+				set so-processing-date = ws-invoice-date
+			endif
+			update sales-order
+		endif
+		if ws-header-needed
+			page
+			set ws-header-needed = FALSE
+		endif
+		if so-order-status in I5SOSTATII_OUTSTANDING_TRANSFERS_STATII
+			set ws-is-this-a-delivery-docket = YES
+		endif
+		set prnt-sol-item-price = sol-item-price
+		set prnt-sol-item-cost = sol-item-cost
+		set prnt-sol-line-cost = sol-line-cost
+		set prnt-sol-line-amount = sol-line-amount
+		if sol-shipped-qty = 0 and sol-line-type = 'SN'
+		and so-order-status != I5SO_FORWARD_ORDER
+			set prnt-sol-shipped-amount = 0
+			set prnt-sol-shipped-sales-tax-amt = 0
+			set prnt-sol-shipped-discount-amt = 0
+		else
+			set prnt-sol-shipped-amount = sol-shipped-amount
+			set prnt-sol-shipped-sales-tax-amt = sol-shipped-sales-tax-amt
+			set prnt-sol-shipped-discount-amt = sol-shipped-discount-amt
+		endif
+		//now get the current price record
+		do get-stock-price
+		////check currency rate first then
+		////check for DX ie. foreign exchange rate
+		do print-an-invoice-line
+	endextract
+	do print-layby-bottom
+	//update the sales order status for all orders printed
+	extract sales-order
+		key so-order-no SPACES
+		next same so-order-no
+	detail
+		if ws-invoice-to-print != so-invoice-no
+			continue // exclude this order
+		endif
+		get sales-order lock
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error
+		endon
+		if ws-is-this-a-delivery-docket != YES
+		and get-param(1) != FINANCIER
+		and ws-confirmation <> YES
+			set ws-old-status = so-order-status
+			if so-order-status = I5SO_CNOTE_RDY_TO_PRINT
+				set so-order-status = I5SO_CNOTE_RDY_TO_UPDATE
+			elseif so-order-status = I5SO_RDY_TO_PRINT_INVOICE
+				set so-order-status = I5SO_RDY_TO_UPDATE
+			elseif so-order-status = I5SO_CONSIGNMENT_RDY_TO_PRINT
+				set so-order-status =
+					I5SO_CONSIGNMENT_RDY_TO_UPDATE
+			elseif so-order-status = I5SO_RMA_APPROVED_FOR_PRINTING
+				if ws-does-rma-affect-stock = YES
+					set so-order-status = I5SO_RMA_IN_PROGRESS
+				else
+				//stock not affected
+					set so-order-status =
+						I5SO_RMA_GOODS_RECEIVED
+				endif
+			elseif so-order-status = I5SO_RDY_TO_ASSEMBLE
+				set so-order-status = I5SO_ASSEMBLY_IN_PROGRESS
+			elseif so-order-status = I5SO_ASSEMBLY_IN_PROGRESS
+				set so-order-status = I5SO_RDY_TO_UPDATE
+			endif
+			AUDIT_SO_STATUS_CHANGE(ws-old-status, so-order-status)
+		endif
+		if get-param(1) != FINANCIER
+			set so-date-stamp = today()
+			set so-time-stamp = tod()
+			update sales-order
+		endif
+	endextract
+endprocedure // print-invoice -------------------------------------------------
+
+procedure re-price-the-order
+	local field
+		lf-returned-item-price			like sol-item-price
+		lf-found						type boolean
+	//
+	get deb-master
+		on index accountcode
+		key is so-cust-code
+	on error
+		exit
+	//{15}
+	//else
+	//	get sales-order lock
+	//	do clib301-setup-so-header-tax
+	//		parameters
+	//			accountcode
+	//			o-salestax-no
+	//			so-order-no
+	//			so-bo-suffix
+	//			so-order-date
+	//		returning
+	//			o-so-sales-tax-exemption-no
+	//			//so-tax-code	{15}
+	//			so-sort-key
+	//			o-so-prov-tax-exemption-no
+	//			o-so-fed-tax-exemption-no
+	//	update sales-order lock
+	endon
+	extract sales-order-line lock
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		where sol-line-type = 'SN'
+	detail
+		get stock-master
+			on index stock-code
+			key is stock-code
+		on error
+			continue
+		endon
+		get stock-warehouse-detail
+			on index stock-code whse-code
+			key is stock-code so-whse-code
+		on error
+			continue
+		endon
+		do i4getprice-get-stock-price-record
+			parameter stock-code so-whse-code so-cust-type so-price-code
+			returning lf-found
+			   		  lf-returned-item-price
+		if not lf-found
+			continue
+		endif
+		//do i5pricemod-pricing-module	//{15}
+		set sol-item-price = i5pricemod-item-price
+		if i5pricemod-price-used <> ZERO
+			set sol-price-rule = i5pricemod-price-rule[i5pricemod-price-used]
+		endif
+		//
+		set ws-qty = sol-shipped-qty
+		do b355-do-line-calc
+		set sol-shipped-amount = ws-line-amt
+		set sol-shipped-discount-amt = ws-disc-amt
+		set sol-shipped-sales-tax-amt = ws-stax-amt
+		set ws-qty = sol-ordered-qty
+		do b355-do-line-calc
+		set sol-line-amount = ws-line-amt
+		set sol-ordered-disc-amt = ws-disc-amt
+		set sol-ordered-sales-tax-amt = ws-stax-amt
+		//
+		do b690-get-conversion-factor
+		set sol-item-cost = sol-line-cost * stk-price-per
+			/(ws-stk-conv-factor * sol-shipped-qty)
+		update sales-order-line
+	endextract
+	get sales-order lock
+	do i50headso-calc-total-amounts-update
+endprocedure //re-price-the-order --------------------------------------------
+
+procedure b690-get-conversion-factor
+	if sol-line-type not in { 'SN','WN','RR','KN' }
+		set ws-stk-conv-factor = 1
+	else
+		if sol-stk-unit-conversion != 0
+			set ws-stk-conv-factor = sol-stk-unit-conversion
+		else
+			I4GETCONV_GET_CONVERSION_FACTOR(sol-stk-unit-desc,
+				ws-stk-conv-factor)
+		endif
+	endif
+endprocedure //b690-get-conversion-factor --------------------------------------
+
+procedure b355-do-line-calc
+	I5LINECALC_SO_LINE_CALC(so-price-code
+		,o-so-sales-tax-exemption-no
+		,sol-item-price
+		,ws-qty
+		,sol-stk-unit-desc
+		,sol-price-uom
+		,sol-disc-rate
+		,str(o-sol-tax-rate-code)  //{15}
+		,sol-item-wholesale-price
+		,ws-line-amt
+		,ws-disc-amt
+		,ws-stax-amt)
+	set sol-item-wholesale-price = i5linecalc-wholesale-price
+endprocedure //b355-do-line-calc -----------------------------------------------
+
+procedure get-stock-price
+	local field
+		lf-returned-item-price		like sol-item-price
+		lf-found					type boolean
+	//
+	//get the price record
+	do i4getprice-get-stock-price-record
+		parameter stock-code so-whse-code so-cust-type so-price-code
+		returning lf-found
+		   		  lf-returned-item-price
+	if not lf-found
+		initialise stock-price
+			leaving stock-code
+	endif
+endprocedure //get-stock-price -------------------------------------------------
+
+procedure print-an-invoice-line
+	if sol-line-type = "SN"
+	and sol-chg-type = "D"
+	//accumulate sales tax for components
+		do accum-stax
+		//do not print kit components
+		exit
+	endif
+	if sol-print-line = no
+		exit
+	endif
+	do test-for-last-line
+	set stk-desc-line-2 = SPACES
+	set stk-desc-line-3 = SPACES
+	if sol-line-type in {"DN" 'SC'}
+		set ws-stk-code = SPACES
+		set ws-stk-desc = sol-line-description
+	//elseif sol-line-type in {"SN","RR","RN",'KN'}
+	elseif sol-line-type in {"SN","RR","RN","KN", "WN"}
+		do get-normal-stock-info
+	elseif sol-line-type = 'SS'
+		if stock-code != SPACES
+			set ws-stk-code = stock-code
+		else
+			set ws-stk-code = 'Special'
+		endif
+		set ws-stk-desc = sol-line-description
+	else
+		set ws-stk-code = stock-code
+		set ws-stk-desc = sol-line-description
+	endif
+	print
+		ws-stk-code col 14 no-newline
+		sol-line-type col 100
+		no-newline
+		o-sol-tax-rate-code col 104 no-newline
+		sol-tax-rate col 107 no-newline
+		sol-shipped-sales-tax-amt col 114 //no-newline
+		strconcat(str(sol-disc-rate)) col 80 no-newline				//rcMay 26, 2009
+		strconcat(str(sol-ordered-disc-amt)) col 90					//rcMay 26, 2009
+	if sol-line-type = "SC"
+		print ws-stk-desc col 14
+			no-newline
+	endif
+	if sol-line-type in { "SN","RR","SS","SC","ST","RN","KN","WN" }
+		if sol-line-type in {"SN","RR","RN","KN","SS","WN"}
+			if sol-price-uom = 0
+				set sol-price-uom = 1
+			endif
+			if ws-is-this-a-delivery-docket != YES
+				print	prnt-sol-item-price col 45 pic -(7).zz
+					sol-stk-unit-desc col 57
+					no-newline
+			endif
+			print	sol-shipped-qty col 1 pic -(8).zz
+				so-whse-code in col 76
+				no-newline
+		endif
+		//if sys-point-of-sale-mode-used = '2'
+		//and sol-print-line = 'T'
+		if sol-print-line = 'T'
+			print 'Tkn ' col 76
+				no-newline
+		endif
+		if get-param(1) = LAYBY
+		and so-order-status = I5SO_FORWARD_ORDER
+		//note ordered amt includes tax
+			print	prnt-sol-line-amount col 63  pic -(8).zz
+				sol-ordered-qty col 1 pic -(8).zz
+			if sol-line-type != "SC"
+				set ws-total-due += prnt-sol-line-amount
+			endif
+		elseif sol-shipped-qty = 0
+		and sol-line-type in {'SN' 'SS'}
+		//and sys-point-of-sale-mode-used = '2'
+			print 'B/O ' col 76
+				sol-line-amount col 63 pic -(8).zz
+				sol-ordered-qty col 1 pic -(8).zz
+			if sol-line-type != "SC"
+				set ws-total-due += sol-line-amount
+			endif
+		elseif sol-shipped-qty = 0
+		and sol-line-type in {'SN' 'SS'}
+			print 'BACKORDER' col 63
+		elseif ws-is-this-a-delivery-docket != YES
+			// Include the backorder amount in the invoice total
+			// if a line has both shipped qty and b/o qty
+			//
+			if sol-line-type in {'SN' 'SS'}
+			and sol-shipped-qty <> 0
+			and sol-backorder-qty <> 0
+			//and sys-point-of-sale-mode-used = '2'
+				set ws-total-due += (sol-line-amount - sol-shipped-amount)
+			endif
+			//
+			if so-price-code in I5SOSTATII_RETAIL_ONLY
+				if sys-point-of-sale-mode-used = '2'
+					print	prnt-sol-line-amount
+						col 63  pic -(8).zz
+				else
+					print prnt-sol-shipped-amount
+						col 63 pic -(8).zz
+				endif
+				if sol-line-type != "SC"
+					set ws-total-due += prnt-sol-shipped-amount
+					if sol-print-line = 'T'
+						set ws-total-taken += prnt-sol-shipped-amount
+					endif
+				endif
+			elseif so-price-code = "I"
+				print prnt-sol-line-cost
+					col 63 pic -(8).zz
+				if sol-line-type != "SC"
+					set ws-total-due += prnt-sol-line-cost
+				endif
+			else
+				if sys-point-of-sale-mode-used = '2'
+					print	prnt-sol-line-amount
+						col 63  pic -(8).zz
+				else
+					print prnt-sol-shipped-amount
+						- prnt-sol-shipped-sales-tax-amt
+						col 63  pic -(8).zz
+				endif
+				if sol-line-type != "SC"
+					set ws-total-due +=
+						prnt-sol-shipped-amount
+						- prnt-sol-shipped-sales-tax-amt
+					if sol-print-line = 'T'
+						if sys-point-of-sale-mode-used = '2'
+							set ws-total-taken += prnt-sol-shipped-amount
+						else
+							set ws-total-taken += prnt-sol-shipped-amount
+								- prnt-sol-shipped-sales-tax-amt
+						endif
+					endif
+				endif
+			endif
+		else
+			skip
+		endif
+		do accum-stax
+		if sol-line-type = "SC"
+			set ws-total-charges += prnt-sol-line-amount
+		endif
+	//{15}
+	//elseif sol-line-type = "DN"
+	//	I5SOSTATII_LOAD_EXTENDED_NOTE_LINE
+	//	print ws-extended-note-line col 14
+	endif
+	if sol-line-type in {"SN","RR","RN",'KN', 'WN', 'SS'}
+		if ws-stk-desc != SPACES
+			print ws-stk-desc col 14
+		endif
+		if stk-desc-line-2 != SPACES
+			print stk-desc-line-2 col 14
+		endif
+		if stk-desc-line-3 != SPACES
+			print stk-desc-line-3 col 14
+		endif
+		if so-order-status not in I5SOSTATII_OUTSTANDING_TRANSFERS_STATII
+			do print-serial-no
+		endif
+	endif
+	//if sys-point-of-sale-mode-used = '2'
+	//and sol-line-type in {'SN' 'SS'}
+	if sol-line-type in {'SN' 'SS'}
+	and sol-shipped-qty <> 0
+	and sol-backorder-qty <> 0
+		print "Back order qty:" col 14
+			sol-backorder-qty pic -(8).zz
+	endif
+endprocedure //print-an-invoice-line -------------------------------------------
+
+procedure center-so-header
+	get name-and-address-master
+		on index accountcode na-type
+		key is so-territory-code 'TC'
+	on error
+		set i8nameadd-na-line[1] = company-name
+		set i8nameadd-na-line[2] = i8cpdetail-address[1]
+		set i8nameadd-na-line[3] = i8cpdetail-address[2]
+		set i8nameadd-na-line[4] = i8cpdetail-address[3]
+		set i8nameadd-na-line[5] = i8cpdetail-address[4]
+		set i8nameadd-na-line[6] = i8cpdetail-address[5]
+		set i8nameadd-na-line[7] = i8cpdetail-address[7]
+		set i8nameadd-postcode	= i8cpdetail-address[6]
+		//
+		do	i8nameadd-address-format
+			parameters are i8nameadd-na-line i8nameadd-postcode
+			returning ws-company-na
+		//
+	else
+		set ws-company-na[1] = na-company
+		set ws-company-na[2] = na-street
+		set ws-company-na[3] = na-suburb
+		set ws-company-na[4] = concat(substring(na-country,1,
+			strlen(na-country)),' ',postcode)
+		set ws-company-na[5] = concat('Phone : ' na-phone)
+		set ws-company-na[6] = concat('Fax   : ' na-fax-no)
+	endon
+	save sales-order
+	get sales-order
+		on index so-order-no so-bo-suffix
+		key is so-order-no ws-first-bo-suffix
+	on error
+		restore sales-order
+		get sales-order
+	endon
+	print	ws-company-na[1] col 1
+			'A.C.N.:' col 34
+			sys-national-company-no col 42
+			no-newline
+	if ws-confirmation = YES
+		print 'CONFIRMATION' col 60
+	elseif so-order-status = I5SO_FORWARD_ORDER
+		print 'LAYBY ORDER' col 60
+	elseif so-order-status in I5SOSTATII_SO_CREDIT_NOTE_STATII
+		if o-sys-tax-type = 'L'
+			print 'TAX CREDIT NOTE' col 60
+		else
+			print 'CREDIT NOTE' col 60
+		endif
+	elseif so-order-status in I5SOSTATII_OUTSTANDING_TRANSFERS_STATII
+		print 'TRANSFER ORDER' col 60
+	elseif so-order-type-code = I5SO_TYPE_QUOTATION
+		print 'QUOTATION' col 60
+	elseif so-order-status = I5SO_BACK_ORDER
+		print 'BACKORDER' col 60
+	else
+		if o-sys-tax-type = 'L'
+		//and sys-point-of-sale-mode-used != '2'
+			print 'TAX INVOICE.' col 60
+		else
+			print 'INVOICE' col 60
+		endif
+	endif
+	set ws-inv-page-no += 1
+	print	ws-company-na[2] col 1
+			'A.B.N.:' col 34
+			i8cpdetail-sales-tax-no col 42
+			"Page:" col 63
+			left-justify(str(ws-inv-page-no)) col 68 pic x(4)
+	print ws-company-na[3] col 1 no-newline
+	if ws-confirmation = YES
+		print	"ORDER NUMBER" col 42 bold
+				LEFT_ORDER_NO col 58
+	elseif ws-is-this-a-delivery-docket = YES
+		print	"DELIVERY DOCKET" col 42 bold
+				LEFT_ORDER_NO col 58
+	elseif so-order-status in I5SOSTATII_SO_CREDIT_NOTE_STATII
+		//print	"CREDIT NOTE NO." col 42 bold	//10sep10
+		print	"CREDIT NOTE NO" col 42 bold   //10sep10
+		LEFT_CREDIT_NO col 58
+	elseif so-order-type-code = I5SO_TYPE_QUOTATION
+		print	"QUOTATION" col 42
+		//LEFT_ORDER_NO col 52
+		LEFT_ORDER_NO col 56 //rmd24jan10
+	elseif so-order-type-code = I5SO_TYPE_RMA
+		print	"RETURN AUTHORITY" col 42
+		LEFT_ORDER_NO col 59
+	elseif so-order-status in { I5SO_CONSIGNMENT_ENTERED
+	I5SO_CONSIGNMENT_BACKORDER
+	I5SO_CONSIGNMENT_RDY_TO_PICK
+	I5SO_CONSIGNMENT_PICKING_PRINTED I5SO_CONSIGNMENT_RDY_TO_UPDATE }
+		print	"GOODS CONSIGNED" col 42
+		LEFT_ORDER_NO col 58
+		print	"*** Reprinted ***" col 42
+			no-newline
+	elseif so-order-status = I5SO_CONSIGNMENT_RDY_TO_PRINT
+		print "GOODS CONSIGNED" col 42
+		LEFT_ORDER_NO col 58
+	elseif ws-service-invoice
+		print	"SERVICE INVOICE" col 42
+		LEFT_INVOICE_NO col 58
+	elseif so-order-status = I5SO_UPDATED
+	and so-credit-note-no <> 0
+		//print	"CREDIT NOTE NO." col 42 bold	//10sep10
+		print	"CREDIT NOTE NO" col 42 bold   //10sep10
+		LEFT_CREDIT_NO col 58
+	elseif so-order-status = I5SO_BACK_ORDER
+	or sys-point-of-sale-mode-used = '2'
+		print	"ORDER NUMBER" col 42 bold
+			LEFT_ORDER_NO col 58
+	else
+		print	"INVOICE NO." col 42 bold
+			LEFT_INVOICE_NO col 54
+	endif
+	if sys-post-dating-allowed = "1"
+	and so-posting-period in { 1, 2, 3 }
+	//adding future posting to current period
+	//allow for end of year
+		I8AGEDAT_DO_GET_AGEING_DATE(so-invoice-date,
+			- so-posting-period, ws-print-invoice-date)
+	elseif so-order-status in I5SOSTATII_SO_CREDIT_NOTE_STATII
+		//for credit notes print the date the cnotes
+		//	are being printed on.
+		//	NOTE:: This date may change from the actual transaction
+		//		date when the cnote is updated. Possible need
+		//		a new field to record the actual cnote date.
+		set ws-print-invoice-date = ws-invoice-date
+	else
+		set ws-print-invoice-date = so-invoice-date
+	endif
+	print	ws-company-na[4] col 1
+		"DATE" in col 42
+		no-newline
+	if ws-is-this-a-delivery-docket = YES
+		print so-delivery-date col 47
+	elseif so-order-status in I5SOSTATII_SO_CREDIT_NOTE_STATII
+		print so-processing-date col 47
+	elseif so-order-type-code = I5SO_TYPE_QUOTATION
+		print so-order-date col 47
+	else
+		print ws-print-invoice-date col 47
+	endif
+	if ws-confirmation = YES
+		print ws-company-na[5] col 1
+	elseif so-order-type-code = I5SO_TYPE_RMA
+	and so-order-status != I5SO_RMA_APPROVED_FOR_PRINTING
+		print	ws-company-na[5] col 1
+			"REPRINTED" col 66
+		print	today() col 66 no-newline
+	elseif so-order-type-code = I5SO_TYPE_QUOTATION
+	and so-order-status not in {I5SO_QUOTATION I5SO_QUOTATION_ACCEPTED}
+		print	ws-company-na[5] col 1
+			"REPRINTED" col 66
+		print	today() col 66 no-newline
+	elseif so-order-status not in { I5SO_RDY_TO_PRINT_INVOICE I5SO_QUOTATION
+	I5SO_QUOTATION_ACCEPTED
+	I5SO_CONSIGNMENT_RDY_TO_PRINT I5SO_CNOTE_RDY_TO_PRINT
+	I5SO_RMA_APPROVED_FOR_PRINTING
+	I5SO_RDY_TO_ASSEMBLE I5SO_ASSEMBLY_IN_PROGRESS }
+		print	ws-company-na[5] col 1
+			"REPRINTED" col 66
+		print	today() col 66 no-newline
+	else
+		print ws-company-na[5] col 1
+	endif
+	print	ws-company-na[6] col 1
+		no-newline
+	if ws-deb-phone <> SPACES
+		print "Phone:" col 51
+			ws-deb-country-code col 58
+			ws-deb-phone col 63
+	else
+		skip
+	endif
+	if ws-deb-fax-no <> SPACES
+		print "Fax  :" col 51
+			ws-deb-country-code col 58
+			ws-deb-fax-no col 63
+	endif
+	if so-order-type-code = I5SO_TYPE_QUOTATION
+		print	"QUOTED TO" col 1 bold underlined
+			no-newline
+	else
+		print	"SOLD TO" col 1 bold underlined
+			no-newline
+	endif
+	if so-order-type-code != I5SO_TYPE_QUOTATION
+		print	"DELIVERY ADDRESS" col 42 bold underlined
+	else
+		skip
+	endif
+	skip
+	//
+	//if this is an assembly order, overide the delivery address
+	//and print ship to assembly area
+	if so-order-status = I5SO_RDY_TO_ASSEMBLE
+	or so-order-type-code = I5SO_TYPE_QUOTATION
+		set so-dl-text[*] = SPACES
+		if so-order-status = I5SO_RDY_TO_ASSEMBLE
+			print 'SHIP TO ASSEMBLY AREA ONLY' col 42 bold
+				no-newline
+		endif
+	else
+		print so-dl-text[1] col 42
+			no-newline
+	endif
+	print	ws-na-name col 1
+	print	ws-na-company col 1
+		so-dl-text[2] col 42
+	print	ws-na-street col 1
+		so-dl-text[3] col 42
+	print	ws-na-suburb col 1 pic x(22)
+		ws-na-postcode col 24
+			no-newline
+	if so-dl-text[4] = SPACES
+	and so-dl-text[5] = SPACES
+		print so-dl-postcode col 64
+	else
+		if so-dl-text[4] <> SPACES
+			print so-dl-text[4] col 42
+		endif
+		if so-dl-text[5] <> SPACES
+			print	so-dl-text[5] pic x(22) col 42
+				so-dl-postcode col 64
+		else
+			print so-dl-postcode col 64
+		endif
+	endif
+	//TF email tags:
+	// handle this in section printing -------- line
+	//print
+	//	strconcat("|TF:Email|")					in col 01
+	//	strconcat("|DE:" so-cust-code "|")  	in col 21
+	//	strconcat("|IN:" LEFT_ORDER_NO "|")  	in col 41
+endprocedure // center-so-header ----------------------------------------------
+
+procedure invoice-header
+local field
+	lf-faxmail-sender-name		pic x(60)
+	lf-faxmail-sender-email		pic x(60)
+	lf-sender-email-address		pic x(60)
+	lf-recipient-name			pic x(60)
+	c							pic x
+	set ws-page-num += 1
+	get deb-master
+		key is so-cust-code
+	on error
+		set bill-to = so-cust-code
+	endon
+	get sales-order-delivery
+		key is so-order-no so-bo-suffix "FA"
+	on error
+		get name-and-address-master
+			on index accountcode na-type
+			key is bill-to "C"
+		on error
+			initialise name-and-address-master
+				leaving accountcode na-type
+		endon
+	else
+		set na-name = so-dl-text[1]
+		set na-company = so-dl-text[2]
+		set na-street = so-dl-text[3]
+		set na-suburb = so-dl-text[4]
+		set na-country = so-dl-text[5]
+		set na-address-6 = so-dl-text[6]
+		set na-address-7 = so-dl-text[7]
+		set postcode = so-dl-postcode
+	endon
+	set ws-na-name = na-name
+	set ws-na-company = na-company
+	set ws-na-street = na-street
+	set ws-na-suburb = na-suburb
+	set ws-na-country = na-country
+	set ws-na-address-6 = na-address-6
+	set ws-na-address-7	= na-address-7
+	set ws-na-postcode = postcode
+	get sales-order-delivery
+		key is so-order-no so-bo-suffix "DA"
+	on error
+		set so-dl-text[1] = SPACES
+		if sys-copy-da-di-to-so = no
+			get name-and-address-master
+				on index accountcode na-type
+				key is so-cust-code 'DA'
+			on error
+			else
+				set so-dl-text[1] = na-name
+				set so-dl-text[2] = na-company
+				set so-dl-text[3] = na-street
+				set so-dl-text[4] = na-suburb
+				set so-dl-text[5] = na-country
+				set so-dl-text[6] = na-address-6
+				set so-dl-text[7] = na-address-7
+				set so-dl-postcode = postcode
+			endon
+		endif
+		if so-dl-text[1] = SPACES
+			if bill-to = so-cust-code
+				set so-dl-text[*] = SPACES
+				set so-dl-postcode = SPACES
+			else
+				get name-and-address-master
+					on index accountcode na-type
+					key is so-cust-code "C"
+				on error
+					set so-dl-text[*] = SPACES
+				else
+					set so-dl-text[1] = na-name
+					set so-dl-text[2] = na-company
+					set so-dl-text[3] = na-street
+					set so-dl-text[4] = na-suburb
+					set so-dl-text[5] = na-country
+					set so-dl-text[6] = na-address-6
+					set so-dl-text[7] = na-address-7
+					set so-dl-postcode = postcode
+				endon
+			endif
+		endif
+	else
+		if substring(so-dl-text[1],1,6) = 'XXMULT'
+			get name-and-address-master
+				on index accountcode na-type
+				key is so-cust-code substring(so-dl-text[1],7,8)
+			on error
+				set so-dl-text[*] = SPACES
+				set so-dl-postcode = SPACES
+			else
+				set so-dl-text[1] = na-name
+				set so-dl-text[2] = na-company
+				set so-dl-text[3] = na-street
+				set so-dl-text[4] = na-suburb
+				set so-dl-text[5] = na-country
+				set so-dl-text[6] = na-address-6
+				set so-dl-text[7] = na-address-7
+				set so-dl-postcode = postcode
+			endon
+		endif
+		if so-dl-postcode <>  SPACES
+			set ws-postcode = so-dl-postcode
+			for i = 1 to 7
+				do filter-out-postcode
+			endfor
+			//This is the last line of DA that we print
+			//so stick it there.
+			set so-dl-text[5] = concat(substring(so-dl-text[5],1,20)
+				,"  ",so-dl-postcode)
+		else
+		//Hopefully it's been tacked on via m50ordent.
+		endif
+	endon
+	//if delivery address is SPACES, set it to the sold to address
+	if so-dl-text[1] = SPACES and so-dl-text[2] = SPACES
+	and so-dl-text[3] = SPACES and so-dl-text[4] = SPACES
+	and so-dl-text[5] = SPACES and so-dl-text[6] = SPACES
+	and so-dl-text[7] = SPACES
+		get name-and-address-master
+			on index accountcode na-type
+			key is so-cust-code "C"
+		on error
+			set so-dl-text[1] = ws-na-name
+			set so-dl-text[2] = ws-na-company
+			set so-dl-text[3] = ws-na-street
+			set so-dl-text[4] = ws-na-suburb
+			set so-dl-text[5] = ws-na-country
+			set so-dl-text[6] = ws-na-address-6
+			set so-dl-text[7] = ws-na-address-7
+			set so-dl-postcode = ws-na-postcode
+			//
+			set ws-deb-country-code = SPACES
+			set ws-deb-phone = SPACES
+			set ws-deb-fax-no = SPACES
+		else
+			set so-dl-text[1] = na-name
+			set so-dl-text[2] = na-company
+			set so-dl-text[3] = na-street
+			set so-dl-text[4] = na-suburb
+			set so-dl-text[5] = na-country
+			set so-dl-text[6] = na-address-6
+			set so-dl-text[7] = na-address-7
+			set so-dl-postcode = postcode
+			//
+			set ws-deb-country-code = na-country-code
+			set ws-deb-phone = na-phone
+			set ws-deb-fax-no = na-fax-no
+		endon
+	else
+		//Get the debtor's phone and fax number
+		get name-and-address-master
+			on index accountcode na-type
+			key is so-cust-code "C"
+		on error
+			set ws-deb-country-code = SPACES
+			set ws-deb-phone = SPACES
+			set ws-deb-fax-no = SPACES
+		else
+			set ws-deb-country-code = na-country-code
+			set ws-deb-phone = na-phone
+			set ws-deb-fax-no = na-fax-no
+		endon
+	endif
+	if o-sys-tax-type != 'S'
+		set ws-total-invoice-amt = so-order-total-shipped-amount
+			+ so-order-total-charges
+			+ so-order-total-shipped-tax
+	else
+		set ws-total-invoice-amt = so-order-total-shipped-amount
+			+ so-order-total-charges
+	endif
+	do center-so-header  	  // No letter head
+	//print TF tags just before header line break "-----"
+	//skip to line 16
+	//get user email address as sender
+	get system-user-control
+		on index user-id
+		key is so-user-id-code
+	on error
+		set lf-sender-email-address = strconcat("store" so-territory-code "@snooze.com.au")
+		set lf-faxmail-sender-name = "@F101 Snooze Management Email@"
+	else
+		//set suc-user-email = strconcat("store" so-territory-code "\@snooze.com.au@")
+		//set c = "\"
+		//set lf-sender-email-address = STRING suc-user-email INSERTING c AT pattern(suc-user-email,"@")
+		set lf-sender-email-address = suc-user-email
+		if user-employee-name = SPACES
+			set lf-faxmail-sender-name = "@F101 Snooze Management Email@"
+		else
+			set lf-faxmail-sender-name = concat("@F101 Snooze " strconcat(user-employee-name) "@")
+		endif
+	endon
+	if lf-sender-email-address = SPACES
+		set lf-sender-email-address = strconcat("store" so-territory-code "@snooze.com.au@")
+	endif
+	get deb-master
+		on index accountcode
+		key is so-cust-code
+	on error
+		set lf-recipient-name = "Sir/Madam"
+	else
+		 set lf-recipient-name = shortname
+	endon
+	//set ws-email-body[1] = concat("@F603 Hi " strconcat(lf-recipient-name) ",\nThank for shopping with us.\n\nPlease find your Tax Invoice attached.@")
+	//set ws-email-body[2] = concat("@F604 \n\nThank you for your custom.\nFrom the Snooze Team at " strconcat(user-employee-name) ",@")
+	//set ws-email-body[3] = concat("@F604 we wish you a Great Night's Sleep.@")
+	//set ws-email-body[4] = concat("@F604 \n\nDon't forget to visit us at www.snooze.com.au for our latest offers.@")
+
+	//set ws-email-body[1] = concat("@F603 Hi " strconcat(lf-recipient-name) ",\nThank for shopping with us.\n\nPlease find your Tax Invoice attached.@")
+	//set ws-email-body[3] = concat("@F604 \n\nThank you for your custom.\nFrom the Snooze Team at " strconcat(user-employee-name) ",@")
+	//set ws-email-body[4] = concat("@F604 we wish you a Great Night's Sleep.@")
+	//set ws-email-body[2] = concat("@F604 \n\nDon't forget to visit us at www.snooze.com.au for our latest offers.@")
+
+	//set ws-email-body[1] = concat("@F604 Hi " strconcat(lf-recipient-name) ",\n\nThanks for shopping with Snooze " strconcat(user-employee-name) ".@")
+	//set ws-email-body[2] = concat("@F604 \n\nPlease find your Tax Invoice attached.\n\nSleep Well.@")
+	set ws-email-body[1] = concat("@F604 Thanks for shopping with Snooze " strconcat(user-employee-name) ".@")
+	set ws-email-body[2] = concat("@F604 \n\nPlease find your Tax Invoice attached.\n\nSleep Well.@")
+
+
+	//set ws-email-body[4] = concat("@F604 \n\n --------------------------------- @")
+	//set ws-email-body[2] = concat("@F604 \n\nDon't forget to visit us at www.snooze.com.au for our latest offers.@")
+
+	do build-faxmail-sender
+		parameters
+			lf-sender-email-address
+		returning
+			lf-faxmail-sender-email
+	//
+	skip to line 15
+		//print
+		//	//strconcat("|TF:fm_email_inv|")				in col 01
+		//	strconcat("|TF:fm_inv|")					in col 01
+		//	strconcat("|DE:" so-cust-code "|")  		in col 17
+		//	strconcat("|IN:" LEFT_ORDER_NO "|")  		in col 30
+		//	//strconcat("@F111 store" so-territory-code "\@snooze.com.au@") 	in col 60	//20jul10
+		//	//concat("@F111 " strconcat(lf-sender-email-address) "@") in col 60
+		//	strconcat(lf-faxmail-sender-email)			in col 45
+		//	strconcat(lf-faxmail-sender-email)
+		print // all triggers on one line
+			concat("|TF:fm_pinv| |DE:" strconcat(so-cust-code) "| |IN:" LEFT_ORDER_NO "| " strconcat(lf-faxmail-sender-name) " " strconcat(lf-faxmail-sender-email))
+	//if login-id() = "robd"
+	//	message "Hi Rob"
+	//	set ws-spool-report = YES
+	//	set ws-env-printer = "tf_faxmail"
+	//endif
+	print 80"-" col 1
+	print sys-long-tax-desc col 48 no-newline
+	print	"OUR REF." col 1 underlined
+		"ORDER DATE" col 13 underlined
+		"CUSTOMER" col 27
+		"TERR." col 40
+		"CUSTOMER" col 61
+	if o-sys-tax-type != 'S'
+		print "TAX RATE" col 48 no-newline
+	else
+		print "NUMBER" col 48 underlined no-newline
+	endif
+	print	"CODE" col 27 underlined
+		"CODE" col 40 underlined
+		"ORDER" col 61 underlined
+	if o-sys-tax-type != 'S'
+		print o-sys-consumer-tax-rate col 48 pic z(3)vz(4)%
+			no-newline
+	else
+		print o-so-sales-tax-exemption-no col 48
+			no-newline
+	endif
+	print	LEFT_ORDER_NO col 1
+		so-order-date col 13
+		so-cust-code col 27
+		so-territory-code col 40
+		so-cust-reference col 61
+	print	"WAREHOUSE" in col 1 underlined
+		no-newline
+	if so-order-status in I5SOSTATII_OUTSTANDING_TRANSFERS_STATII
+		print "TO WHSE" in col 12 underlined
+			no-newline
+	endif
+	print "SALES REPRESENTATIVE" in col 21 underlined
+		no-newline
+	if ws-curr-rate != 1.0
+		print	"CURRENCY " col 52 underlined no-newline
+			no-newline
+	endif
+	if so-order-type-code = I5SO_TYPE_QUOTATION
+		print	"VALID TO" in col 61 underlined
+	else
+		print	"PAID BY" in col 61 underlined
+	endif
+	if ws-curr-rate != 1.0
+		print	so-curr-code col 52
+			no-newline
+	endif
+	print so-whse-code in col 1
+		no-newline
+	if so-order-status in I5SOSTATII_OUTSTANDING_TRANSFERS_STATII
+		print so-whse-to in col 12
+			no-newline
+	endif
+	if so-order-type-code = I5SO_TYPE_QUOTATION
+		print so-delivery-date col 61
+			no-newline
+	else
+		print " " in col 61
+			no-newline
+	endif
+	get rep-master
+		key so-rep-code
+	on error
+		print "** Name missing **" col 14
+	else
+		print rep-description col 21
+	endon
+	print 80"-"  col 1
+	print "ITEM CODE/DESCRIPTION" col 14  underlined
+		no-newline
+	if ws-is-this-a-delivery-docket != YES
+		print	"PRICE" col 49 underlined
+			"DESC" col 57 underlined
+			"TOTAL" col 68 underlined
+			no-newline
+	endif
+	print "QUANTITY" col 3 underlined
+	//Need to restore sales order here due to the save in
+	//center-so-header Otherwise the whse code of the 1st order
+	//line of 2nd page will always equal to the one from the header.
+	restore sales-order
+
+endprocedure // invoice-header ------------------------------------------------
+
+procedure build-faxmail-sender
+parameter
+	lp-sender-email-address			pic x(60)
+returning
+	lr-faxmail-sender-email    		pic x(60)
+local field
+	i	type numeric
+	c	pic x
+	//message "build-faxmail-sender: " lp-sender-email-address
+	set lr-faxmail-sender-email = SPACES
+	for i = 1 to strlen(lp-sender-email-address)
+		set c = substring(lp-sender-email-address,i,i)
+		if c = "@"
+			//message c "!"
+			set lr-faxmail-sender-email = strconcat(lr-faxmail-sender-email "\@")
+			//message lr-faxmail-sender-email
+		else
+			//message c "x"
+			set lr-faxmail-sender-email = strconcat(lr-faxmail-sender-email c)
+		endif
+		//message lr-faxmail-sender-email
+	endfor
+	set lr-faxmail-sender-email = concat("@F111 " strconcat(lr-faxmail-sender-email) "@")
+endprocedure // build-faxmail-sender ------------------------------------------
+
+procedure get-normal-stock-info
+	if sol-line-description != SPACES
+	and sol-chg-type != "X"
+		set ws-stk-desc = sol-line-description
+		set ws-stk-code = stock-code
+		get stock-master
+			key is ws-stk-code
+		on error
+			set stk-stock-status = 'S'
+		else
+		endon
+	else
+		if sol-chg-type = "X"
+			//for cross reference print THEIR stock
+			//	code and description
+				set ws-stk-code = sol-line-description
+			else
+				set ws-stk-code = stock-code
+			endif
+			get stock-master
+				key is ws-stk-code
+			on error
+				set ws-stk-desc = "** Item desc. not found **"
+				set stk-stock-status = 'S'
+			else
+				set ws-stk-desc = stk-description
+			endon
+		endif
+		//see if at least one line affects stock
+		if so-order-status = I5SO_RMA_APPROVED_FOR_PRINTING
+		and sol-line-type = 'SN'
+		and stk-stock-status not in { 'Z','L' }	// ignore labour and specials
+			if sol-update-whse = YES
+				set ws-does-rma-affect-stock = YES
+			endif
+		endif
+endprocedure //get-normal-stock-info -------------------------------------------
+
+procedure print-serial-no
+	if so-order-status in I5SOSTATII_SO_CREDIT_NOTE_STATII
+	and sol-ordered-qty < 0
+		//The serial number are now stored as note lines so there is
+		//no need to print them again
+		exit
+	endif
+	if stk-serialized-flag = YES
+		//It's serialized
+	else
+		//Not serialized to get outa here
+		exit
+	endif
+	//This program has never printed component serial numbers
+	if sol-chg-type not in { 'D' 'T'}
+		I8SERPRT_PRINT_SO_SERIALS(so-order-no,so-bo-suffix,sol-line-seq,
+			"Serial#  :"," ",SERIAL_START_POS,MAX_SERIAL_NO_PER_LINE)
+	endif
+endprocedure //print-serial-no -----------------------------------------------
+
+procedure print-layby-bottom
+	local
+		lf-order-tax-total		like so-order-total-shipped-tax
+		lf-disc-per-total		like sol-disc-rate						//rcMay 27, 2009
+		lf-disc-amt-total		like sol-ordered-disc-amt				//rcMay 27, 2009
+		lf-last-payment			like tr-amount 							//28feb12
+		lf-last-trans-date		like trans-date		                   	//28feb12
+	//
+	set lf-order-tax-total = ZERO
+	extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no SPACES ZERO
+		next same so-order-no
+	detail
+		//rmd20jul10 ignore values if line type is 'DN' -------- start
+		if sol-line-type in {'DN'}
+			continue
+		endif
+		//rmd20jul10 --------------------------------------------- end
+		set lf-order-tax-total += sol-ordered-sales-tax-amt
+		set lf-disc-per-total += sol-disc-rate							//rcMay 27, 2009
+		set lf-disc-amt-total += sol-ordered-disc-amt					//rcMay 27, 2009
+	endextract
+	set ws-inv-page-no = 0
+	skip to 39
+	if ws-is-this-a-delivery-docket != YES
+		//if so-order-type-code != I5SO_TYPE_QUOTATION					//rmd24jan10
+			do print-terms
+		//endif															//rmd24jan10
+		if sys-point-of-sale-mode-used = '2'
+			print	"Total Taken" col 53
+				ws-total-taken col 67 pic -(7)9.99
+		else
+			print	"Goods Total" col 53
+				ws-total-due col 67 pic -(7)9.99
+		endif
+		if o-sys-tax-type = 'L'
+		and (so-price-code in I5SOSTATII_RETAIL_OR_INTERNAL
+		or sys-point-of-sale-mode-used = '2')
+			print "(Tax include)" col 53 no-newline
+		elseif o-sys-tax-type = 'L'
+			print "(Tax exclude)" col 53 no-newline
+		endif
+	endif
+	get sales-order-delivery
+		//key is so-order-no ws-first-bo-suffix "DI"
+		key is so-order-no ws-last-bo-suffix "DI" //rmd29jul10
+	on error
+		set so-dl-text[*] = SPACES
+		if sys-copy-da-di-to-so = no
+			get name-and-address-master
+				on index accountcode na-type
+				key is so-cust-code 'DI'
+			on error
+			else
+				set so-dl-text[1] = na-name
+				set so-dl-text[2] = na-company
+				set so-dl-text[3] = na-street
+				set so-dl-text[4] = na-suburb
+				set so-dl-text[5] = na-country
+				set so-dl-text[6] = na-address-6
+				set so-dl-text[7] = na-address-7
+				set so-dl-postcode = postcode
+			endon
+		endif
+	end
+	if o-sys-tax-type != 'S'
+		print " " col 41 no-newline
+	else
+	endif
+	print	"Delivery Instructions" col 1 bold underlined
+	print so-dl-text[1] col 1
+	print so-dl-text[2] col 1
+		no-newline
+	if ws-is-this-a-delivery-docket != YES
+		print "Plus Charges" col 53
+			ws-total-charges col 67 pic -(7)9.99
+	else
+		skip
+	endif
+	print so-dl-text[3] col 1
+		no-newline
+	if o-sys-tax-type = 'L'
+	and so-price-code not in I5SOSTATII_RETAIL_OR_INTERNAL
+	and sys-point-of-sale-mode-used != '2'
+		print "Tax Amount " col 53
+			 ws-sales-tax-amt[1] + ws-sales-tax-amt[2]
+			+ ws-sales-tax-amt[3] + ws-sales-tax-amt[4]
+			+ ws-sales-tax-amt[5] col 67 pic -(7)9.99
+	else
+		print " " col 53
+	endif
+	print so-dl-text[4] col 1
+		no-newline
+	if ws-is-this-a-delivery-docket != YES
+	and so-order-type-code != I5SO_TYPE_QUOTATION
+		print "Invoice Total" col 53 no-newline
+	elseif so-order-type-code = I5SO_TYPE_QUOTATION
+		print "Quotation Amt" col 53 no-newline
+	endif
+	if so-price-code in I5SOSTATII_RETAIL_OR_INTERNAL
+		for i = 1 to 5
+			set ws-sales-tax-amt[i] = 0
+		endfor
+	endif
+	if o-sys-tax-type not in {'S' 'L' 'A'}
+	and ws-is-this-a-delivery-docket != YES
+		print ws-total-due + so-order-total-shipped-tax
+			+ ws-total-charges
+			col 67 pic -(7)9.99 underlined
+	elseif ws-is-this-a-delivery-docket != YES
+		if so-order-status = I5SO_FORWARD_ORDER
+			print ws-total-due + ws-total-charges
+				col 67 pic -(7)9.99 underlined
+		else
+			print ws-total-due + ws-sales-tax-amt[1]
+				+ ws-sales-tax-amt[2] + ws-sales-tax-amt[3]
+				+ ws-sales-tax-amt[4]
+				+ ws-sales-tax-amt[5]
+				+ ws-total-charges
+				col 67 pic -(7)9.99 underlined
+		endif
+	else
+		skip
+	endif
+	print so-dl-text[5] col 1
+	if so-order-type-code != I5SO_TYPE_QUOTATION
+	and so-order-status not in I5SOSTATII_SO_CREDIT_NOTE_STATII
+	and not (so-order-status = I5SO_UPDATED and so-credit-note-no > 0)
+		set ws-paid-amount = 0
+		set ws-deb-trans-found = FALSE
+		extract deb-trans
+			//on index accountcode tr-sort-key
+			//key is so-cust-code right-justify(ws-invoice-to-print,8)
+			//next same accountcode tr-sort-key
+			on index accountcode trans-ref batch-ref dr-tr-trans-no
+			key is so-cust-code right-justify(ws-invoice-to-print,8) SPACES 0
+			next same accountcode trans-ref
+			where trans-type != 'IN'
+			and (tr-amount < 0 // pick up credits only //13aug gbh
+			or tr-details = 'Change Due') //pick up change
+			or (trans-type = 'CR' and tr-amount > 0)
+					//what about negatived receipts
+			or (trans-type = 'PD' and tr-amount > 0)
+			or (trans-type = 'JE' and tr-amount > 0)
+		detail
+			set ws-deb-trans-found = TRUE
+			set ws-paid-amount -= tr-amount
+		endextract
+		//<{15}
+		/*
+		if (NOT ws-deb-trans-found
+		or sys-point-of-sale-mode-used = '2')
+		and sys-deb-archive-level in DEB_ARCH_IN_FULL_DETAILS
+			extract o-deb-trans-archive
+				on index accountcode trans-ref
+				key is so-cust-code right-justify(ws-invoice-to-print,8)
+				next same accountcode trans-ref
+				where trans-type != 'IN'
+				and (tr-amount < 0 						// pick up credits only
+				or tr-details = 'Change Due') 		//pick up change
+				or (trans-type = 'CR' and tr-amount > 0)
+						//what about negatived receipts
+				or (trans-type = 'PD' and tr-amount > 0)
+				or (trans-type = 'JE' and tr-amount > 0)
+			detail
+				set ws-paid-amount -= tr-amount
+				set ws-deb-trans-found = TRUE
+			endextract
+		endif
+		*/
+		//>{15}
+	endif
+	print	"Message:" col 1 underlined
+		ws-message-1 col 10
+	print	ws-message-2 col 10
+		no-newline
+	if ws-is-this-a-delivery-docket != YES
+	and so-order-type-code != I5SO_TYPE_QUOTATION
+	and so-order-status not in I5SOSTATII_SO_CREDIT_NOTE_STATII
+	and not (so-order-status = I5SO_UPDATED and so-credit-note-no > 0)
+		print "Less Paid" col 53
+			ws-paid-amount col 67 pic -(7)9.99
+	else
+		skip
+	endif
+	//start -----------------------------------------  //rcMay 27, 2009
+	//skip
+	print "Discount: " col 53
+			"Per" col 63
+			lf-disc-per-total  col 67 pic -(7)9.99
+			"Amt" col 85
+			lf-disc-amt-total  col 90 pic -(7)9.99
+	//end -------------------------------------------- //rcMay 27, 2009
+	if ws-is-this-a-delivery-docket != YES
+	and so-order-type-code != I5SO_TYPE_QUOTATION
+	and so-order-status not in I5SOSTATII_SO_CREDIT_NOTE_STATII
+	and not (so-order-status = I5SO_UPDATED and so-credit-note-no > 0)
+		//if sys-point-of-sale-mode-used = '2'
+			//message "dbg: last-payment"
+			do get-last-payment
+				returning       		//28feb12
+					lf-last-payment     //28feb12
+					lf-last-trans-date	//28feb12
+			if ws-last-paym-found = YES
+				print	"Last Payment:" col 1
+						//abs(tr-amount) col 16 pic $(7)9.99		//28feb12
+						abs(lf-last-payment) col 16 pic $(7)9.99    //28feb12
+						no-newline
+			endif
+		//endif
+		print	"Balance Due" col 53 bold underlined
+			no-newline
+	endif
+	if o-sys-tax-type not in {'S' 'L' 'A'}
+	and ws-is-this-a-delivery-docket != YES
+	and so-order-type-code != I5SO_TYPE_QUOTATION
+	and so-order-status not in I5SOSTATII_SO_CREDIT_NOTE_STATII
+	and not (so-order-status = I5SO_UPDATED and so-credit-note-no > 0)
+		print ws-total-due + so-order-total-shipped-tax
+			+ ws-total-charges - ws-paid-amount
+			col 67 pic -(7)9.99 underlined
+	elseif ws-is-this-a-delivery-docket != YES
+	and so-order-type-code != I5SO_TYPE_QUOTATION
+	and so-order-status not in I5SOSTATII_SO_CREDIT_NOTE_STATII
+	and not (so-order-status = I5SO_UPDATED and so-credit-note-no > 0)
+		if so-order-status = I5SO_FORWARD_ORDER
+			print ws-total-due + ws-total-charges - ws-paid-amount
+				col 67 pic -(7)9.99 underlined
+		else
+			print ws-total-due + ws-sales-tax-amt[1]
+				+ ws-sales-tax-amt[2] + ws-sales-tax-amt[3]
+				+ ws-sales-tax-amt[4]
+				+ ws-sales-tax-amt[5]
+				+ ws-total-charges - ws-paid-amount
+				col 67 pic -(7)9.99 underlined
+		endif
+	endif
+	//
+	//if sys-point-of-sale-mode-used = '2'
+	//and ws-last-paym-found = YES
+	if ws-last-paym-found = YES
+		if tr-details = SPACES
+			set tr-details = "Cash"
+		else
+			do set-tender-type-desc
+		endif
+		print	"Date Paid   :" col 1
+				//trans-date col 20			//28feb12
+				lf-last-trans-date col 20   //28feb12
+		print	"Payment Type:" col 1
+				tr-details col 16
+				no-newline
+	endif
+	if so-order-type-code = I5SO_TYPE_QUOTATION				//rmd27jan10
+		skip 2												//force Quotation GST Amt to same position as standard Invoice
+	endif													//rmd27jan10
+	if so-order-type-code in I5SOSTATII_SO_CREDIT_NOTE_STATII 	//10sep10
+	     skip 2                                             	//10sep10
+	elseif so-order-status = I5SO_UPDATED                       //10sep10
+	and so-credit-note-no <> 0                                  //10sep10
+		skip 2                                                  //10sep10
+	endif                                                       //10sep10
+	print	"Inv GST Amt." col 53
+			 //so-order-total-shipped-tax col 67	pic -(7)9.99
+			 lf-order-tax-total col 67 pic -(7)9.99
+	//rmd20jul10
+	print
+		strconcat(ws-email-body[1])
+	print
+		strconcat(ws-email-body[2])
+	//print
+	//	concat("@F604 Snooze Canberra \n123 Fake St\nCanberra 2712\nP:02 1234 5678 F:02 1234 5679\nE:canberra\@snooze.com.au @")
+		//strconcat(ws-email-body[3])
+	//print
+	//	strconcat(ws-email-body[4])
+	//rmd23jul10 attachment name
+	//message "LEFT_ORDER_NO:" LEFT_ORDER_NO
+	print
+		concat("@F408 " strconcat(LEFT_ORDER_NO) " @ @F606 c:\tm\TermsAndConditions.pdf@")
+endprocedure //print-layby-bottom ----------------------------------------------
+
+procedure get-last-payment
+returning
+	lr-last-payment			like tr-amount 	//28feb12
+	lf-last-trans-date		like trans-date //28feb12
+	set lr-last-payment	= 0
+	set lf-last-trans-date = 0
+	set ws-last-paym-found = NO
+	extract deb-trans
+		//on index accountcode tr-sort-key
+		//key is so-cust-code tr-sort-key
+		//next same accountcode tr-sort-key
+		on index accountcode trans-ref batch-ref dr-tr-trans-no
+		key is so-cust-code trans-ref SPACES 0
+		next same accountcode trans-ref
+		when trans-type in {'CU' 'CR' 'PD'}
+		and tr-amount < ZERO 	//only pick up credit payment
+	detail
+		set ws-last-paym-found = YES
+		set lr-last-payment = tr-amount 	//28feb12
+		set lf-last-trans-date = trans-date //28feb12
+		//message trans-type ": " trans-date " " lr-last-payment
+	endextract
+	//
+	//{15}
+	/*
+	if (ws-last-paym-found = NO
+	or sys-point-of-sale-mode-used = '2')
+	and sys-deb-archive-level in DEB_ARCH_IN_FULL_DETAILS
+		extract o-deb-trans-archive
+			on index accountcode trans-ref
+			key is so-cust-code tr-sort-key
+			next same accountcode trans-ref
+			when trans-ref in {'CU' 'CR' 'PD'}
+			and tr-amount < ZERO 		//only pick up credit payment
+		detail
+			set ws-last-paym-found = YES
+			set lr-last-payment = tr-amount		//28feb12
+			set lf-last-trans-date = trans-date	//28feb12
+			//message trans-type ": " trans-date " " lr-last-payment
+		endextract
+	endif
+	*/
+endprocedure // get-last-payment -----------------------------------------------
+
+procedure accum-stax
+	if sol-line-type = 'KN'
+	//don't accumulate kit tax, only accumulate component tax
+		exit
+	endif
+	if prc-sales-tax-payable-amount != 0
+	or o-sol-tax-rate-code = 5
+		set ws-sales-tax-amt[5] += sol-shipped-sales-tax-amt
+		set ws-staxable-amt[5] += sol-shipped-amount
+			- sol-shipped-sales-tax-amt
+	elseif o-sol-tax-rate-code in { 1, 2, 3, 4 }
+		set ws-sales-tax-amt[o-sol-tax-rate-code] +=
+			sol-shipped-sales-tax-amt
+		set ws-staxable-amt[o-sol-tax-rate-code] += sol-shipped-amount
+			- sol-shipped-sales-tax-amt
+	//{15}
+	//elseif o-sol-tax-rate-code BMSDEF_BETWEEN_TAX_CODE_RANGE
+	//	set ws-sales-tax-amt[5] += sol-shipped-sales-tax-amt
+	//	set ws-staxable-amt[5] += sol-shipped-amount
+	//		- sol-shipped-sales-tax-amt
+	else
+		set ws-exempt-amt += sol-shipped-amount
+	endif
+endprocedure // accum-stax ----------------------------------------------------
+
+procedure get-delivery-notes
+	get name-and-address-master
+		on index accountcode na-type
+		key is "DEL COND" "DD"
+	on error set na-name = SPACES
+		set ws-message-1 = SPACES
+		set ws-message-2 = SPACES
+		set ws-message-3 = SPACES
+		set ws-message-4 = SPACES
+		set ws-message-5 = SPACES
+	else
+		set ws-message-1 = na-name
+		set ws-message-2 = na-company
+		set ws-message-3 = na-street
+		set ws-message-4 = na-suburb
+		set ws-message-5 = na-country
+	endon
+endprocedure // get-delivery-notes --------------------------------------------
+
+procedure filter-out-postcode
+	//Just so as to make sure it dosen't appear in more than one area.
+	set postcode-pos = pattern(so-dl-text[i],ws-postcode)
+	if postcode-pos <> ZERO
+		set so-dl-text[i] =
+			substring(so-dl-text[i],1,(postcode-pos - 1))
+	endif
+endprocedure //filter-out-postcode ---------------------------------------------
+
+procedure test-for-last-line
+	if lineno() > LAST_LINE_OF_DETAIL
+		skip
+		print	"Continued on next page"  col 50
+		page
+	endif
+endprocedure // test-for-last-line --------------------------------------------
+
+procedure print-terms
+	print "This docket is your proof of" in col 22 bold
+	print "purchase and under manufacturer's" in col 20 bold
+	print "terms must be produced" in col 25 bold
+	print "for repairs under warranty." in col 23 bold
+	print "KEEP IT IN A SAFE PLACE" in col 25 bold
+	if TRUE = FALSE
+		do rbtchproc-run-in-background
+	endif
+endprocedure //print-terms -----------------------------------------------------
+
+procedure set-tender-type-desc	//18aug10 14739
+	local	lf-type				pic x(2)
+	//
+	//set lf-type = if-then-else(substring(tr-details,1,2) = 'BC','B',
+	//	if-then-else(substring(tr-details,1,6) = 'CCTPOS','Y',
+	set lf-type = if-then-else(substring(tr-details,1,6) = 'CCTPOS','Y',
+		if-then-else(substring(tr-details,1,2) = 'CC','C',
+		if-then-else(substring(tr-details,1,2) = 'DR','D',
+		if-then-else(substring(tr-details,1,2) = 'EC','E',
+		if-then-else(substring(tr-details,1,2) = 'DF','F',
+		if-then-else(substring(tr-details,1,2) = 'GI','G',
+		if-then-else(substring(tr-details,1,2) = 'H_','H',
+		if-then-else(substring(tr-details,1,2) = 'MC','M',
+		if-then-else(substring(tr-details,1,2) = 'DC','N',
+		if-then-else(substring(tr-details,1,2) = 'CH','P',
+		if-then-else(substring(tr-details,1,2) = 'PV','S',
+		if-then-else(substring(tr-details,1,2) in ( 'EF' 'TF' ),'T',
+		if-then-else(substring(tr-details,1,2) = 'VC','V',
+		if-then-else(substring(tr-details,1,2) = 'AC','X',
+		if-then-else(substring(tr-details,3,3) = '#',substring(tr-details,1,2),
+				'R')))))))))))))))//)
+	//
+	get tender-type-detail
+		on index ttd-tender-type
+		key is lf-type
+	on error
+		set ttd-tender-description = lf-type
+	endon
+	set tr-details = ttd-tender-description
+endprocedure //set-tender-type-desc ------------------------------------------
+
+procedure set-tender-type-desc-old //18aug10 14739
+	local	lf-type				pic x(2)
+	//
+	set lf-type = if-then-else(substring(tr-details,1,2) = 'BC','B',
+		if-then-else(substring(tr-details,1,6) = 'CCTPOS','Y',
+		if-then-else(substring(tr-details,1,2) = 'CC','C',
+		if-then-else(substring(tr-details,1,2) = 'DR','D',
+		if-then-else(substring(tr-details,1,2) = 'EC','E',
+		if-then-else(substring(tr-details,1,2) = 'DF','F',
+		if-then-else(substring(tr-details,1,2) = 'GI','G',
+		if-then-else(substring(tr-details,1,2) = 'H_','H',
+		if-then-else(substring(tr-details,1,2) = 'MC','M',
+		if-then-else(substring(tr-details,1,2) = 'DC','N',
+		if-then-else(substring(tr-details,1,2) = 'CH','P',
+		if-then-else(substring(tr-details,1,2) = 'PV','S',
+		if-then-else(substring(tr-details,1,2) in ( 'EF' 'TF' ),'T',
+		if-then-else(substring(tr-details,1,2) = 'VC','V',
+		if-then-else(substring(tr-details,1,2) = 'AC','X',
+		if-then-else(substring(tr-details,3,3) = '#',substring(tr-details,1,2),
+				'R'))))))))))))))))
+	//
+	get tender-type-detail
+		on index ttd-tender-type
+		key is lf-type
+	on error
+		set ttd-tender-description = lf-type
+	endon
+	set tr-details = ttd-tender-description
+endprocedure //set-tender-type-desc ------------------------------------------
+
+
+procedure get-last-open-order //rmd29jul10
+parameters
+	lp-so-order-no				like so-order-no
+	extract sales-order
+		on index so-order-no so-bo-suffix
+		key is lp-so-order-no SPACES
+		next same so-order-no
+	detail
+		set ws-last-bo-suffix = so-bo-suffix
+	endextract
+endprocedure // get-last-order ------------------------------------------------
+procedure validate-email-address
+parameters
+	lp-valid-email			pic x(60)
+returning
+	lr-valid-email			type boolean
+local fields
+	i						type numeric
+	lf-user					pic x(60)
+	lf-domain               pic x(60)
+	//
+	set lr-valid-email = TRUE
+	set i = pattern(lp-valid-email, "@")
+	if i = 0
+		set lr-valid-email = FALSE
+		message "Invalid email, no @ symbol."
+		exit
+	endif
+	set lf-user = substring(lp-valid-email, 1, i - 1)
+	set lf-domain = substring(lp-valid-email, i + 1, strlen(lp-valid-email))
+	// test user and domain for invalid char
+	if pattern(strconcat(lf-user),'[@, !]')
+		set lr-valid-email = FALSE
+		message "Invalid character in username"
+		exit
+	endif
+	if pattern(strconcat(lf-domain),'[@, !]')
+		set lr-valid-email = FALSE
+		message "Invalid character in domain name"
+		exit
+	endif
+	if pattern(strconcat(lf-domain),'..')
+		set lr-valid-email = FALSE
+		message "Invalid '..' in domain name"
+		exit
+	endif
+	// test for required char in domain
+	if not pattern(lf-domain,'.')
+		set lr-valid-email = FALSE
+		message "Missing '.' in domain name"
+		exit
+	endif
+	if substring(lf-domain,strlen(lf-domain),strlen(lf-domain)) in {"."}
+		set lr-valid-email = FALSE
+		message "Domain name ends with '.'"
+		exit
+	endif
+endprocedure // validate-email-address ----------------------------------------
+
+/*
+procedure get-printer						//rcMay 07, 2009
+	returning
+	lr-printer-name 			type string
+
+local field
+	lf-all-printer				type string
+	j							type numeric
+	//
+	open tmp-printers truncate temporary
+	//
+	set lf-all-printer = getenv(PRINTERS)
+	//
+	set j = pattern(lf-all-printer,':')
+	//
+	while j >= 1
+     	set j = pattern(lf-all-printer,':')
+        set tmp-prt-name = substring(lf-all-printer,1,j - 1)
+        insert tmp-printers
+        set lf-all-printer = substring(lf-all-printer,j + 1,strlen(lf-all-printer))
+        set j = pattern(lf-all-printer,':')
+    endwhile
+	set tmp-prt-name = lf-all-printer
+	insert tmp-printers
+	do display-printers
+endprocedure  // get-printer  ---------------------------------------
+
+screen display-printers
+	window @1,1 to @15,20
+		title "Select Printer"
+	//
+	primary tmp-printers
+		allowed select-mode search
+		datagrid occurs 10
+		review-from-start
+detail
+	display tmp-prt-name @2,1
+		title "Printer"
+endscreen //display-printers  ---------------------------------------------
+*/
+//end of file snzinvprnt.spl -------------------------------------------------

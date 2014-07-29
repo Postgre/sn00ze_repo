@@ -1,0 +1,6 @@
+// delete Stock records for Non-existant Warehouse
+delete from stock-warehouse-detail
+where
+	(whse-code NOT LIKE "820"
+and
+	whse-code NOT LIKE "821")

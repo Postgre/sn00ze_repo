@@ -1,0 +1,184 @@
+////////////////////////////////////////////////////////////////////////////////
+//check fifo to movements
+//=========================================================================//
+// Copyright (C) PRONTO Software Pty Ltd 1987 thru 2007.
+//
+// PRONTO is a registered trademark of PRONTO Software P/L.
+//
+// All Rights Reserved. Unauthorized copying is prohibited.
+//=========================================================================//
+//
+// Modification History
+// Date     Who SDR     What
+// report whse on hand, total movements, total fifo cost
+////////////////////////////////////////////////////////////////////////////////
+
+#define NO_OF_SELECTION_PARAMETERS      '0'
+
+#include '../bms/include/rbtchproc.spl'
+
+field   num-recs        type numeric
+        tmp-dir         type string
+        ws-filename       type string
+        ws-region type string
+        ws-found type string
+        i  type numeric
+		ws-stock         like stock-code
+		ws-whse        like whse-code
+                ws-qoh   type numeric
+                ws-fifo   type numeric
+                ws-move   type numeric
+				ws-avg   like whse-avg-cost
+procedure main
+    window no-hide
+    title "stocktake"
+    get system-control first
+    set ws-report-started = FALSE
+    RBTCHPROC_RUN_PROGRAM("whsenoso")
+endprocedure //main ------------------------------------------------------------
+
+screen rbtchproc-report-parameters
+    allow entry
+    //window
+    //NO_OK_CANCEL
+before
+    clear
+    display "This program will update " @5,25
+detail
+    confirm auto
+    confirmed
+        RBTCHPROC_EXECUTION_NO_REENTER
+    endconfirm
+endscreen //rbtchproc-report-parameters --------------------------------------
+
+procedure rbtchproc-set-parameters
+    //RBTCHPROC_LOAD_SET_ALPHA(ws-filename)
+endprocedure //rbtchproc-set-parameters --------------------------------------
+
+procedure start-report
+    set rbtchproc-report-name = 'stocktake Report'
+    report rbtchproc-report-name
+        header is report-header
+        no-message
+    set ws-report-started = TRUE
+    page
+endprocedure //start-report ----------------------------------------------------
+
+procedure report-header
+    print company-name col 1
+        rbtchproc-report-name col 43 bold
+        'Date:' col 85
+        tod() col 110
+        today() col 91
+        'Time:' col 104
+        'Page:' col 120
+        left-justify(str(page-no)) col 126 pic x(4)
+    skip
+    print
+        'item'
+endprocedure //report-header -------------------------------------------------
+
+procedure rbtchproc-report-detail
+    do start-report
+    if rbtchproc-in-background
+        RBTCHPROC_MESSAGE_REPORT_STARTED
+    else
+        box @18,47 to @22,80
+        display
+            'Spoolfile :' @19,54
+            spool-file-name() @19,66 pic x(12)
+            'Now at :' @21,54
+    endif
+    do fix-data
+    do finish-report
+endprocedure //rbtchproc-report-detail ---------------------------------------
+
+procedure fix-data
+    if not rbtchproc-in-background
+        display 'stocktake' @20,54
+    endif
+    set num-recs = 0
+
+    select stock-code whse-code whse-qty-on-hand whse-qty-on-consignment
+	whse-avg-cost
+    from stock-warehouse-detail
+    detail
+		if not rbtchproc-in-background
+			display stock-code @21,63
+		endif
+        set ws-stock = stock-code
+        set ws-whse = whse-code
+        set ws-qoh = whse-qty-on-hand + whse-qty-on-consignment
+        do get-fifo
+		if ws-fifo <> ws-qoh
+			do delete-fifo
+			if ws-qoh > 0
+				do insert-fifo
+			endif
+			print ws-stock     col 1
+				ws-whse      col 20
+				ws-qoh       col 30
+				ws-fifo      col 50
+		endif
+    end-select
+    if not rbtchproc-in-background
+        clear @20,54 to @20,70
+        message strconcat( str(integer(num-recs)), ' records updated.')
+    else
+        message strconcat('Finished  : ', str(integer(num-recs))) 
+    endif
+endprocedure //fix-data -------------------------------------------
+
+procedure get-fifo
+       set ws-fifo = 0
+       select ws-fifo = sum(sfc-qty)
+       from stock-fifo-costing
+       where stock-code = ws-stock 
+	   and   whse-code = ws-whse
+       detail
+	      set i = 1
+	end-select
+endprocedure //get-fifo
+
+procedure delete-fifo
+	select *
+	from stock-fifo-costing
+	where stock-code = ws-stock
+	and   whse-code = ws-whse
+	for update
+	detail
+		delete stock-fifo-costing
+	endselect
+endprocedure //delete-fifo
+
+procedure insert-fifo
+	select *
+	from stock-location
+	where stock-code = ws-stock
+	and   whse-code = ws-whse
+	detail
+		get stock-fifo-costing lock
+		on index stock-code whse-code sfc-receipt-date-time sfc-date-time-stamp
+		key is ws-stock ws-whse 0 0
+		on error
+			initialise stock-fifo-costing
+				leaving stock-code whse-code
+			set sfc-receipt-date-time = date-time(sl-receipt-date,tod(),1)
+			set sfc-date-time-stamp = sl-date-time-last-changed
+			set sfc-qty = sl-qty-on-hand
+			set sfc-cost = whse-avg-cost
+			set sfc-lot-number = sl-reference-lot
+			insert stock-fifo-costing
+		endon
+	endselect
+endprocedure //insert-fifo
+
+procedure finish-report
+    RBTCHPROC_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+    if not rbtchproc-in-background
+        display rbtchproc-report-finish-message @21,51
+        pause
+    endif
+endprocedure //finish-report ---------------------------------------------------
+    
+

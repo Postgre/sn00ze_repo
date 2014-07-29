@@ -1,0 +1,86 @@
+select
+	stock-code
+	stk-sort-analysis-code
+	stk-description
+	stk-unit-desc
+	ws-sup-code = substring (stock-code 1 3) 
+	ash-type
+	ash-years-ago
+	ash-whse
+	stk-desc-line-2
+	ash-cost
+	ws-sum-cost = sum-array (ash-cost 1 12) 
+	ash-qty
+	ws-sum-qty = sum-array (ash-qty 1 12) 
+	ash-value
+	ws-sum-value = sum-array (ash-value 1 12) 
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+	ws-gp = ws-sum-value - ws-sum-cost 
+	ws-gp% = ((ws-sum-value - ws-sum-cost ) / ws-sum-value ) * 100 
+	ws-state = sub-string (ash-whse 1 1) 
+	ws-years-ago = input
+		numeric
+		prompt is "Enter the year (eg: 2000=2000/2001,  1999=1999/2000)"
+from
+	stock-master
+	stock-aged-sales-history
+	system-table
+where
+	ash-type = 'O' 
+	and ash-years-ago = ws-years-ago 
+	and ws-sup-code in { "FUR" "DHF" "HYC" "BCR" "KEO" "MFU" "LMI" "MOD" "OZL" "PIN" "RBB" "VIT" "MAI" 
+	"SLE" } 
+	and sys-tbl-type = 'SX' 
+	and stk-sort-analysis-code = sys-tbl-code 
+order by stk-sort-analysis-code ws-sup-code stock-code stk-description 
+format is lst
+report width is 380
+suppress ash-type
+suppress ash-years-ago
+suppress ash-cost[1]
+suppress ash-cost[2]
+suppress ash-cost[3]
+suppress ash-cost[4]
+suppress ash-cost[5]
+suppress ash-cost[6]
+suppress ash-cost[7]
+suppress ash-cost[8]
+suppress ash-cost[9]
+suppress ash-cost[10]
+suppress ash-cost[11]
+suppress ash-cost[12]
+suppress ash-cost[13]
+suppress ash-qty[1]
+suppress ash-qty[2]
+suppress ash-qty[3]
+suppress ash-qty[4]
+suppress ash-qty[5]
+suppress ash-qty[6]
+suppress ash-qty[7]
+suppress ash-qty[8]
+suppress ash-qty[9]
+suppress ash-qty[10]
+suppress ash-qty[11]
+suppress ash-qty[12]
+suppress ash-qty[13]
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress sys-tbl-type
+suppress sys-tbl-code
+suppress ws-years-ago
+field order is ws-sup-code stk-sort-analysis-code sys-description stock-code stk-description stk-desc-line-2 stk-unit-desc ash-whse ws-state ws-sum-qty ws-sum-value ws-sum-cost
+display pic of ws-sup-code is x(3)
+display pic of ws-state is x(2)

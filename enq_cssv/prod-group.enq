@@ -1,0 +1,24 @@
+// program name: prod-group
+// purpose: Allows the operator to input a stk-user-group
+// and prints out all neccessary information as requested
+// by L
+// author: Ellen 30-mar-94 
+select
+	stock-group
+	stk-user-group
+	stk-description
+	stk-sort-analysis-code
+	ws-user-group = stk-user-group[2] 
+	ws-input-group = input alpha "Please enter the User Group e.g.A"
+	stk-condition-code
+	stk-pack-desc
+	stock-code
+from
+	stock-master
+where
+	ws-user-group = ws-input-group 
+format is lst
+suppress ws-user-group
+suppress ws-input-group
+field order is stock-code stock-group stk-user-group[1] stk-user-group[2] stk-description stk-sort-analysis-code stk-condition-code
+display type of stk-user-group[2] is alpha

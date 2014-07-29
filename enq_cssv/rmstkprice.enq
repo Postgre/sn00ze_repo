@@ -1,0 +1,8 @@
+// rmstkprice.eng
+// to remove price records with a space for a range of codes
+// 
+delete from stock-price
+where
+	prc-region-code = ' ' 
+	and stock-code between input alpha "Enter Starting Stock Code range to delete" and input alpha 
+	"Enter ending stock code range to delete  " 

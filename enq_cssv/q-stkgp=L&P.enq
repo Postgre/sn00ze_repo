@@ -1,0 +1,14 @@
+select
+	stock-code
+	stock-group
+	stk-abc-class
+	stk-user-group
+	stk-description
+	stk-sales-type-code
+	stk-sales-tax-paid-rate
+from
+	stock-master
+where
+	stk-sales-tax-paid-rate <> 11.00 
+	and (stock-group <> 'L' or stock-group <> 'P' ) 
+format is lst

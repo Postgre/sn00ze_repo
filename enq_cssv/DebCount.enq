@@ -1,0 +1,16 @@
+select
+	count () 
+	ws-debtor = substring (accountcode 1 3) 
+from
+	deb-master
+	system-control
+where
+	dr-date-last-change >= 31-MAR-1997
+	or
+	dr-date-created >= 31-MAR-1997
+//group by ws-debtor
+format is lst
+//field order is ws-debtor
+//field title of ws-debtor is "Store Number"
+//display pic of ws-debtor is X(10)
+//display type of ws-debtor is alpha

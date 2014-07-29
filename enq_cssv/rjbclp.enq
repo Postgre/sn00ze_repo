@@ -1,0 +1,17 @@
+select
+	stock-code
+	stk-description
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ash-qty
+from
+	stock-master
+	stock-aged-sales-history
+where
+	stock-code in { "SLE0520" "SLE0542" "SLE0597" "SLE2340" } 
+	and ash-type = "O" 
+	and ash-years-ago = 2000 
+format is external

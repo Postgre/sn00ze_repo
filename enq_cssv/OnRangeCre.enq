@@ -1,0 +1,47 @@
+select
+	cre-accountcode
+	sup-shipping-method-code
+	state = input alpha "Enter the state to report on [N,Q,S,V]"
+	cr-shortname
+	accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	na-phone
+from
+	stock-supplier
+	cre-master
+	name-and-address-master
+where
+	cre-accountcode = accountcode 
+	and 
+	sup-shipping-method-code = "A"
+	and 
+	substring (cre-accountcode 5 5) = uppercase (state) 
+format is rpt
+report header
+	page
+header
+	print "Capt'n Snooze Management"  in col 1 
+		"OnRangeCre.enq" in col 37
+		today () in col 57
+		"Pageno." in col 69
+		pageno() in col 77
+	print "On Range Creditors Listing" in col 1
+	print "For a Specific State" in col 1
+	skip 1
+	print
+		"Creditor " in col 1
+		"Name of Creditor and Phone Number" in col 14
+	print "Code" in col 2
+before cre-accountcode
+
+detail
+after cre-accountcode
+	print
+		cre-accountcode in col 1
+		concat(substring(cr-shortname,1,str-len(cr-shortname)), "   ",substring(na-phone,1,str-len(na-phone))) in col 14
+report footer

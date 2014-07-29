@@ -1,0 +1,9 @@
+select
+	stock-code
+	stk-sort-analysis-code
+	stk-description
+from
+	stock-master
+where
+	stk-sort-analysis-code = "SOP-CAP1"
+format is lst

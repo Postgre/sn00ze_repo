@@ -1,0 +1,13 @@
+select
+	accountcode
+	shortname
+	dr-bank-name
+	dr-bank-branch
+	dr-bank-accountcode
+from
+	deb-master
+where
+	accountcode > '11'
+order by dr-bank-name 
+format is lst
+title line 1 is 'written by rjb'

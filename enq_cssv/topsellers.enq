@@ -1,0 +1,45 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	stk-description
+	stk-desc-line-2
+	stock-group
+	ytd-sales = sum-array (ash-value 1 12) 
+	start-group = input alpha "Start group"
+	end-group = input alpha "End Group"
+	start-whouse = input alpha "Enter Start Store Code:"
+	end-whouse = input alpha "Please Enter End Store:"
+from
+	stock-aged-sales-history
+	stock-master
+where
+	stock-group between start-group and end-group 
+	and 
+	ash-type = 'O' 
+	and ash-whse between start-whouse and end-whouse 
+order by ytd-sales descending 
+format is lst
+suppress ash-type
+suppress ash-years-ago
+suppress ash-whse
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress stock-group
+suppress start-group
+suppress end-group
+suppress start-whouse
+suppress end-whouse

@@ -1,0 +1,12 @@
+select
+	accountcode
+	trans-date
+	tr-amount
+	dr-tr-territory
+from
+//	deb-master
+	deb-trans-archive
+where
+	dr-tr-territory = "840"
+format is lst
+total on tr-amount

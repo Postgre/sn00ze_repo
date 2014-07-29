@@ -1,0 +1,17 @@
+select
+	accountcode
+	na-type
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	na-country-code
+	na-phone
+	na-fax-no
+from
+	name-and-address-master
+where
+	na-type = "C" 
+format is lst

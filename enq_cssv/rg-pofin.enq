@@ -1,0 +1,8 @@
+// set the status of updated po's to completed for a range
+update purchase-order
+set
+	po-order-status = "90"
+where
+	po-order-status = "93"
+	and
+	(po-arrival-date <= 01-Jul-2008 ) 

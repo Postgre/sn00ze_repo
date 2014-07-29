@@ -1,0 +1,5 @@
+update sales-order
+set
+	so-cust-code = concat ('102',sub-string (so-cust-code 1, 7))
+where
+	so-order-no = 10210780

@@ -1,0 +1,20 @@
+// eftpos, MC and Visa deposits by date, by store
+select
+	bct-date
+	bct-receipt-location
+	bct-trans-type
+	bct-local-amount
+from
+	bankrec-cash-trans
+where
+	((bct-trans-type in { "M" "V" "D" } ) and 
+	(bct-date = input date prompt is "Please input required date" ) and 
+	(bct-receipt-location = input alpha 
+	prompt is "Please enter required store number" ) ) 
+order by bct-trans-type 
+format is lst
+field title of bct-date is "Date"
+field title of bct-receipt-location is "Store Number"
+field title of bct-trans-type is "Tender Type"
+field title of bct-local-amount is "Amount"
+total on bct-local-amount

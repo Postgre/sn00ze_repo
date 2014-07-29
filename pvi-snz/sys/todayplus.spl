@@ -1,0 +1,24 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/todayplus
+//  Program Desc:	Returns date equal to today plus the days passed as param 1
+//  Requested By:	
+//  Request Date:	
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03apr14	rmd	{1}		upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+// todayplus.spl
+
+procedure main
+returning
+	lr-calculated-date					type date
+	set lr-calculated-date = today + num(get-param(1))
+	//message concat("T:" str(today) "N:" str(lr-calculated-date))
+endprocedure
+// todayplus.spl

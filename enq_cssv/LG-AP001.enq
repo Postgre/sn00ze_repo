@@ -1,0 +1,11 @@
+// enquire on Suppliers with Old History
+select
+cre-accountcode
+cr-shortname
+cr-date-created
+cr-date-last-purchase
+cr-date-last-payment
+from
+cre-master
+format is lst
+

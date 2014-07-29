@@ -1,0 +1,19 @@
+select
+	stock-code
+	stk-description
+	stk-sales-tax-paid-rate
+	stk-trans-type
+	stk-trans-whse
+	stk-trans-date
+	stk-trans-ref1
+	stk-trans-qty
+	stk-trans-cost
+from
+	stock-master
+	stock-movements
+where
+	stk-sales-tax-paid-rate != 0 
+order by stock-code stk-trans-date 
+format is lst
+display pic of stk-trans-qty is zzz
+display pic of stk-trans-cost is zzz9.99-

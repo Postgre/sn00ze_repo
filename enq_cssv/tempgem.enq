@@ -1,0 +1,29 @@
+select
+	stock-code
+	ash-years-ago
+	ash-whse
+	ash-value
+	ws-stock-code = substring (stock-code 1 3) 
+	total-sales = sum-array (ash-value 1 5) 
+from
+	stock-aged-sales-history
+where
+	ws-stock-code = "GEM" 
+	and ash-years-ago = 0 
+group by ws-stock-code ash-whse
+format is lst
+suppress stock-code
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+unique record on stock-code ash-whse

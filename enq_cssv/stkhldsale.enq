@@ -1,0 +1,184 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	stk-desc-line-2
+	ws-description = concat (sub-string (stk-description 1 30) " " sub-string (stk-desc-line-2 1 30)) 
+	whse-code
+	whse-qty-on-hand
+	whse-current-orders
+	whse-back-orders
+	whse-qty-on-order
+	ws-start-whse = input alpha "Warehouse code    :"
+	ws-start-stockcode = input alpha "Start Stock Code        :"
+	ws-end-stockcode = input alpha "End Stock Code          :"
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+	ws-start-group-code = input alpha "Start Product Group Code:"
+	ws-end-group-code = input alpha "End Product Group Code  :"
+	stk-pack-desc
+	whse-avg-monthly-demand
+	ws-total = (whse-qty-on-hand + whse-qty-on-order ) - (whse-current-orders + whse-back-orders ) 
+	company-name
+	ws-how-long = ws-total / whse-avg-monthly-demand
+from
+	stock-master
+	stock-warehouse-detail
+	system-table
+	system-control
+	stock-aged-sales-history
+where
+	sys-tbl-type = 'PG' 
+	and sys-tbl-code = stock-group 
+	and whse-code = ws-start-whse
+	and (whse-qty-on-hand != 0 or whse-current-orders != 0 or whse-back-orders != 0 or whse-qty-on-order != 0 ) 
+	and stock-code between ws-start-stockcode and ws-end-stockcode 
+	and stock-group between ws-start-group-code and ws-end-group-code 
+order by stock-group stock-code whse-code 
+format is rpt
+field new-stock-group pic 9
+field new-sys-description pic 9
+field new-stock-code pic 9
+field sub-tot-whse-qty-on-hand like whse-qty-on-hand
+field sub-tot-ws-total like ws-total
+field sub-tot-whse-current-orders like whse-current-orders
+field sub-tot-whse-back-orders like whse-back-orders
+field sub-tot-whse-qty-on-order like whse-qty-on-order
+field sub-tot-avg-demand like whse-avg-monthly-demand
+report header
+	page
+header
+        print
+		company-name in col 1
+		"STOCK HOLDING/SALES COMPARISON REPORT" in col 48
+                today() in col 100
+                "Page No." in col 115
+                pageno() in col 124
+        skip 1
+	print "|" in col 74
+		"On" in col 77
+		"|" in col 81
+		"|" in col 88
+		"|" in col 95
+		"Nett" in col 97
+		"Average" in col 109
+		"How" in col 123
+        print
+                "Stock" in col 2 
+//              "Whse" in col 62 
+       		"On" in col 70
+                "|" in col 74
+                "Purch|" in col 76
+                "|Back" in col 88
+                "|Holding" in col 95
+		"Monthly" in col 109
+		"Long?" in col 122
+        print
+                "Code" in col 2 
+		"Description" in col 14
+		"Size" in col 55 
+//		"Code" in col 62 
+                "Hand" in col 69
+                "|" in col 74
+                "Order|Commit|Order" in col 76
+		"|(to sell)" in col 95 
+		"Demand" in col 109
+		"(Mnths)" in col 121
+	 print "=================================================================================================================================="
+        print "|" in col 74
+                "|" in col 81
+                "|" in col 88
+                "|" in col 95
+        print "|" in col 74
+                "|" in col 81
+                "|" in col 88
+                "|" in col 95
+before stock-group
+        set new-stock-group = 1
+before sys-description
+        set new-sys-description = 1
+before stock-code
+        set new-stock-code = 1
+before stock-code
+	set sub-tot-ws-total = 0
+        set sub-tot-whse-qty-on-hand = 0
+        set sub-tot-whse-current-orders = 0
+        set sub-tot-whse-back-orders = 0
+        set sub-tot-whse-qty-on-order = 0
+		set sub-tot-avg-demand = 0
+detail
+        if (new-stock-group)
+        endif
+        if (new-sys-description)
+                print
+                "|" in col 74
+                "|" in col 81
+                "|" in col 88
+                "|" in col 95
+                sys-description in col 7 bold underlined
+        print "|" in col 74
+                "|" in col 81
+                "|" in col 88
+                "|" in col 95
+        endif
+        if (new-stock-code)
+        print
+                stock-code in col 2 pic x(11)
+		ws-description in col 14 pic x(40)
+		stk-pack-desc in col 55
+                no newline
+        endif
+                print whse-code in col 62 no newline
+        print
+                whse-qty-on-hand in col 69 pic is zzz9-
+                "|" in col 74
+                whse-qty-on-order in col 76 pic is zzz9-
+                "|" in col 81
+                whse-current-orders in col 83 pic is zzz9-
+                "|" in col 88
+                whse-back-orders in col 90 pic is zzz9-
+                "|" in col 95
+		ws-total in col 97 pic zzz9- no newline
+		print
+			ws-how-long in col 121 pic zz9.99- no newline
+			whse-avg-monthly-demand in col 110 pic zzz9.99-
+	set new-stock-group = 0
+        set new-sys-description = 0
+        set new-stock-code = 0
+	set sub-tot-ws-total += ws-total
+        set sub-tot-whse-qty-on-hand += whse-qty-on-hand
+        set sub-tot-whse-current-orders += whse-current-orders
+        set sub-tot-whse-back-orders += whse-back-orders
+        set sub-tot-whse-qty-on-order += whse-qty-on-order
+		set sub-tot-avg-demand += whse-avg-monthly-demand
+after stock-code
+		skip
+after stock-group
+        skip 2
+after sys-description
+report footer
+        skip 2
+        print "Program name: stkhldsale.enq" in col 4
+        skip 2
+        print "Parameters:" in col 4
+                "Warehouse code :" in col 18
+                ws-start-whse in col 42 pic x(3)
+	skip
+        print
+                "Start stock code     :" in col 18
+                ws-start-stockcode in col 42 pic x(11)
+	print "End   stock code     :" in col 18
+		ws-end-stockcode in col 42 pic x(11)
+	skip
+        print "Start product group  :" in col 18
+                ws-start-group-code in col 42 pic x(4)
+	print "End   product group  :" in col 18
+		ws-end-group-code in col 42 pic x(4)
+	skip 2
+	print "NOTE:" in col 4 bold underlined
+		"'Nett Holding (to sell)' is calculated as follows:" in col 17
+	print "(On Hand + On Purch Order) - (Committed + Back Order)" in col 23
+	skip
+	print "'How Long? (Mnths)' indicates how long it will take to sell 'Nett Holding'" in col 17
+	print "based on the average monthly demand." in col 18

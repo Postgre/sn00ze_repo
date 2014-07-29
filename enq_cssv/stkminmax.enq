@@ -1,0 +1,107 @@
+select
+	stock-code
+	whse-code
+	whse-min-stock
+	whse-max-stock
+	stock-group
+	stk-description
+	stk-desc-line-2
+	ws-start-whse = input alpha "Enter start warehouse code:"
+	ws-end-whse = input alpha "Enter   end warehouse code:"
+	ws-start-stockcode = input alpha "Enter start stock code    :"
+	ws-end-stockcode = input alpha "Enter   end stock code    :"
+	ws-start-prod-grp = input alpha "Enter start product group :"
+	ws-end-prod-group = input alpha "Enter   end product group :"
+	ws-description = concat (sub-string (stk-description 1 30) " " sub-string (stk-desc-line-2 1 30)) 
+	company-name
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+from
+	stock-warehouse-detail
+	stock-master
+	system-control
+	system-table
+where
+	stock-code between ws-start-stockcode and ws-end-stockcode 
+	and whse-code between ws-start-whse and ws-end-whse 
+	and stock-group between ws-start-prod-grp and ws-end-prod-group 
+	and whse-min-stock != 0
+	and sys-tbl-type = 'PG' 
+	and sys-tbl-code = stock-group 
+order by stock-group stock-code whse-code 
+format is rpt
+field new-stock-code pic 9
+field new-stock-group pic 9
+field new-ws-description pic 9
+report header
+	page
+header
+	print 
+		company-name in col 1
+		"STOCK MINIMUM/MAXIMUM REPORT" in col 53
+		today() in col 102
+		"Page No." in col 117
+		pageno() in col 125
+	skip 2
+	print
+		"Stock" in col 2
+		"Whse" in col 87
+	print
+		"Code" in col 2
+		"Description" in col 22
+		"Code" in col 87
+		"Minimum" in col 100
+		"Maximum" in col 113
+	print "==================================================================================================================================" in col 1
+before stock-code
+	set new-stock-code = 1
+before stock-group
+	set new-stock-group = 1
+before ws-description
+	set new-ws-description = 1
+
+detail
+	if (new-stock-group)
+		print stock-group in col 6 bold 
+		sys-description in col 13 bold 
+	endif
+	if (new-stock-code)
+	skip
+		print stock-code in col 2 no newline
+	endif
+	if (new-ws-description)
+		print ws-description in col 22 pic x(60) no newline
+	endif
+	print whse-code in col 88 no newline 
+	print whse-min-stock in col 102 pic zz9 no newline 
+	print whse-max-stock in col 116 pic zz9 no newline
+	skip
+	set new-stock-code = 0
+	set new-stock-group = 0
+	set new-ws-description = 0
+after stock-code
+after stock-group
+	skip
+after ws-description
+report footer
+	skip
+	skip
+	print "Program Name:  stkminmax.enq" in col 3
+	skip 2
+	print "Parameters:" in col 3
+		"Start warehouse code :" in col 18
+		ws-start-whse in col 41 pic x(4)
+	print "End   warehouse code :" in col 18
+		ws-end-whse in col 41 pic x(4)
+	skip
+	print "Start stock code     :" in col 18
+		ws-start-stockcode in col 41 pic x(15)
+	print "End   stock code     :" in col 18
+		ws-end-stockcode in col 41 pic x(15)
+	skip
+	print "Stock product group  :" in col 18
+		ws-start-prod-grp in col 41 pic x(4)
+	print "End   product group  :" in col 18
+		ws-end-prod-group in col 41 pic x(4)
+

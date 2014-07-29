@@ -1,0 +1,15 @@
+// debtors Type Enquiry - test for NON P,C or Blank
+select
+	accountcode
+	dr-cust-type
+from
+	deb-master
+where
+	( dr-cust-type NOT LIKE "P" )
+ 
+and
+        ( dr-cust-type NOT LIKE "C"  )
+and
+        ( dr-cust-type NOT LIKE " "  )
+order by dr-cust-type
+format is lst

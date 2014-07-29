@@ -1,0 +1,3 @@
+delete from stock-movements
+where
+	sub-string (stk-trans-whse 1,1) != "6" 

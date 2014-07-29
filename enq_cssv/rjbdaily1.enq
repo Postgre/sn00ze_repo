@@ -1,0 +1,40 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-date
+	so-territory-code
+	so-rep-code
+	so-whse-code
+	sol-print-line
+	stock-code
+	sol-stk-unit-desc
+	sol-ordered-qty
+	stk-description
+	ws-date = input
+		date
+		prompt is "Enter today's date:"
+	ws-terr = input
+		string
+		prompt is "Enter store number:"
+	sol-shipped-qty
+	sol-backorder-qty
+from
+	sales-order
+	sales-order-line
+	stock-master
+where
+	so-order-date = ws-date 
+	and so-territory-code = ws-terr 
+	and sol-line-type = "SN" 
+order by so-territory-code so-rep-code so-order-no stock-code 
+format is lst
+unique so-cust-code
+unique so-order-date
+unique so-territory-code
+unique so-rep-code
+field order is so-territory-code so-rep-code so-cust-code so-order-no so-bo-suffix so-whse-code stock-code stk-description sol-stk-unit-desc sol-ordered-qty sol-shipped-qty sol-backorder-qty sol-print-line
+display pic of sol-ordered-qty is z9-
+display pic of stk-description is x(15)
+display pic of sol-shipped-qty is z9-
+display pic of sol-backorder-qty is z9-

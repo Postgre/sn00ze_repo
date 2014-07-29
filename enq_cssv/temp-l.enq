@@ -1,0 +1,9 @@
+select
+	stock-code
+	stk-description
+	stock-group
+from
+	stock-master
+where
+	stock-group = "L"
+format is lst

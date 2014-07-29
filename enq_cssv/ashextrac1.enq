@@ -1,0 +1,17 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-value-lytd
+	ash-cost
+	ash-cost-lytd
+	ash-qty
+	ash-qty-lytd
+from
+	stock-aged-sales-history
+where
+	stock-code in { "KEO0297" "KEO0298" "KEO0302" "KEO0429" "DES0003" "DES0030" "DES0031" "FUR0379" "FUR0074" "FUR0171" "SOP1021" "SOP1031" "SOP1051" } 
+	and ash-whse between "250" and "350" 
+format is external

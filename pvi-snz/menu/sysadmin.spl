@@ -1,0 +1,222 @@
+// sysadmin.spl
+object ff-file type external separator is "^"
+	record
+		ff-record		pic x(1000)
+	endrecord
+
+object tmp-file type memory
+	record
+		tmp-line-number	type numeric
+		tmp-record		pic x(1000)
+	endrecord
+	key is tmp-line-number
+
+mode md-profile
+	prompt "Edit Profile"
+	help "Edit this users profile"
+	currency
+
+mode md-su
+	prompt "SU"
+	help "Switch to this users login"
+	currency
+
+mode md-check-rtt-user
+	prompt "Check RTT User"
+	help "Check RTT User"
+
+
+
+field
+	ws-time-stamp					pic x(12) // yyyymmddhhnn
+	ws-date-stamp					pic x(8) // yyyymmdd
+
+procedure main
+	//if login-id() in {"root" "pronto"}
+		set ws-time-stamp = concat(format-picture(today(),"YYYYMMDD") format-picture(tod(),"HHMM"))
+		set ws-date-stamp = concat(format-picture(today(),"YYYYMMDD"))
+		//message concat(ws-time-stamp "Sysadmin Tasks")
+		do sys-admin-menu
+	//endif
+endprocedure // main ----------------------------------------------------------
+
+menu sys-admin-menu
+	//
+	window @1,1 to @22,80
+	before
+	detail
+	option "Unique Login Count" @5,15
+		security 8
+		help is "Unique Logins"
+			command
+				"sh"
+			parameters
+				"-c"
+				"$CUS/rmd/scripts/uu.sh"
+			command
+				"sh"
+			parameters
+				"-c"
+				"cat /tmp/uniqueusercount | mail rob.dexter@proviewit.com.au"
+
+			command
+				"sh"
+			parameters
+				"-c"
+				"$PRONTO/bin/prowp /tmp/uniqueusercount"
+//$CUS/scripts/uu
+//rawcount=`who -q | sort | uniq | wc -l`
+//ucount=`expr $rawcount - 1`
+//#echo `date` $ucount ":" $rawcount
+//echo `date` $ucount >> /data0/uniqeusercount
+	option "User Review" @6,15
+		security 8
+		do user-review
+	option "Who is on?" @8,15
+		security 8
+		help is "Who is on Pronto?"
+			command
+				"sh"
+			parameters
+	        	"-c"
+				"who -u > /tmp/whonow"
+			command
+				"sh"
+			parameters
+	        	"-c"
+				"prowp /tmp/whonow"
+	option "What are they up to?" @9,15
+		security 8
+		help is "What are they up to?"
+			command
+				"sh"
+			parameters
+	        	"-c"
+				"prowho > /tmp/whatdoing"
+			command
+				"sh"
+			parameters
+	        	"-c"
+				"prowp /tmp/whatdoing"
+	option "Ad-hoc Global 52 week rep-summary extract - call from MAS" @10,15
+		//command "sh"
+		//	parameters
+		//		"-c"
+		//		concat("cd /data/csmaccounting/mas;prospl $CUS/rmd/adhoc/globrepsum")
+		spl "rmd/adhoc/globrepsum"
+	option "Error Tail" @11,15
+		command "sh"
+			parameters
+				"-c"
+				"tail -n 1000 $PRONTO/lib/error.log > /tmp/error.log"
+		command "sh"
+			parameters
+				"-c"
+				"prowp /tmp/error.log"
+endmenu // sys-admin-menu -----------------------------------------------------
+
+screen user-review
+local field
+	lf-command-string					pic x(100)
+	lf-original-file					pic x(100)
+	lf-backup-string					pic x(100)
+window @1,1 to @24,50 title "User Review"
+	primary system-user-control
+	datagrid occurs 20
+	review-from-start
+	allowed search md-profile md-su md-check-rtt-user
+
+detail
+	display user-id				@1,2 title is "User ID"
+	display user-employee-name	@1,4 title is "Employee Name"
+confirm
+	auto
+confirmed
+	if screen-mode() = md-profile
+		set lf-command-string = concat("prowp /home/" strconcat(user-id) "/.profile")
+		set lf-original-file = concat("/home/" strconcat(user-id) "/.profile")
+		set lf-backup-string = strconcat("/home/" strconcat(user-id) "/.profile" format-picture(today(),"YYYYMMDD") format-picture(tod(),"HHMMSS"))
+		//message lf-command-string
+		command
+			"sh"
+		parameters
+			"-c"
+			//concat("cp" " "	"/local/samba/lib/smb.conf"	concat("/local/samba/lib/smb.conf" ws-time-stamp))
+			concat("cp " strconcat(lf-original-file) " " strconcat(lf-backup-string))
+		message concat("Created Backup: " strconcat(lf-backup-string))
+		command "sh"
+			parameters
+				"-c"
+				strconcat(lf-command-string)
+	elseif screen-mode() = md-su
+		command "sh"
+			parameters
+				"-c"
+				concat("su - " user-id)
+	elseif screen-mode() = md-check-rtt-user
+			do check-rtt-usage
+				parameters
+					SPACES
+					substring(user-id,1,6)
+	endif
+endconfirm
+endscreen // user-review ------------------------------------------------------
+
+procedure check-rtt-usage	//11mar13
+local field
+	lf-tmp-file		pic x(40)
+	lf-command		pic x(200)
+	i				type numeric
+parameters
+	lp-tdr-dir      pic x(20)
+	lp-tdr-file		pic x(20)
+	//message "lp-tdr-dir: " lp-tdr-dir
+	//message "lp-tdr-file: " lp-tdr-file
+	set lf-tmp-file = strconcat("/tmp/rtt-usage-" str(pid()))
+	set lf-command = concat("cat /reports/realtimetrace/* | grep " strconcat(lp-tdr-file) " > " strconcat(lf-tmp-file))
+	command "sh"
+		parameters
+			"-c"
+			lf-command
+	//command "vi"
+	//	parameters
+	//		strconcat(lf-tmp-file)
+	set i = 0
+	open ff-file read-only
+		file strconcat(lf-tmp-file)
+	open tmp-file truncate temporary
+	extract ff-file
+	detail
+		set i += 1
+		set tmp-line-number	= i
+		set tmp-record = ff-record
+		insert tmp-file
+	endextract
+	close ff-file and remove
+	if i = 0
+		message "No activity found for " lp-tdr-file
+	else
+    	do dig-tmp-file
+    endif
+endprocedure // check-rtt-usage -----------------------------------------------
+
+screen dig-tmp-file
+	window @1,1 to @24,90
+		title concat("Results")
+		primary tmp-file
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+detail
+	display tmp-record						@1,010 pic x(110)
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // dig-tmp-file -----------------------------------------------------
+
+// sysadmin.spl

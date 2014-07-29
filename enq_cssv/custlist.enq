@@ -1,0 +1,89 @@
+// This report produces a list of customers, with their names and addresses,
+// for sales orders delivered within a specified date range.
+select
+	so-order-no
+//	so-cust-code
+	order-log-date
+//	so-order-status
+//	so-territory-code
+	accountcode
+	na-type
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	ws-start-date = input date "Enter start delivery date:"
+	ws-end-date = input date "Enter   end delivery date:"
+	ws-start-terr = input alpha "Enter start store number:"
+	ws-end-terr = input alpha "Enter   end store number:"
+	company-name
+from
+	sales-audit-file
+	name-and-address-master
+	system-control
+where
+//	so-order-status = '90' 
+	order-log-date between ws-start-date and ws-end-date 
+//	and so-territory-code between ws-start-terr and ws-end-terr 
+	and na-type = 'C' 
+//	and so-cust-code = accountcode 
+order by accountcode 
+format is rpt
+field new-so-order-no pic 9
+field new-accountcode pic 9
+field new-na-name pic 9
+report header
+	page
+header
+	print 
+		company-name in col 1
+		"Customer Listing" in col 58
+		today() in col 95
+		"Pageno." in col 114
+		pageno() in col 123
+	skip 1
+	print
+		"   so" in col 1
+		"accountcode" in col 10
+		"na-name" in col 21
+		"na-company" in col 52
+		"na-street" in col 83
+		"na-suburb" in col 114
+	print
+		"order no" in col 1
+		" code" in col 10
+	skip 1
+	print "=================================================================================================================================" in col 1
+before so-order-no
+	set new-so-order-no = 1
+before accountcode
+	set new-accountcode = 1
+before na-name
+	set new-na-name = 1
+
+detail
+	if (new-accountcode)
+		print accountcode in col 1 no newline
+		print na-name in col 12 no newline
+		print na-company in col 43 no newline
+		print na-street in col 74 no newline
+			if na-suburb = spaces
+				print postcode in col 105
+			else
+				skip
+				print
+					na-suburb in col 12 
+					na-country in col 43
+					postcode in col 105 
+			endif
+	skip
+	endif
+	set new-so-order-no = 0
+	set new-accountcode = 0
+	set new-na-name = 0
+after accountcode
+after accountcode
+after na-name
+report footer

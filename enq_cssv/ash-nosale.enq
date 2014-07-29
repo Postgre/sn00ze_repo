@@ -1,0 +1,45 @@
+// Purpose: To select those records that have not had a sale recorded against 
+// them for 12 mths.
+// By: Ellen Gallagher
+// Title: d-nosale
+// Future Purpose: to mark them with an x for bulk deletes!!!!
+select
+	stock-code
+	ash-years-ago
+	ash-value
+	stk-description
+	stk-user-group
+	total-sales = sum-array (ash-value 1 13) 
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-years-ago = 0 
+	and stk-user-group[1] = "D" 
+	and total-sales = 0 
+group by stock-code
+format is lst
+report width is 132
+title line 1 is "Stock Items and their sales for year to date" 
+title line 2 is "Where stk-user-group[1] = D" 
+title line 3 is "These items will be set to x" 
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+field order is stock-code stk-description total-sales
+display pic of stock-code is x(8)
+display pic of ash-years-ago is 9
+display pic of stk-description is x(36)
+display pic of stk-user-group[1] is x(1)
+display pic of stk-user-group[2] is x(2)
+display pic of total-sales is 99v99

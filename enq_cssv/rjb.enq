@@ -1,0 +1,5 @@
+select
+	stock-code
+from
+	stock-aged-sales-history
+format is lst

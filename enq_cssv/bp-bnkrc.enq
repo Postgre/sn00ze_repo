@@ -1,0 +1,6 @@
+// debtors - Update Albury's bankrec with bank acc codes
+update bankrec-cash-trans
+set
+	bct-bank-code = "BA3"
+where
+	bct-bank-gl-account = "2C1121233"

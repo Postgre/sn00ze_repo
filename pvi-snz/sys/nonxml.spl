@@ -1,0 +1,9 @@
+// nonxml.spl
+procedure main
+parameter lp-program-to-run pic x(256) type string
+//
+if set-environment("PROXMLREPORTS","NO")
+	 spl
+	 	lp-program-to-run
+endif
+// nonxml.spl

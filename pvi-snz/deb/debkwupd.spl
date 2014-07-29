@@ -1,0 +1,228 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/deb/debkwupd
+//  Program Desc:	Customer keyword update
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	21feb14	rmd			upgraded to 710
+///////////////////////////////////////////////////////////////////////////////
+
+// debkwupd.spl
+// 19mar09	rmd	add mobile# (in fax fields
+//				will need provision for addr line 3 plus the two ph contact fields
+
+version-number "CUSTOM LIVE rmd/deb/debkwupd 20090319"
+
+field
+	ws-accountcode							like accountcode
+	ws-territory							like territory
+	ws-deb-key-words						like deb-key-word occurs 11
+
+procedure main
+	get deb-master
+	on index accountcode
+	key is get-param(1)
+	on error
+		exit
+		//set ws-accountcode = "DEXTRO05"
+		//set ws-territory = "345"
+	else
+		set ws-accountcode = accountcode
+		set ws-territory = territory
+	endon
+	do clear-keywords
+	do create-keywords
+endprocedure // main ----------------------------------------------------------
+
+procedure clear-keywords
+	extract deb-key-words lock
+	on index accountcode deb-key-word
+	key is ws-accountcode SPACES
+	next same accountcode
+	detail
+		delete deb-key-words
+	endextract
+endprocedure // clear-keywords ------------------------------------------------
+
+procedure create-keywords
+local field
+	i										type numeric
+	lf-str-to-split							pic x(50)
+	lf-str									pic x(51) occurs 4
+	lf-word-count							type numeric
+	//i										type numeric
+	p										type numeric
+	l										type numeric
+	lf-ph-number-valid						type boolean
+	//
+	get name-and-address-master
+	on index accountcode na-type
+	key is ws-accountcode "C"
+	on error
+		initialise name-and-address-master
+	else
+	endon
+	set lf-str-to-split = na-name // shortname
+	set p = 0
+	set l = strlen(lf-str-to-split)
+	set lf-word-count = 0
+	// pass 1
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[1] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	// pass 2
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[2] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	// pass 3
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[3] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	// pass 4
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[4] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	set ws-deb-key-words[1] = lf-str[1]
+	set ws-deb-key-words[2] = lf-str[2]
+	set ws-deb-key-words[3] = lf-str[3]
+	for i = 1 to 4
+		set lf-str[i] = SPACES
+	endfor
+	set lf-str-to-split = na-company
+	set p = 0
+	set l = strlen(lf-str-to-split)
+	set lf-word-count = 0
+	// pass 1
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[1] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	// pass 2
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[2] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	// pass 3
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[3] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	// pass 4
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[4] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	set ws-deb-key-words[4] = lf-str[1]
+	set ws-deb-key-words[5] = lf-str[2]
+	set ws-deb-key-words[6] = lf-str[3]
+	set ws-deb-key-words[7] = na-street
+	set ws-deb-key-words[8] = na-suburb
+	//19mar09 strip the spaces from phone numbers
+	do mobile-no-clean-up
+		parameters
+			na-phone
+		returning
+			na-phone
+			lf-ph-number-valid
+	// 04******** test not required for phone number
+	//if lf-ph-number-valid
+		set ws-deb-key-words[9] = na-phone
+	//endif
+	set ws-deb-key-words[10] = postcode
+	//19mar09 strip the spaces from mobile numbers
+	do mobile-no-clean-up
+		parameters
+			na-fax-no
+		returning
+			na-fax-no
+			lf-ph-number-valid
+	if lf-ph-number-valid
+		set ws-deb-key-words[11] = na-fax-no
+	endif
+	for i = 1 to 11
+		if strlen(ws-deb-key-words[i]) > 0
+			do
+				insert-deb-key-word
+			parameters
+				ws-accountcode
+				ws-deb-key-words[i]
+				ws-territory
+		endif
+	endfor
+endprocedure // create-keywords -----------------------------------------------
+
+procedure insert-deb-key-word
+parameters
+	lp-accountcode							like accountcode
+	lp-deb-key-word							like deb-key-word
+	lp-dkw-territory						like dkw-territory
+	//
+	set accountcode = lp-accountcode
+	set deb-key-word = lp-deb-key-word
+	set dkw-territory = lp-dkw-territory
+	get deb-key-words lock
+	on index accountcode deb-key-word
+	on error
+		insert deb-key-words
+		on error
+		endon
+	else
+	endon
+endprocedure // insert-deb-key-word -------------------------------------------
+
+procedure mobile-no-clean-up
+local field
+	i								type numeric
+	c								pic x
+	lf-working-string				pic x(20)
+parameters
+	lp-input-string					pic x(20)
+returning
+	lr-mobile-no					pic x(10)
+	lr-valid-mobile					type boolean
+	//
+	for i = strlen(lp-input-string) down to 1
+		set c = substring(lp-input-string,i,i)
+		if c != SPACES
+			set lf-working-string = concat(c lf-working-string)
+		endif
+	endfor
+	set lr-valid-mobile	= FALSE
+	//message lf-working-string
+	if strlen(lf-working-string) = 10
+		set lr-mobile-no = strconcat(lf-working-string)
+		if substring(lr-mobile-no,1,2) = "04"
+			set lr-valid-mobile	= TRUE
+		endif
+	else
+		set lr-mobile-no = strconcat(lf-working-string)
+	endif
+endprocedure // remove-spaces -------------------------------------------------
+// debkwupd.spl

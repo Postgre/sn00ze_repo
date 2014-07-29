@@ -1,0 +1,88 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/getsolnote
+//  Program Desc:	Popup to capture note line controlling its length and
+//					wanrning it won't appear on paperwork if it is a Memo
+//  Requested By:	Chris Ward
+//  Request Date:	04apr13
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	15may14	rmd			upgrade to 710.3
+//	19apr13	rmd	{1}		allow edit of eixsting note line, ensure mode
+//						(Note/Memo) is retained
+//	04apr13	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+procedure main
+local field
+	lf-title		pic x(40)
+	lf-note			pic x(45)
+parameters
+	lp-order-no     like so-order-no
+	lp-bo-suffix    like so-bo-suffix
+	lp-line-seq  	like sol-line-seq
+	lp-mode			pic x(30)
+returning
+	lr-note			pic x(45)
+	//set lf-len = num(substring(lp-len,2,3))
+	set lf-title = lp-mode //""
+	//message lp-mode
+	get sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is lp-order-no lp-bo-suffix lp-line-seq
+	on error
+	else
+		if sol-print-line = "N"
+			set lf-title = "Memo Maintenance*"
+			set lp-mode = "Memo Maintenance"
+		else
+			set lp-mode = "Note Maintenance"	//{1}
+			set lf-title = "Note Maintenance*"	//{1}
+		endif
+		set lf-note	= concat(sol-line-description substring(stock-code,1,15))	//{1}
+	endon
+	do get-note entry-once
+		parameters
+			lp-mode
+			lf-title
+			lf-note	//{1}
+		returning
+			lr-note
+endprocedure // main ----------------------------------------------------------
+
+screen get-note
+local field
+	lf-note			pic x(45)
+parameters
+	lp-mode			pic x(30)
+	lp-title		pic x(40)
+	lp-note			pic x(45)	//{1}
+returning
+	lr-note			pic x(45)
+	//set lf-len = num(substring(lp-len,2,3))
+	//window @1,1 to @4,60 title concat("Note Line [" str(lf-len) "]")
+	window @1,1 to @5,72 title lp-title
+		window-position is 5
+	set lf-note = lp-note	//{1}
+	if uppercase(substring(lp-mode,1,4)) = "MEMO"
+		display "WARNING: This is a Memo and will not appear on PO or Invoice!" @3,5.5 prompt centre bold colour is red
+	endif
+	//accept lf-note @2,16 title "Note" pic x(45)
+	accept lf-note @2,16 title concat(" " substring(lp-mode,1,4) ":")  pic x(45)
+		default lf-note
+		validation
+			set lr-note = lf-note
+		endvalidation
+confirm
+confirmed
+endconfirm
+endscreen // main -------------------------------------------------------------
+/*
+WARNING: This is a Memo and will not appear on PO or Invoice!
+This is note line restricted to 45 characters
+*/

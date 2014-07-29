@@ -1,0 +1,6 @@
+update stock-price
+set
+	prc-recommend-retail = prc-wholesale-price
+where
+	prc-recommend-retail = 0
+	and prc-region-code = 'S'

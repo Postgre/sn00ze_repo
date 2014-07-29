@@ -1,0 +1,15 @@
+select
+	accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	last-sale
+from
+	deb-master
+	name-and-address-master
+where
+	na-type = 'C' 
+format is lotus

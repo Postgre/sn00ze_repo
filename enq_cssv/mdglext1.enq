@@ -1,0 +1,9 @@
+select
+	company-name
+	sys-gl-per
+	sys-dl-per
+	sys-cl-per
+	sys-stk-per
+from
+	system-control
+format is external

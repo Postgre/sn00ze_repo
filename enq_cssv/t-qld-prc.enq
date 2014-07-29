@@ -1,0 +1,12 @@
+select
+	stock-code
+	prc-region-code
+	prc-wholesale-price
+	prc-recommend-retail
+from
+	stock-price
+where
+	prc-region-code = "Q"
+	and prc-wholesale-price = 0
+	and prc-recommend-retail <> 0
+format is lst

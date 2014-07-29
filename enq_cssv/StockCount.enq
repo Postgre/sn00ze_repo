@@ -1,0 +1,21 @@
+// stats03.eng
+// to  count the number of products in a particular usergroup 2 field
+// 
+select
+	stock-code
+	count ()
+from
+	stock-master
+format is lst
+title line 1 is "Capt'n Snooze" 
+title line 2 is " " 
+title line 3 is "Count by user 2 field" 
+title line 4 is " " 
+title line 5 is "usrgrp2cnt.enq           Run on " today () " At " tod () 
+title line 6 is " " 
+suppress stock-code
+suppress stk-stock-status
+suppress stk-user-group[1]
+suppress stk-user-group[2]
+suppress stk-description
+total on ws-count

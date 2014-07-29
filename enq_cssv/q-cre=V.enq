@@ -1,0 +1,8 @@
+select
+	cre-accountcode
+	cr-shortname
+from
+	cre-master
+where
+	substring(cre-accountcode,4,5) = '-V'
+format is lst

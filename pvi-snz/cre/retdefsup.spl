@@ -1,0 +1,30 @@
+// called from m5relquote.pcs create-a-purchase-order.cre-accountcode before_accept retdefsup.spl stock-code
+// returns default supplier
+procedure main
+local field
+	lf-sup-priority			like sup-priority
+	lf-cre-accountcode		like cre-accountcode
+returning
+	lr-default-supplier			like cre-accountcode
+	if strlen(get-param(1)) = 0
+		//message "dbg: no stock-code passed"
+		exit
+	endif
+	set lf-sup-priority = 9
+	extract stock-supplier
+	on index stock-code cre-accountcode
+	key is get-param(1) SPACES
+	detail
+		if sup-priority < lf-sup-priority
+			set lf-sup-priority = sup-priority
+			set lf-cre-accountcode = cre-accountcode
+		endif
+	endextract
+	set lr-default-supplier = lf-cre-accountcode
+	if lr-default-supplier = SPACES
+		//message "dbg: cannot find supplier for " get-param(1)
+	else
+		//message "dbg: found supplier " strconcat(lr-default-supplier) " for " get-param(1)
+	endif
+endprocedure // main ----------------------------------------------------------
+// retdefsup.spl

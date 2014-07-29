@@ -1,0 +1,32 @@
+select
+	cre-accountcode
+	cr-def-payment-terms
+	accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	na-country-code
+	na-phone
+	na-fax-no
+	sys-description
+	sys-money-value
+	sys-tbl-alpha-1
+	sys-tbl-type
+	sys-tbl-code
+	cr-payment-selection
+	cr-settlement-disc-code
+from
+	cre-master
+	name-and-address-master
+	system-table
+where
+        cr-payment-selection = "L"
+       and cr-def-payment-terms = sys-tbl-code 
+	and cre-accountcode = accountcode 
+	and sys-tbl-type = "CQ" 
+order by cre-accountcode 
+group by cre-accountcode
+format is external

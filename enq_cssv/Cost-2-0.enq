@@ -1,0 +1,4 @@
+update stock-supplier
+set sup-last-buy-price = 0
+where
+	sup-last-buy-price <= 1.11

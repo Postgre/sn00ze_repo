@@ -1,0 +1,18 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	stk-desc-line-2
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-qty
+from
+	stock-master
+	stock-aged-sales-history
+where
+	stock-group = 'F' 
+	and ash-type = 'O' 
+	and ash-years-ago = 2000 
+format is lotus

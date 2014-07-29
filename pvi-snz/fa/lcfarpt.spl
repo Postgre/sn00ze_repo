@@ -1,0 +1,238 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/fa/lcfarpt.spl
+//  Program Desc:	Leena Chandra Fixed Asset report
+//  Requested By:	Leena Chandra
+//  Request Date:	17jul13
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	15may14	rmd			upgrade for 710.3
+//	06aug13	rmd			fix for incorrect disposed values
+//	30jul13	rmd			identifier field to show (D)isposed or (A)ddition
+//						show accum depn in diff fields for Disposed items
+//						show disp date and value
+//	23jul13	rmd         shift columns - add descriptive tax rates
+//	18jul13	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+/*
+30jul13
+disposal details - want to see
+disp val  = 150
+disposal-value
+disp date = 28-JUL-2013
+disposal-date
+accum depn at disp (book and tax) place in different fields to normal if disposal is detected
+
+
+
+
+Addition
+21599
+desc Pronto Test
+acq date 01-JUL-2013
+acq cost 320
+
+trans ref 123
+trans desc Pronto Test Acquired
+
+Mark as Addition if acquisition-date in current FY
+
+*/
+object tmp-asset-register like asset-register type memory
+	//record
+	//	asset-no
+	//	//asset-status
+	//	asset-desc
+	//	asset-group
+	//	asset-location-code
+	//	acquisition-date
+	//	asset-capital-cost
+	//	asset-tax-capital-cost
+	//
+	//	asset-orig-tax-capital-cost
+	//
+	//	disposal-value
+	//	asset-tax-wdv
+	//	asset-book-depreciation
+	//
+	//endrecord
+mode md-fa-enq
+	prompt "Enqure"
+	help "Enquire on this Fixed Asset"
+
+procedure main
+local field
+	lf-confirm			type boolean
+	lf-fy-start			type date
+	lf-fy-end           type date
+	do get-dates entry-once
+		returning
+			lf-confirm
+			lf-fy-start
+			lf-fy-end
+	if lf-confirm
+		do build-dataset
+			parameters
+				lf-fy-start
+			    lf-fy-end
+		do display-in-grid
+	endif
+endprocedure // main ----------------------------------------------------------
+
+screen get-dates
+returning
+	lr-confirmed		type boolean
+	lr-fy-start			type date
+	lr-fy-end           type date
+window @1,1 to @5,30 title "Set Date Range"
+	get system-control first
+	set lr-fy-start     = sys-start-of-tax-year
+    set lr-fy-end  		= sys-next-yr-period-start[1] - 1
+	box @1,1 to @4,30 title SPACES
+	accept lr-fy-start	@2,12 title "Start Date:" 	default lr-fy-start
+	accept lr-fy-end    @3,12 title "End Date:" 	default lr-fy-end
+confirm
+confirmed
+	set lr-confirmed = TRUE
+notconfirmed
+	set lr-confirmed = FALSE
+endconfirm
+endscreen // get-dates --------------------------------------------------------
+
+procedure build-dataset
+parameters
+	lp-fy-start			type date
+	lp-fy-end           type date
+	//
+	open tmp-asset-register truncate temporary
+	extract asset-register
+	detail
+		if asset-status not in {"30" "50"}
+			continue
+		endif
+		set asset-spare-code = SPACES
+		if asset-status = "30" and acquisition-date not between lp-fy-start and lp-fy-end
+			set asset-spare-code = SPACES
+		elseif asset-status = "30" and acquisition-date between lp-fy-start and lp-fy-end
+			set asset-spare-code = "A"
+		elseif asset-status = "50" and disposal-date between lp-fy-start and lp-fy-end
+			set asset-spare-code = "D"
+		else
+			//not 30
+			//not 50 with disposal in selected period
+			continue
+		endif
+		//set ar-user-only-num1 = asset-accum-book-depn + sum-array(asset-book-depreciation,1,13)										//Book Accum Dep
+		//set ar-user-only-num2 = asset-tax-depreciation + asset-accum-tax-depn  														//Tax Accum Dep
+		set ar-user-only-num3 = asset-wdv - sum-array(asset-book-depreciation,1,13)														//Book WDV
+		set ar-user-only-num4 = asset-tax-capital-cost - asset-accum-tax-depn - asset-tax-depreciation + asset-tax-balancing-charge-amt	//Tax WDV
+		if asset-spare-code = "D"
+			//set ar-user-only-num1 = 0 																								//Book Accum Dep			//06aug13
+			//set ar-user-only-num2 = 0 																								//Tax Accum Dep             //06aug13
+			set ar-user-only-num1 = asset-accum-book-depn + sum-array(asset-book-depreciation,1,13)										//Book Accum Dep            //06aug13
+			set ar-user-only-num2 = asset-tax-depreciation + asset-accum-tax-depn														//Tax Accum Dep             //06aug13
+			set asset-expenses[1] = asset-accum-book-depn + sum-array(asset-book-depreciation,1,13)										//Book Accum Dep - disposed
+			//set asset-expenses[2] = asset-wdv - sum-array(asset-book-depreciation,1,13)												//Tax Accum Dep  - disposed	//06aug13
+			set asset-expenses[2] = asset-tax-depreciation + asset-accum-tax-depn														//Tax Accum Dep  - disposed //06aug13
+		else
+			set ar-user-only-num1 = asset-accum-book-depn + sum-array(asset-book-depreciation,1,13)										//Book Accum Dep
+			set ar-user-only-num2 = asset-tax-depreciation + asset-accum-tax-depn														//Tax Accum Dep
+			set asset-expenses[1] = 0 																									//Book Accum Dep - disposed
+			set asset-expenses[2] = 0 																									//Tax Accum Dep  - disposed
+		endif
+		//WDV = asset-tax-capital-cost - asset-accum-tax-depn - asset-tax-depreciation + asset-tax-balancing-charge-amt
+		//extract asset-trans
+		//	on index asset-no gl-trans-date
+		//	key is asset-no 0
+		//	next same asset-no
+		//detail
+		//	set ar-user-only-num2 += asset-trans-amount
+		//endextract
+		get system-table
+			on index sys-tbl-type sys-tbl-code
+			key is "AT" asset-depreciation-code
+		on error
+			//initialise system-table
+			set sys-tbl-sales-mtd = 0
+			set sys-tbl-sales-ytd = 0
+		endon
+		set ar-user-only-date1 = sys-tbl-sales-mtd * 100	//book rate
+		set ar-user-only-date2 = sys-tbl-sales-ytd * 100	//tax rate
+		insert tmp-asset-register
+	endextract
+endprocedure // build-dataset -------------------------------------------------
+
+screen display-in-grid
+	window @1,1 to @24,130
+		title concat("Asset Register")
+		primary tmp-asset-register
+		datagrid occurs 20
+	allowed search md-fa-enq
+	review-from-start
+detail
+	display asset-no						@1,002 title "Asset No"
+	//display asset-status                	@1,003 title "asset-status"
+	display asset-spare-code				@1,004 title "Status"
+	display asset-desc                  	@1,006 title "Desc"
+	display asset-group                 	@1,008 title "Group"
+	display asset-location-code         	@1,010 title "Locn"
+	display acquisition-date            	@1,012 title "Acq Date"
+	display asset-depreciation-code         @1,014 title "Depn Code"
+	//display asset-depreciation-method       @1,014 title "Book Meth"
+	//display asset-depreciation-tax			@1,016 title "Tax Meth"
+	display ar-user-only-date1 / 100   		@1,016 title "Book Rate" pic zzz9.99
+	display ar-user-only-date2 / 100		@1,018 title "Tax Rate" pic zzz9.99
+	//display asset-capital-cost          	@1,018 title "Book Capital Cost"
+	//display asset-tax-capital-cost      	@1,020 title "Tax Capital Cost"
+	//display ar-user-only-num1           	@1,022 title "Book Accum Depn"
+	//display ar-user-only-num2				@1,024 title "Tax Accum Depn"
+	//display ar-user-only-num3           	@1,026 title "Book WDV"
+	//display asset-tax-wdv               	@1,028 title "Tax WDV"
+	//display ar-user-only-num4				@1,030 title "Tax WDV"// *calc*"
+	//from deprecition page
+	display asset-capital-cost          	@1,020 title "Book Capital Cost"
+	//display ar-user-only-num1           	@1,022 title "Book Accum Depn"
+	display	asset-accum-book-depn			@1,026 title "Book Depn Opening"//"Depn Opening"
+	display sum-array(asset-book-depreciation, 1, sys-number-of-periods) @1,030 title "Book Depn YTD"  pic --------9.99//"- Year to Date"  pic --------9.99
+	display ar-user-only-num1           	@1,034 title "Book Accum Depn"
+	display ar-user-only-num3           	@1,040 title "Book WDV"
+	display asset-tax-capital-cost      	@1,044 title "Tax Capital Cost"
+	display asset-accum-tax-depn            @1,048 title "Tax Depn Opening"//"Tax Accum Depn"
+	display asset-tax-depreciation			@1,052 title "Tax Depn YTD"
+	display ar-user-only-num2				@1,056 title "Tax Accum Depn"
+	display ar-user-only-num4				@1,060 title "Tax WDV"// *calc*"
+	display disposal-date	                @1,064 title "Disposal Date"
+	display disposal-value					@1,068 title "Disposal Val"
+	display asset-expenses[1]               @1,072 title "Book Accum Depn (Disp)"
+	display asset-expenses[2]				@1,076 title "Tax Accum Depn (Disp)"
+	//
+	//display asset-orig-tax-capital-cost 	@1,018 title "asset-orig-tax-capital-cost"
+	//display disposal-value              	@1,020 title "disposal-value"
+	//display asset-book-depreciation     	@1,024 title "asset-book-depreciation"
+	//
+	//display ar-user-only-num2           	@1,028 title "ar-user-only-num2 (Book WDV 1)"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-fa-enq
+			spl "fassets/m36reg"
+				parameters
+					"-drill"
+					asset-no
+					SPACES
+					SPACES
+					SPACES
+					SPACES
+					SPACES
+					SPACES
+					SPACES
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------

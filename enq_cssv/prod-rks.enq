@@ -1,0 +1,20 @@
+select
+	stock-code
+	stock-group
+	stk-user-group
+	stk-description
+	stk-sort-analysis-code
+	stk-condition-code
+	stk-pack-desc
+from
+	stock-master
+where
+	stk-description like "%PRODUCT%" 
+	//and ash-years-ago = 0 
+order by stock-code 
+group by stock-code
+format is lst
+//title line 1 is PRODUCT NOT KNOWN REPORT
+//title line 2 is BY WAREHOUSE
+field order is stock-code stk-description stk-user-group[2] stock-group
+//display pic of total-sales is z(8)9

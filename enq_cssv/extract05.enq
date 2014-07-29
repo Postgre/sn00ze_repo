@@ -1,0 +1,21 @@
+select
+	cre-accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	na-phone
+	na-fax-no
+	cr-contact-name
+	cr-type
+	cr-def-payment-terms
+	cr-settlement-disc-code
+from
+	cre-master
+	name-and-address-master
+where
+	accountcode = cre-accountcode 
+	and na-type = 'C' 
+format is external

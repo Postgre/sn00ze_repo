@@ -1,0 +1,15 @@
+select
+        stock-code
+        stk-description
+        stk-user-group[2]
+from
+        stock-master
+where
+        stock-code not in
+        (
+        select
+                stock-code
+        from
+                stock-price
+        )
+format is lst

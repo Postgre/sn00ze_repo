@@ -1,0 +1,22 @@
+select
+	gl-accountcode
+	gl-subledger-code
+	gl-other-side
+	gl-trans-type
+	gl-trans-date
+	gl-reference
+	gl-details
+	gl-batch-ref
+	gl-amount
+from
+	gl-trans
+where
+	gl-accountcode = '3M3132135' 
+order by gl-accountcode gl-reference 
+format is lst
+field order is gl-accountcode gl-subledger-code gl-other-side gl-trans-type gl-trans-date gl-reference gl-details gl-batch-ref gl-amount
+display pic of gl-accountcode is x(11)
+display pic of gl-other-side is x(11)
+display pic of gl-trans-type is x(4)
+subtotal on gl-amount
+	with breaks on gl-accountcode

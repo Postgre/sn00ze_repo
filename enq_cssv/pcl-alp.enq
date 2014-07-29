@@ -1,0 +1,25 @@
+select
+	stock-code
+	stk-description
+	stk-pack-desc
+	prc-wholesale-price
+	prc-recommend-retail
+	ws-stock-code = input alpha "Please enter the first three letter of the supplier stock-code"
+	ws-stk-description = input alpha "Please enter a range name for the supplier"
+	ws-prc-region-code = input alpha "Please enter the price region"
+	stk-sort = substring (stock-code 1 3) 
+	prc-region-code
+from
+	stock-master
+	stock-price
+where
+	ws-stock-code = stk-sort 
+	and pattern (stk-description ws-stk-description) != 0 
+	and ws-prc-region-code = prc-region-code 
+order by stk-sort stk-description stk-pack-desc descending 
+format is lst
+suppress ws-stock-code
+suppress ws-stk-description
+suppress ws-prc-region-code
+suppress stk-sort
+field order is stock-code stk-description stk-pack-desc prc-recommend-retail prc-wholesale-price

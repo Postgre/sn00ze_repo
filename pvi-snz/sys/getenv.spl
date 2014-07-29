@@ -1,0 +1,37 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/getenv
+//  Program Desc:	Returns selected system values
+//  Requested By:	
+//  Request Date:	
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03apr14	rmd	{1}		upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+// getenv.spl
+
+procedure main
+returning
+	lr-env					pic x(30)
+	//
+	get system-control first
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+		//user-whse
+		//user-store-id
+	switch on get-param(1)
+		case "-user-whse"
+			set lr-env = user-whse
+			//message concat("Whse: " lr-env)
+		case "-user-store-id"
+			set lr-env = user-store-id
+			//message concat("Store: " lr-env)
+	endswitch
+endprocedure // main ----------------------------------------------------------
+// getenv.spl

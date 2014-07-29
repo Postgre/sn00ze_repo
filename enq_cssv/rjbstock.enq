@@ -1,0 +1,12 @@
+select
+	stock-code
+	whse-code
+	whse-qty-on-hand
+	whse-avg-cost
+	ws-total = whse-qty-on-hand * whse-avg-cost 
+from
+	stock-warehouse-detail
+where
+	whse-code = "312" 
+	and whse-qty-on-hand != 0 
+format is external

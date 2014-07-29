@@ -1,0 +1,548 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/saleprcanal.spl ZUSR.E114
+//  Program Desc:	Global Sales Price Analysis
+//  Requested By:	Chris Ward
+//  Request Date:	11oct12
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	04jun14	mb		{3}	upgrade to 710.3 - external file in EXT_SALE
+//	02dec13	rmd	{2}		add qoh column
+//	21dec12	rmd			add to menu as ZUSR.E114
+//	11oct12	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+version-number "140604.000" //"CUSTOM pvi-snz/so/saleprcanal 140604" //{3}
+/*
+notes
+extract to run across multiple datasets and pickup sales invoiced for a given
+item within a given date range
+Dataset
+Dataset Name
+Territory
+Territory Name
+Item Code
+Desc 1
+Desc 2
+S/O B/O
+Qty
+Unit Nett Sale Price Inc  (sol-shipped-amount / sol-shipped-qty)
+Discounted Flag
+Price Override Flag
+
+Phase 2 would like to show original price inc GST before disc or override
+*/
+
+object tmp-sale-price-anal type memory
+	record
+		tspa-sys-consolidation-division	like sys-consolidation-division
+		tspa-div-desc					pic x(40)
+		tspa-territory					like territory
+		tspa-terr-desc					pic x(40)
+		tspa-so-order-no                like so-order-no
+		tspa-so-bo-suffix               like so-bo-suffix
+		tspa-so-order-date				like so-order-date
+		tspa-so-invoice-date			like so-invoice-date
+		tspa-stock-code                 like stock-code
+		tspa-stk-description            like stk-description
+		tspa-stk-desc-line-2            like stk-desc-line-2
+		tspa-sol-shipped-qty 			like sol-shipped-qty
+		tspa-unit-nett-price-inc        type numeric
+		tspa-disc-flag					pic x
+		tspa-override-flag              pic x
+		tspa-start-date					type date
+		tspa-end-date                  	type date
+		tspa-store-qoh					type numeric	//{2}
+	endrecord
+	key is tspa-sys-consolidation-division tspa-territory tspa-so-order-no tspa-so-bo-suffix
+
+
+object ism-sale-price-anal like tmp-sale-price-anal type memory //type isam {3}
+	key is tspa-sys-consolidation-division tspa-territory tspa-so-order-no tspa-so-bo-suffix
+/* // < {3}
+	file "/data/common/ism-sale-price-anal"
+*/ // > {3}
+
+// < {3}
+#define EXT_SALE "/pro/data/mas/ext_saleprcanal"		//{3} option 1 - use program name to name external file.
+#define EXT_SALE "/pro/data/mas/ism-sale-price-anal"	//{3} option 2 - use original name to name external file.
+object ext-obj
+	type external
+	like ism-sale-price-anal
+	file EXT_SALE
+// > {3}
+
+object tmp-system-user like system-user type memory //{2} for user/company sort seq -user-user-only-spare-flag2-1 for tag
+
+object comp-2-system-control like system-control
+
+mode md-build-all
+	prompt "Build Extract"
+	help "Build Analysis Extract"
+	//when login-id() in {"robd"}
+
+mode md-global-audit
+	prompt "Global Audit"
+	help "Review Global Audit"
+	//when login-id() in {"robd"}
+
+mode md-maintain-datasets-for-inclusion
+	prompt "Maintain Dataset List"
+	help "Maintain Datasets for inclusion"
+
+mode md-tag
+	prompt "Incl/Excl"
+	help "Should this Dataset be included in the extract?"
+
+field
+	ws-stock-code			like stock-code
+	ws-start-date           type date
+	ws-end-date				type date
+	ws-max-datasets			type numeric
+	ws-confirm				type boolean
+
+procedure main
+	if get-param(1) != "-buildonly"
+		do get-start-date
+	else
+		set ws-stock-code	= get-param(2)
+		set ws-start-date	= date-to-julian(get-param(3))
+	    set ws-end-date		= date-to-julian(get-param(4))
+	endif
+	get system-control first
+	open tmp-sale-price-anal truncate temporary
+	open ism-sale-price-anal
+		truncate temporary //{3}
+/* // < {1}
+	on error
+		message "Cannot open ism-sale-price-anal, will create new instance"
+		open ism-sale-price-anal create permanent
+	endon
+*/ // > {1}
+	open ext-obj
+	on error
+		message concat("Cannot open " EXT_SALE ", creating new instance..." )
+		open ext-obj create permanent
+	endon
+	do load-temp //{3}
+	do get-invoiced-sales
+	do sync-with-master
+	if get-param(1) = "-buildonly"
+	else
+		//do dig-tfa
+		do dig-global-audit
+	endif
+	do unload-temp //{3}
+endprocedure // main ----------------------------------------------------------
+
+// < {3} store ism-sale-price-anal to permanent common file
+procedure load-temp
+//local lf-count type numeric
+//message "zaz b4 load-temp ext-obj"
+	extract ext-obj
+	detail
+		insert ism-sale-price-anal
+//		set lf-count += 1
+	endextract
+//message "zaz b4 after: load-temp ext-obj  count = " lf-count
+endprocedure // load-temp-global-rep  -----------------------------------------
+// > {3} 
+
+// < {3} store ism-sale-price-anal to permanent common file
+procedure unload-temp
+//local lf-count type numeric
+//message "zaz b4 unload-temp ext-obj"
+	extract ism-sale-price-anal
+	detail
+		insert ext-obj
+//		set lf-count += 1
+	endextract
+//message "zaz b4 after: unload-temp ext-obj  count = " lf-count
+endprocedure // load-temp-global-rep  -----------------------------------------
+// > {3} 
+
+procedure get-start-date
+	get system-companies
+		on index sys-comp-code
+		key is "2"
+	on error
+		message "Can't find Company 2 entry"
+	else
+		open comp-2-system-control
+			file is strconcat(sys-comp-path "/SYSCTRL.dat") // had to specify *.dat extension because there was no *.idx
+		get comp-2-system-control first
+		//message sys-consolidation-division sys-period-start[1]
+		if today() > sys-next-yr-period-start[1]
+			set ws-start-date = sys-next-yr-period-start[1]
+		else
+			set ws-start-date = sys-period-start[1]
+		endif
+		//message "Start Date:" ws-start-date
+	endon
+endprocedure // get-start-date ------------------------------------------------
+
+procedure get-invoiced-sales
+	window @19,34 to @23,95
+		title is "Building Data"
+		colour white
+		no-hide
+	//message "get-invoiced-sales"
+	display bitmap concat(get-env("BMS") "/images/repedge.gif") @19,34
+	display concat(sys-consolidation-division ": Written Sales" ) @20,49 background left
+	display "S/O:" @21,49 background left
+	extract sales-order-line-archive
+		on index sol-line-type stock-code so-order-no so-bo-suffix
+		key is "SN" ws-stock-code 0 SPACES
+		next same sol-line-type stock-code
+	detail
+		display concat("SN: " str(so-order-no)) @21,56 foreground prompts
+		do check-insert-line
+	endextract
+	extract sales-order-line-archive
+		on index sol-line-type stock-code so-order-no so-bo-suffix
+		key is "WN" ws-stock-code 0 SPACES
+		next same sol-line-type stock-code
+	detail
+		display concat("WN: " str(so-order-no)) @21,56 foreground prompts
+		do check-insert-line
+	endextract
+endprocedure // get-written-sales ---------------------------------------------
+
+procedure check-insert-line
+	push sales-order-line-archive
+	get sales-order-archive
+		on index so-order-no so-bo-suffix
+	on error
+		//message "dbg: can't find soa"
+	else
+		if so-order-status = "90" and so-order-type-code != 'Q' and sol-shipped-qty <> 0 and so-order-date between ws-start-date and ws-end-date
+			//message "dbg: " so-order-no so-bo-suffix " ok"
+			get stock-master
+			on error
+				set stk-description = "UNKNOWN"
+			    set stk-desc-line-2 = "UNKNOWN"
+			endon
+			set tspa-sys-consolidation-division	= sys-consolidation-division
+			//set tspa-div-desc					pic x(40)
+			set tspa-territory					= so-territory-code
+			//set tspa-terr-desc					pic x(40)
+			set tspa-so-order-no                = so-order-no
+			set tspa-so-bo-suffix               = so-bo-suffix
+			set tspa-so-order-date				= so-order-date
+			set tspa-so-invoice-date			= so-invoice-date
+			set tspa-stock-code                 = stock-code
+			set tspa-stk-description            = stk-description
+			set tspa-stk-desc-line-2            = stk-desc-line-2
+			set tspa-sol-shipped-qty 			= sol-shipped-qty
+			set tspa-unit-nett-price-inc        = sol-shipped-amount / sol-shipped-qty
+			if sol-disc-rate <> 0
+				set tspa-disc-flag				= "Y"
+			else
+				set tspa-disc-flag				= "N"
+			endif
+			if sol-price-overide-flag = "Y"
+				set tspa-override-flag			= "Y"
+			else
+				set tspa-override-flag			= "N"
+			endif
+			set tspa-start-date					= ws-start-date
+			set tspa-end-date                  	= ws-end-date
+			do set-per-yr
+			//<{2}
+			get stock-warehouse-detail
+				on index whse-code stock-code
+				key is so-territory-code stock-code
+			on  error
+				set tspa-store-qoh = 0
+			else
+				set tspa-store-qoh = whse-qty-on-hand
+			endon
+			//>{2}
+			insert tmp-sale-price-anal
+		else
+			//message "dbg: " so-order-no so-bo-suffix " not ok"
+		endif
+	endon
+	pop sales-order-line-archive
+endprocedure // check-insert-line ---------------------------------------------
+
+procedure build-all
+local field
+	i		type numeric
+	j		type numeric
+	//do get-date-range entry once
+	do get-user-input entry once
+	if ws-confirm = TRUE
+		//clear existing values
+		open ism-sale-price-anal truncate temporary //permanent {3}
+		open ext-obj truncate permanent //{3}
+		//do unload-temp //{3}
+		report "Global Price Anal"
+			spool-only
+			set i = 1
+			set j = ws-max-datasets//5 //100 //for testing
+			extract system-companies
+			detail
+				//message "i: " i "  j:" j
+				if i > j
+					break
+				endif
+				if sys-comp-spare2 = "Y"
+					print
+						today()
+						tod()
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"Global Price Anal called"
+					command "sh"
+						parameters
+							"-c"
+							concat("cd " strconcat(sys-comp-path) ";prospl pvi-snz/so/saleprcanal -buildonly " ws-stock-code " " julian-to-date(ws-start-date) " " julian-to-date(ws-end-date))
+					set i += 1
+				else
+					print
+						today()
+						tod()
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"Global Price Anal not called"
+				endif
+			endextract
+			//do load-temp //{3}
+		report finished
+		//do load-temp //{3}
+		do unload-temp //{3}
+	endif
+endprocedure // build-all -----------------------------------------------------
+
+screen get-user-input
+local field
+	lf-stock-code		like stock-code
+	lf-start-date		type date
+	lf-end-date         type date
+	window @1,1 to @7,42 title "Enter Date Range"
+	box @1,1 to @6,42 title SPACES
+	//set lf-stock-code	= "SOP4950"
+	//set lf-start-date   = ws-start-date
+	//set lf-end-date   	= today() - 1 //ws-end-date
+	//set ws-max-datasets = 12
+	accept lf-stock-code @2,16 title "Item Code:"
+		default lf-stock-code
+		on help-key
+			//message "F2 lookup under construction"
+			spl "lib/h4enqstk"
+				parameters
+					lf-stock-code
+					SPACES
+					SPACES
+				returning
+					lf-stock-code
+				reenter lf-stock-code optional
+		endon
+	accept lf-start-date @3,16 title "Start Date:"
+		default lf-start-date
+	accept lf-end-date @4,16 title "End Date:"
+		default lf-end-date
+	accept ws-max-datasets @5,16 pic zz9 title "Max Datasets:"
+		default ws-max-datasets
+confirm
+confirmed
+	set ws-stock-code	= lf-stock-code
+	set ws-start-date   = lf-start-date
+    set ws-end-date   	= lf-end-date
+    set ws-confirm		= TRUE
+notconfirmed
+	set ws-confirm		= FALSE
+endconfirm
+endscreen // get-user-input ---------------------------------------------------
+
+procedure set-per-yr
+//get system-control first
+	//set tfa-per-yr-deb 	= concat(substring(sys-mth-name[sys-dl-per],1,3) "-" substring(str(sys-dl-yr),3,4))
+	//set tfa-per-yr-cre 	= concat(substring(sys-mth-name[sys-cl-per],1,3) "-" substring(str(sys-cl-yr),3,4))
+	//set tfa-per-yr-stk 	= concat(substring(sys-mth-name[sys-stk-per],1,3) "-" substring(str(sys-stk-yr),3,4))
+	//set tfa-per-yr-gl  	= concat(substring(sys-mth-name[sys-gl-per],1,3) "-" substring(str(sys-gl-yr),3,4))
+	set tspa-start-date	= ws-start-date
+	set tspa-end-date  	= ws-end-date
+	//{2} Dataset and Territory descriptions
+	get system-companies
+		on index sys-comp-code
+		key is sys-consolidation-division
+	on error
+		set sys-comp-desc = "UNKNOWN"
+	endon
+	set tspa-div-desc					= sys-comp-desc //{2}
+	get system-table //{2}
+		on index sys-tbl-type sys-tbl-code
+		key is "TC" so-territory-code
+	on error
+		set sys-description = "UNKNOWN"
+	endon
+	set tspa-terr-desc 					= sys-description //{2}
+endprocedure // set-per-yr ----------------------------------------------------
+
+procedure sync-with-master
+	extract tmp-sale-price-anal
+	detail
+		push tmp-sale-price-anal
+		get ism-sale-price-anal lock
+			on index tspa-sys-consolidation-division tspa-territory tspa-so-order-no tspa-so-bo-suffix
+			key is tspa-sys-consolidation-division tspa-territory tspa-so-order-no tspa-so-bo-suffix
+		on error
+			pop tmp-sale-price-anal
+			insert ism-sale-price-anal
+		else
+			pop tmp-sale-price-anal
+			update ism-sale-price-anal
+		endon
+	endextract
+endprocedure // sync-with-master ----------------------------------------------
+
+screen dig-global-audit
+	window @1,1 to @24,130
+		title concat("Global Sale Price Analysis")
+		primary ism-sale-price-anal
+		datagrid occurs 20
+	allowed search md-maintain-datasets-for-inclusion md-build-all //md-mode
+	review-from-start
+detail
+	display tspa-sys-consolidation-division	@1,010 title "Div"
+	display tspa-div-desc					@1,014 title "Div Description"
+	display tspa-territory					@1,020 title "Terr"
+	display tspa-terr-desc					@1,024 title "Terr Description"
+	display tspa-so-order-no                @1,028 title "S/O Num"
+	display tspa-so-bo-suffix               @1,032 title "Suf"
+	display tspa-so-order-date			    @1,040 title "S/O Date"
+	display tspa-so-invoice-date		    @1,044 title "Inv Date"
+	display tspa-stock-code                 @1,048 title "Stock Code"
+	display tspa-stk-description            @1,052 title "Desc 1"
+	display tspa-stk-desc-line-2            @1,060 title "Desc 2"
+	display tspa-sol-shipped-qty 		    @1,064 title "Qty"
+	display tspa-unit-nett-price-inc        @1,068 title "Unit Nett Inc"
+	display tspa-disc-flag				    @1,072 title "Disc"
+	display tspa-override-flag        		@1,076 title "PrcOv"
+	display tspa-start-date                 @1,078 title "Start Date"
+	display tspa-end-date  					@1,080 title "End Date"
+	display tspa-store-qoh					@1,082 title "QOH"	pic -------9 //{2}
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-maintain-datasets-for-inclusion
+			open tmp-system-user truncate temporary
+			//like system-user type memory //{2} for user/company sort seq -user-user-only-spare-flag2-1 for tag
+			extract system-user
+				on index user-id sys-comp-code
+				key is login-id() SPACES
+				next same user-id
+			detail
+				get system-companies
+					on index sys-comp-code
+				on error
+					continue
+				endon
+				set user-position 					= sys-comp-desc
+				set user-user-only-spare-flag2-1	= sys-comp-spare2
+				insert tmp-system-user
+			endextract
+			do maintain-datasets-for-inclusion
+		case md-build-all
+			if sys-consolidation-division = "MAS"
+				do build-all
+				do dig-global-audit
+				exit
+			else
+				message "Cannot run Build All in " sys-consolidation-division
+			endif
+	endswitch
+endconfirm
+endscreen // dig-global-audit -------------------------------------------------
+
+screen maintain-datasets-for-inclusion
+	window @1,1 to @24,50
+		title concat("Maintain Datasets for inclusion")
+		//primary system-companies
+		primary tmp-system-user
+			on index user-id user-menu-seq-no
+		datagrid occurs 20
+	allowed md-tag search //md-mode
+	review-from-start
+detail
+	display sys-comp-code									@1,010 title "Div"
+	//display sys-comp-desc       							@1,020 title "Name"
+	display user-position 				        			@1,020 title "Name"
+	//display concat(sys-comp-spare2 "        ")			@1,030 title "Include"
+	display concat(user-user-only-spare-flag2-1 "     ")    @1,030 title "Include"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-tag
+			get system-companies lock
+				on index sys-comp-code
+			on error
+				message "Cannot Find Company " sys-comp-code
+			else
+				if sys-comp-spare2 = SPACES
+					set sys-comp-spare2 = "Y"
+					set user-user-only-spare-flag2-1 = "Y"
+				else
+					set sys-comp-spare2 = SPACES
+					set user-user-only-spare-flag2-1 = SPACES
+				endif
+				update system-companies
+				update tmp-system-user
+				refresh review
+			endon
+	endswitch
+endconfirm
+endscreen // maintain-datasets-for-inclusion ----------------------------------
+
+
+
+/* $CUS/BP-zcard
+// BP aged Z-card report
+select
+	territory
+	accountcode
+//	balance
+//	open-bal
+	aged-balance
+	accountshort = substring (accountcode 1 4)
+	up_to_3per = aged-balance[1] + aged-balance[2] + aged-balance[3]
+	older_3_period = aged-balance[4] + aged-balance[5] + aged-balance[6] + aged-balance[7] + aged-balance[8]+ aged-balance[9]+ aged-balance[10]+ aged-balance[11]+ aged-balance[12]+ aged-balance[13]
+	future-bal
+from
+	deb-master
+where
+	dr-cust-type = "P" and accountshort <> "ZCSM"
+order by territory
+format is lst
+suppress aged-balance[1]
+suppress aged-balance[2]
+suppress aged-balance[3]
+suppress aged-balance[4]
+suppress aged-balance[5]
+suppress aged-balance[6]
+suppress aged-balance[7]
+suppress aged-balance[8]
+suppress aged-balance[9]
+suppress aged-balance[10]
+suppress aged-balance[11]
+suppress aged-balance[12]
+suppress aged-balance[13]
+suppress accountshort
+subtotal on future-bal
+	with breaks on territory
+subtotal on up_to_3per
+	with breaks on territory
+subtotal on older_3_period
+	with breaks on territory
+*/

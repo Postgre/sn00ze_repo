@@ -1,0 +1,5 @@
+update gl-report-rows
+set
+	glfrrow-print-if-equal = "N"
+where
+	glfr-name = "Steven2"

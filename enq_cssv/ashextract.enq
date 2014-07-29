@@ -1,0 +1,18 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-value-lytd
+	ash-cost
+	ash-cost-lytd
+	ash-qty
+	ash-qty-lytd
+from
+	stock-aged-sales-history
+where
+	(stock-code between "KEO0000" and "KEO9999" or stock-code between "DAA0000" and "DZZ9999" or stock-code between "FAA0000" and "FZZ9999" or stock-code between "SAA0000" and "SZZ9999")
+	and ash-type in { "S" "O" "Q" }
+	and ash-whse between "100" and "899" 
+format is external

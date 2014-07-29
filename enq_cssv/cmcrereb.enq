@@ -1,0 +1,51 @@
+// creditors Rebate Per month
+select
+	cre-accountcode
+	po-order-no
+	po-backorder-flag
+	po-order-status
+	po-whse-code
+	po-received-total
+	po-received-date
+	po-invoice-details
+	po-invoice-amount
+	po-tax-amount
+	ws-start-date = input
+		date
+		prompt is "Start Delivery Date"
+	ws-end-date = input
+		date
+		prompt is "End Delivery Date"
+from
+	purchase-order
+where
+	po-order-status >= "60" 
+	and po-order-status <= "90" 
+	and po-received-date between ws-start-date and ws-end-date 
+order by po-whse-code cre-accountcode po-order-no po-backorder-flag po-received-total po-order-status po-received-date po-invoice-details ws-start-date ws-end-date 
+format is lst
+suppress po-order-status
+suppress ws-start-date
+suppress ws-end-date
+field title of cre-accountcode is "Creditor"
+field title of po-order-no is "PO #"
+field title of po-backorder-flag is " "
+field title of po-whse-code is "Whse"
+field title of po-received-total is "Received" "Total"
+field title of po-received-date is "Received" "Date"
+field title of po-invoice-details is "Inv No."
+field title of po-invoice-amount is "Inv Amount"
+field title of po-tax-amount is "GST"
+field title of ws-start-date is "Start" "Date"
+field title of ws-end-date is "End" "Date"
+display pic of po-order-no is zzzzzzz9
+display pic of po-whse-code is x(4)
+display pic of po-received-total is zzzzzzzz9.99-
+display pic of po-invoice-details is x(9)
+display pic of po-invoice-amount is zzzzz9.99-
+display pic of po-tax-amount is zzzzz9.99-
+total on po-received-total
+total on po-invoice-amount
+total on po-tax-amount
+subtotal on po-received-total
+	with breaks on cre-accountcode

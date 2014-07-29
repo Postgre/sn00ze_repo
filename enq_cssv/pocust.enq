@@ -1,0 +1,162 @@
+select
+	so-order-no
+	so-bo-suffix
+	sol-line-seq
+	solp-po-order-no
+	solp-backorder-flag
+	solp-l-seq
+	po-order-no
+	po-backorder-flag
+	cre-accountcode
+	po-order-date
+	po-arrival-date
+	po-order-status
+	po-l-seq
+	stock-code
+	po-order-qty
+	po-order-line-total
+	accountcode
+	shortname
+	so-cust-code
+	cr-shortname
+	ws-start-date = input date "Start order date:"
+	ws-end-date = input date "End   order date:"
+	ws-mode = input alpha "Required mode  (D)etailed or (S)ummary:"
+	po-line-description
+	company-name
+from
+	sales-order-line-purchase
+	purchase-order
+	purchase-order-line
+	deb-master
+	sales-order
+	cre-master
+	system-control
+where
+	po-order-status <= '59' 
+	and po-order-no = solp-po-order-no 
+	and po-backorder-flag = solp-backorder-flag 
+	and po-l-seq = solp-l-seq 
+	and so-cust-code = accountcode 
+	and po-order-date between ws-start-date and ws-end-date 
+order by solp-po-order-no solp-backorder-flag solp-l-seq 
+format is rpt
+field new-solp-po-order-no pic 9
+field new-solp-backorder-flag pic 9
+field total-po-order-line-total like po-order-line-total
+field sub-tot-po-order-line-total like po-order-line-total
+report header
+	page
+	set total-po-order-line-total = 0
+header
+	print 
+		company-name in col 1
+		today() in col 104
+		"Pageno." in col 118
+		pageno() in col 126
+	skip
+	print "OUTSTANDING PURCHASE ORDERS LINKED TO SALES ORDERS" in col 40
+	skip
+	if ws-mode = "D"
+		print
+			"Purchase" in col 1
+			"Creditor" in col 13
+			"Order" in col 25
+			"Due" in col 39
+			"Stock" in col 71
+			"Ordered" in col 83
+			"Stock" in col 92
+			"Sales" in col 62
+			"Customer" in col 48
+		print
+			"Order No." in col 1
+			"Code" in col 15
+			"Date" in col 25
+			"Date" in col 39
+			"Code" in col 71
+			"Qty" in col 85
+			"Description" in col 92
+			"Amount" in col 122
+			"Order No." in col 60
+			"Code" in col 50
+	elseif ws-mode = "S"
+		print
+			"Purchase" in col 7
+			"Creditor" in col 20
+			"Order" in col 35
+			"Due" in col 49
+		print
+			"Order No." in col 7
+			"Code" in col 22
+			"Date" in col 35
+			"Date" in col 49
+			"Amount" in col 77
+	endif
+	print "==================================================================================================================================" in col 1
+	skip 1
+before solp-po-order-no
+	set new-solp-po-order-no = 1
+	set sub-tot-po-order-line-total = 0
+before solp-backorder-flag
+	set new-solp-backorder-flag = 1
+
+detail
+	if ws-mode = "D"
+		if (new-solp-po-order-no)
+			print solp-po-order-no in col 1 no newline
+		endif
+		if (new-solp-backorder-flag)
+			print solp-backorder-flag in col 9 no newline
+		endif
+		print
+			cre-accountcode in col 13 pic x(7)
+			po-order-date in col 22
+			po-arrival-date in col 35
+			po-order-line-total in col 119 pic -zzz,zz9.99
+			stock-code in col 70 pic x(12)
+			po-order-qty in col 84 pic zzz9
+			po-line-description in col 90 pic x(27)
+			so-order-no in col 58
+			so-bo-suffix in col 66
+			accountcode in col 48 pic x(8)
+	endif
+	set new-solp-po-order-no = 0
+	set new-solp-backorder-flag = 0
+	set total-po-order-line-total += po-order-line-total
+	set sub-tot-po-order-line-total += po-order-line-total
+after solp-po-order-no
+	if ws-mode = "D"
+		print
+			"-----------" in col 119
+		print
+			sub-tot-po-order-line-total in col 119 pic -zzz,zz9.99
+		skip
+	elseif ws-mode = "S"
+		print
+			solp-po-order-no in col 7
+			solp-backorder-flag in col 15
+			cre-accountcode in col 20 pic x(7)
+			po-order-date in col 32
+			po-arrival-date in col 45
+			sub-tot-po-order-line-total in col 73 pic -zzz,zz9.99
+	endif
+report footer
+	if ws-mode = "D"
+		print
+			"-----------" in col 119
+		print
+			total-po-order-line-total in col 119 pic -zzz,zz9.99
+	elseif ws-mode = "S"
+		print
+			"-----------" in col 73
+		print
+			total-po-order-line-total in col 73 pic -zzz,zz9.99
+	endif
+	skip 3
+	print "Program Name             :     pocust.enq" in col 10
+	print "Start order date         :" in col 10
+		ws-start-date in col 41
+	print "End   order date         :" in col 10
+		ws-end-date in col 41
+	print "Required mode (D or S)   :" in col 10
+		ws-mode in col 41 pic x(1)

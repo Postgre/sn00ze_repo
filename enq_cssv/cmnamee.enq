@@ -1,0 +1,10 @@
+select
+	accountcode
+	na-type
+	na-name
+	na-company
+from
+	name-and-address-master
+where
+	na-type = 'E' 
+format is lst

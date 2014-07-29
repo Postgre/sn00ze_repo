@@ -1,0 +1,21 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	ws-cre-accountcode = input alpha "Please enter the Supplier prefix"
+	stk-pack-desc
+	cre-accountcode
+	stk-user-group
+from
+	stock-master
+	stock-supplier
+where
+	ws-cre-accountcode = cre-accountcode 
+	and stk-user-group[2] > "B" 
+group by stock-code
+format is lst
+title line 1 is "Products that are off range for a given supplier"
+title line 2 is "e.g. not A or B"
+suppress ws-cre-accountcode
+suppress cre-accountcode
+field order is stock-code stk-description stock-group stk-pack-desc stk-user-group[1] stk-user-group[2]

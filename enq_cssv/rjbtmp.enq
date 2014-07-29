@@ -1,0 +1,16 @@
+select
+	gl-accountcode
+	gl-trans-type
+	gl-trans-date
+	gl-amount
+	gltr-special-account-name
+from
+	gl-trans
+where
+	gl-accountcode = "Z8SPPNP" 
+	and gl-trans-date > 31-dec-2001
+order by gltr-special-account-name 
+format is lst
+total on gl-amount
+subtotal on gl-amount
+	with breaks on gltr-special-account-name

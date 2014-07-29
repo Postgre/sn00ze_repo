@@ -1,0 +1,5 @@
+update	stock-master
+set
+	stk-reorder-policy = '1'
+	stk-reorder-review = 'D'
+	stk-reorder-buyer = 'R'

@@ -1,0 +1,6 @@
+update stock-supplier
+set
+	sup-shipping-method-code = 'C'
+where
+	sub-string (stock-code 1,1) = 'Z'
+	and sub-string (stock-code 2,4) between '0' and '999'

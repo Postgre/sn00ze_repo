@@ -1,0 +1,35 @@
+select
+	gl-accountcode
+	gl-subledger-code
+	gl-trans-type
+	gl-trans-date
+	gl-reference
+	gl-amount
+	ws-start-account = input
+		string
+		uppercase
+		prompt is "Enter start account code:"
+	ws-end-account = input
+		string
+		uppercase
+		prompt is "Enter end   account code:"
+	ws-start-date = input
+		date
+		prompt is "Enter start date:"
+	ws-end-date = input
+		date
+		prompt is "Enter end   date:"
+from
+	gl-trans
+where
+	gl-accountcode between ws-start-account and ws-end-account 
+	and gl-trans-date between ws-start-date and ws-end-date 
+order by gl-accountcode gl-subledger-code gl-trans-date 
+format is lst
+suppress ws-start-account
+suppress ws-end-account
+suppress ws-start-date
+suppress ws-end-date
+total on gl-amount
+subtotal on gl-amount
+	with breaks on gl-subledger-code

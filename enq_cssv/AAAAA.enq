@@ -1,0 +1,6 @@
+
+update stock-supplier
+set
+	sup-unit-desc = 'ALL'
+where
+	sup-unit-desc = spaces

@@ -1,0 +1,6 @@
+update stock-master
+set
+	stk-user-group[2] = "X" 
+	stk-condition-code = "O" 
+where
+	stock-code between "DWB000" and "DBW999" 

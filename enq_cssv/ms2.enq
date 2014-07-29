@@ -1,0 +1,134 @@
+// select
+// stock-code
+// stk-trans-type
+// stk-trans-whse
+// stk-trans-date
+// stk-trans-qty
+// stk-trans-value
+// stk-trans-cost
+// stk-description
+// stock-group
+// ws-start-date = input date "Enter Start Date"
+// ws-end-date = input date "Enter End Date"
+// sys-tbl-type
+// sys-tbl-code
+// sys-description
+// from
+// stock-movements
+// stock-master
+// system-table
+// where
+// stk-trans-date between ws-start-date and ws-end-date 
+// and (stk-trans-type = 'PO' or stk-trans-type = 'SO' ) 
+// and sys-tbl-type = 'PG' 
+// and stock-group = sys-tbl-code 
+// order by stock-group stk-trans-date stk-trans-whse stk-trans-type stock-code 
+// format is lst
+// suppress ws-start-date
+// suppress ws-end-date
+// suppress sys-tbl-type
+// suppress sys-tbl-code
+// unique stk-trans-type
+// unique stk-trans-whse
+// unique stk-trans-date
+// unique stock-group
+// unique sys-description
+// field order is stock-group sys-description stk-trans-date stk-trans-whse stk-trans-type stock-code 
+select
+	stock-code
+	stk-trans-type
+	stk-trans-whse
+	stk-trans-date
+	stk-trans-qty
+	stk-trans-value
+	stk-trans-cost
+	stk-description
+	stock-group
+	ws-start-date = input date "Enter Start Date"
+	ws-end-date = input date "Enter End Date"
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+from
+	stock-movements
+	stock-master
+	system-table
+where
+	stk-trans-date between ws-start-date and ws-end-date 
+	and (stk-trans-type = 'PO' or stk-trans-type = 'SO' ) 
+	and sys-tbl-type = 'PG' 
+	and stock-group = sys-tbl-code 
+order by stock-group stk-trans-date stk-trans-whse stk-trans-type stock-code 
+format is rpt
+field new-stk-trans-type pic 9
+field new-stk-trans-whse pic 9
+field new-stk-trans-date pic 9
+field new-stock-group pic 9
+field new-sys-description pic 9
+report header
+	page
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"Stock" in col 25
+		"Total" in col 91
+		"Total" in col 108
+	print
+		"Date" in col 1
+		"Whse" in col 13
+		"Type" in col 19
+		"Code" in col 25
+		"Description" in col 42
+		"Qty" in col 73
+		"Cost" in col 91
+		"Value" in col 108
+	print "===================================================================================================================================" in col 1
+	skip 1
+before stk-trans-type
+	set new-stk-trans-type = 1
+before stk-trans-whse
+	set new-stk-trans-whse = 1
+before stk-trans-date
+	set new-stk-trans-date = 1
+before stock-group
+	set new-stock-group = 1
+before sys-description
+	set new-sys-description = 1
+
+detail
+	if (new-stock-group)
+		print stock-group in col 1 bold  pic x(2) no newline
+	endif
+	if (new-sys-description)
+		print sys-description in col 4 bold  
+	endif
+	if (new-stk-trans-date)
+		print stk-trans-date in col 1 no newline
+	endif
+	if (new-stk-trans-whse)
+		print stk-trans-whse in col 13 no newline
+	endif
+	if (new-stk-trans-type)
+		print stk-trans-type in col 19 no newline
+	endif
+	print stock-code in col 25 no newline
+	print stk-description in col 42 no newline
+	print stk-trans-qty in col 73 pic zz9- no newline
+	print stk-trans-cost in col 88 pic zz,zz9.99- no newline
+	print stk-trans-value in col 104 pic zz,zz9.99- no newline
+	skip
+	set new-stk-trans-type = 0
+	set new-stk-trans-whse = 0
+	set new-stk-trans-date = 0
+	set new-stock-group = 0
+	set new-sys-description = 0
+after stk-trans-type
+after stk-trans-whse
+after stk-trans-date
+after stock-group
+after sys-description
+report footer

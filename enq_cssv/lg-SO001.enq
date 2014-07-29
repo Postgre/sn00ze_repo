@@ -1,0 +1,4 @@
+// update Warehouse in Sales Orders
+update sales-order
+set
+	so-whse-code = input alpha "Change Warehouse to"

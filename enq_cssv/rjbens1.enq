@@ -1,0 +1,12 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+from
+	stock-master
+where
+	(stk-description like "%ENSEMBLE%" or stk-desc-line-2 like "%ENSEMBLE%" ) 
+	and (stk-description not like "%SUIT%" or stk-desc-line-2 like "%SUIT%" ) 
+	and stk-stock-status != 'K' 
+format is lst
+report width is 80

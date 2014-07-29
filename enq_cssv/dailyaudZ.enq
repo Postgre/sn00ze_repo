@@ -1,0 +1,6 @@
+select
+	so-order-no
+	ws-terr = get-env("STOREID")
+from
+	sales-order
+format is lst

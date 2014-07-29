@@ -1,0 +1,13 @@
+select
+	cre-accountcode
+	cr-shortname
+	z-email-address = strconcat(na-name na-company)
+from
+	cre-master
+	name-and-address-master
+where
+	accountcode = cre-accountcode
+	and na-type = "E"
+	and na-name != SPACES
+	and pattern(z-email-address,"@")
+format is lst

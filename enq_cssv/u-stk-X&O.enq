@@ -1,0 +1,6 @@
+update stock-master
+set
+	stk-condition-code = "O" 
+where
+	stk-user-group[2] = "X" 
+	and stk-condition-code != "O"

@@ -1,0 +1,9 @@
+select
+	stock-code
+	cre-accountcode
+	sup-last-buy-price
+from
+	stock-supplier
+where
+	substring(cre-accountcode,4,5) = spaces
+format is lst

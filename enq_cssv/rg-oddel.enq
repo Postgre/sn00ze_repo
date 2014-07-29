@@ -1,0 +1,29 @@
+// overdue Deliveries Report
+select
+	so-territory-code
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-date
+	so-delivery-date
+	so-actual-delivery-date
+from
+	sales-order
+where
+	((so-delivery-date <= input date 
+	help is "expected delivery date" prompt is "Expected Delivery Date" ) and 
+	(so-actual-delivery-date <= input date 
+	help is "Overdue delivery date" 
+	prompt is "Please enter Over due Delivery date" ) and 
+	(so-territory-code = input alpha 
+	help is "Territory or store code" 
+	prompt is "Please enter your Territory code" ) ) 
+order by so-territory-code so-order-no so-bo-suffix so-cust-code so-order-date so-delivery-date 
+format is lst
+field title of so-territory-code is "Territory or Store Number"
+field title of so-order-no is "Sale Order"
+field title of so-bo-suffix is "Suffix"
+field title of so-cust-code is "Customer Code"
+field title of so-order-date is "Sales Order Date"
+field title of so-delivery-date is "Expected Delivery Date"
+field title of so-actual-delivery-date is "Actual Delivery Date"

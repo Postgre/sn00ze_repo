@@ -1,0 +1,12 @@
+// check for Price Level
+select
+	accountcode
+	shortname
+	territory
+	price-code
+from
+	deb-master
+where
+	( ( territory LIKE "115"  ) AND
+	( price-code NOT LIKE "R"  ) )
+format is lst

@@ -1,0 +1,4 @@
+delete from stock-aged-sales-history
+where
+	sub-string (stock-code 1,2) in {"2C" "2M" "3C" "3M" "4C" "4M" "5M"}
+

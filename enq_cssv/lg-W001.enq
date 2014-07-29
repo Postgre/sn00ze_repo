@@ -1,0 +1,6 @@
+// stock Warehouse Change
+update stock-warehouse-detail
+set
+        whse-code = input alpha "Input New Warehouse"
+where
+	whse-code = input alpha "Input Old Warehouse"

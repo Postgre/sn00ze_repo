@@ -1,0 +1,115 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-ams/pgmovr/so_op_line
+//  Program Desc:	program override so_op_line passing 4 parameters
+//						1: so-order-no
+//						2: so-bo-suffix
+//						3: sol-line-seq
+//						4: (E)ntry or (C)orrect mode
+//  Requested By:
+//  Request Date:	15apr13
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	09apr14	rmd	{1}		option to set line as taken if in an external warehouse
+//						where sol-line-type = "WN" and sol-whse-code = ext whse
+//							allow option to set sol-print-line = "T"
+//	01apr14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+
+procedure main
+local field
+	lf-so-order-no      like so-order-no
+	lf-so-bo-suffix     like so-bo-suffix
+	lf-sol-line-seq		like sol-line-seq
+	lf-mode				pic x
+returning
+	lr-sol-changed		type boolean
+	//if login-id() = "robd"
+	//	message "TES_so_op_line"
+	//	message concat("P1: " strconcat(get-param(1)) " P2: " strconcat(get-param(2)) " P3: " strconcat(get-param(3)) " P4: " strconcat(get-param(4)) " P5: " strconcat(get-param(5)) " P6: " strconcat(get-param(6)))
+	//endif
+	set lf-so-order-no		= num(get-param(1))
+	set lf-so-bo-suffix     = get-param(2)
+	set lf-sol-line-seq	    = num(get-param(3))
+	set lf-mode			    = get-param(4)
+	//do line-tests
+	//	parameters
+	//		lf-so-order-no
+	//		lf-so-bo-suffix
+	//		lf-sol-line-seq
+	//	returning
+	//		lr-sol-changed
+	//<{1}
+	get sales-order-line lock
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+	on error
+		//message "Cannot get S/O line"
+	else
+		if sol-line-type = "WN" and sol-whse-code != SPACES and sol-shipped-qty > 0
+			//message sol-shipped-qty
+			do get-external-taken entry-once
+				returning
+					sol-print-line
+			update sales-order-line
+			on error
+			endon
+		endif
+	endon
+	//>{1}
+	get sales-order lock
+		on index so-order-no so-bo-suffix
+		key is lf-so-order-no lf-so-bo-suffix
+	on error
+		message "Cannot get S/O"
+	else
+		spl "pvi-snz/so/cashnobo"
+			parameters
+				so-order-no
+				so-bo-suffix
+		//set so-user-only-alpha4-4 = "BLAT"
+		//update sales-order
+		//on error
+		//	message "Cannot update S/O"
+		//else
+		//	message "S/O updated OK"
+		//endon
+		set lr-sol-changed = TRUE
+	endon
+	unlock sales-order
+endprocedure // main ----------------------------------------------------------
+
+screen get-external-taken	//{1}
+returning
+	lr-sol-print-line			like sol-print-line
+window @1,1 to @7,50 title "Taken or Pickup from other warehouse?"
+box @1,1 to @6,50 title SPACES
+	//accept ws-start-date	  	@2,20 title "Start Date:"
+	//	default ws-start-date
+	//accept ws-end-date        	@3,20 title "End Date:"
+	//	default ws-end-date
+	display sol-whse-code		@2,20 title "Whse:"
+	display stock-code			@3,20 title "Item:"
+	display sol-shipped-qty		@4,20 title "Qty:"	pic -------9
+	accept lr-sol-print-line	@5,20 title "(T)aken/(P)ickup?:"
+		help "(T)aken or (P)ickup?"
+		default lr-sol-print-line
+		uppercase
+		allowed "T" "P"
+confirm
+confirmed
+	//Pickup should be recorded as sol-print-line = SPACES to be understood by Pronto
+	if lr-sol-print-line = "P"
+		set lr-sol-print-line = SPACES
+	endif
+	exit
+notconfirmed
+	reenter lr-sol-print-line
+endconfirm
+endscreen // get-external-taken -----------------------------------------------

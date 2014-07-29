@@ -1,0 +1,45 @@
+select
+	so-order-no
+	so-cust-code
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-phone
+	so-delivery-date
+	stock-code
+	stk-description
+	sol-line-description
+	sol-stk-unit-desc
+	sol-ordered-qty
+	sol-line-amount
+	accountcode
+	ws-start-date = input date "Enter start date:"
+	ws-end-date = input date "Enter   end date:"
+from
+	sales-order
+	sales-order-line
+	name-and-address-master
+	stock-master
+where
+	so-order-status < '80' 
+	and so-delivery-date between ws-start-date and ws-end-date 
+	and accountcode = so-cust-code 
+	and na-type = 'C' 
+	and sol-line-type != 'DN' 
+format is lst
+suppress so-delivery-date
+suppress stock-code
+suppress sol-line-description
+suppress accountcode
+suppress ws-start-date
+suppress ws-end-date
+unique so-order-no
+unique so-cust-code
+unique na-name
+unique na-company
+unique na-street
+unique na-suburb
+unique na-phone
+subtotal on sol-line-amount
+	with breaks on so-order-no

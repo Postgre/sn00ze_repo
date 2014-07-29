@@ -1,0 +1,6 @@
+update special-accounts
+set
+	s-acc-name = concat("SN", sub-string (s-acc-name 3 7))
+where
+	sub-string(s-acc-name 1 2 ) = "SS"
+	and sub-string(s-acc-name 3 7) != spaces

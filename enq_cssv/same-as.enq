@@ -1,0 +1,11 @@
+select
+	stock-code
+	stk-description
+	stk-user-group
+	stock-group
+from
+	stock-master
+where
+	stk-user-group[2] in { "A", "B" } 
+	and stk-description like "%SAME AS CODE%" 
+format is lst

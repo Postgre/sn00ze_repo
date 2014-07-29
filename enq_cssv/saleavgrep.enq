@@ -1,0 +1,202 @@
+select
+	so-order-no
+	so-order-date
+	so-order-status
+	so-territory-code
+	so-order-total-amount
+	so-ordered-total-cost
+	so-rep-code
+	ws-start-date = input date "Enter start date        :"
+	ws-end-date = input date "Enter   end date        :"
+	ws-start-territory = input alpha "Enter start store number:"
+	ws-end-territory = input alpha "Enter end store number  :"
+	ws-gp = so-order-total-amount - so-ordered-total-cost 
+	rep-code
+	rep-description
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+	company-name
+from
+	sales-order
+	rep-master
+	system-table
+	system-control
+where
+	so-order-status != '99' 
+	and so-order-date between ws-start-date and ws-end-date 
+	and so-territory-code between ws-start-territory and ws-end-territory 
+	and rep-code = so-rep-code 
+	and sys-tbl-type = 'TC' 
+	and sys-tbl-code = so-territory-code 
+order by so-territory-code so-rep-code so-order-no 
+format is rpt
+field new-so-order-no pic 9
+field new-so-territory-code pic 9
+field new-so-rep-code pic 9
+field total-so-order-total-amount like so-order-total-amount
+field sub-tot-so-order-total-amount like so-order-total-amount
+field sub-tot1-so-order-total-amount like so-order-total-amount
+field total-so-ordered-total-cost like so-ordered-total-cost
+field sub-tot-so-ordered-total-cost like so-ordered-total-cost
+field sub-tot1-so-ordered-total-cost like so-ordered-total-cost
+field total-ws-gp like ws-gp
+field sub-tot-ws-gp like ws-gp
+field sub-tot1-ws-gp like ws-gp
+field ws-count type numeric
+field ws-count1 type numeric
+field ws-grand-count type numeric
+report header
+	page
+	set total-so-order-total-amount = 0
+	set total-so-ordered-total-cost = 0
+	set total-ws-gp = 0
+	set ws-grand-count = 0
+header
+	print 
+		company-name in col 1
+		"AVERAGE SALES BY SALES REP" in col 56
+		today() in col 102
+		"Pageno." in col 118
+		pageno() in col 125
+	skip 1
+	print "|------------------------ TOTAL ---------------------|" in col 27
+		"|--------------------- AVERAGE ---------------|" in col 83
+	print "Rep" in col 1
+		"Rep" in col 6
+		"No." in col 78
+	print "Code" in col 1
+		"Name" in col 6
+		"Sales" in col 32
+		"Cost" in col 47
+		"G.P. $" in col 60
+		"G.P.%" in col 68
+		"Orders" in col 76
+		"Sales" in col 88
+		"Cost" in col 102
+		"G.P. $" in col 115
+		"G.P.%" in col 125
+	print "=================================================================================================================================" in col 1
+	skip 1
+before so-order-no
+	set new-so-order-no = 1
+before so-rep-code
+	set new-so-rep-code = 1
+	set sub-tot-so-order-total-amount = 0
+	set sub-tot-so-ordered-total-cost = 0
+	set sub-tot-ws-gp = 0
+	set ws-count = 0
+before so-territory-code
+	set new-so-territory-code = 1
+	set sub-tot1-so-order-total-amount = 0
+	set sub-tot1-so-ordered-total-cost = 0
+	set sub-tot1-ws-gp = 0
+	set ws-count1 = 0
+
+detail
+	if (new-so-territory-code)
+		print so-territory-code in col 3 bold font 8
+		sys-description in col 9 bold font 8
+	endif
+	if (new-so-order-no)
+		set ws-count += 1
+		set ws-count1 += 1
+		set ws-grand-count += 1
+	endif
+	if (new-so-rep-code)
+		print so-rep-code in col 1 
+		rep-description in col 5
+	 pic x(20)	no newline
+	endif
+	set new-so-territory-code = 0
+	set new-so-order-no = 0
+	set new-so-rep-code = 0
+	set total-so-order-total-amount += so-order-total-amount
+	set sub-tot-so-order-total-amount += so-order-total-amount
+	set sub-tot1-so-order-total-amount += so-order-total-amount
+	set total-so-ordered-total-cost += so-ordered-total-cost
+	set sub-tot-so-ordered-total-cost += so-ordered-total-cost
+	set sub-tot1-so-ordered-total-cost += so-ordered-total-cost
+	set total-ws-gp += ws-gp
+	set sub-tot-ws-gp += ws-gp
+	set sub-tot1-ws-gp += ws-gp
+after so-order-no
+after so-rep-code
+	print
+		sub-tot-so-order-total-amount in col 27 pic zzzzzzz9.99-
+		sub-tot-so-ordered-total-cost in col 41 pic zzzzzzz9.99-
+		sub-tot-ws-gp in col 55 pic zzzzzzz9.99-
+		sub-tot-ws-gp / sub-tot-so-order-total-amount * 100 in col 69 pic z9.9-
+		ws-count in col 76 pic zzz9
+		sub-tot-so-order-total-amount / ws-count in col 83 pic zzzzzzz9.99-
+		sub-tot-so-ordered-total-cost / ws-count in col 97 pic zzzzzzz9.99-
+		sub-tot-ws-gp / ws-count in col 111 pic zzzzzzz9.99-
+		(((sub-tot-ws-gp / ws-count) / (sub-tot-so-order-total-amount / ws-count)) * 100) in col 125 pic z9.9-
+skip
+after so-territory-code
+	if ws-start-territory != ws-end-territory
+	print
+		"Total for" in col 10 bold
+		"------------" in col 27
+		" ------------" in col 40
+		"------------" in col 55
+		"-----" in col 69
+		"----" in col 76
+		"------------" in col 83
+		"------------" in col 97
+		"------------" in col 111
+		"-----" in col 125
+	print
+		"Terr:" in col 10 bold 
+		so-territory-code in col 17 bold 
+		sub-tot1-so-order-total-amount in col 27 pic zzzzzzz9.99-
+		sub-tot1-so-ordered-total-cost in col 41 pic zzzzzzz9.99-
+		sub-tot1-ws-gp in col 55 pic zzzzzzz9.99-
+		sub-tot1-ws-gp / sub-tot1-so-order-total-amount * 100 in col 69 pic z9.9-
+		ws-count1 in col 76 pic zzz9
+		sub-tot1-so-order-total-amount / ws-count1 in col 83 pic zzzzzzz9.99-
+		sub-tot1-so-ordered-total-cost / ws-count1 in col 97 pic zzzzzzz9.99-
+		sub-tot1-ws-gp / ws-count1 in col 111 pic zzzzzzz9.99-
+		(((sub-tot1-ws-gp / ws-count1) / (sub-tot1-so-order-total-amount / ws-count1)) * 100) in col 125 pic z9.9-
+	skip
+	endif	
+
+report footer
+	print
+		"------------" in col 27
+		"------------" in col 41
+		"------------" in col 55
+		"-----" in col 69
+		"----" in col 76
+		"------------" in col 83
+		"------------" in col 97
+		"------------" in col 111
+		"-----" in col 125
+	print
+		"GRAND TOTAL" in col 10 bold 
+		total-so-order-total-amount in col 27 pic zzzzzzz9.99-
+		total-so-ordered-total-cost in col 41 pic zzzzzzz9.99-
+		total-ws-gp in col 55 pic zzzzzzz9.99-
+		total-ws-gp / total-so-order-total-amount * 100 in col 69 pic z9.9-
+		ws-grand-count in col 76 pic zzz9
+		total-so-order-total-amount / ws-grand-count in col 83 pic zzzzzzz9.99-
+		total-so-ordered-total-cost / ws-grand-count in col 97 pic zzzzzzz9.99-
+		total-ws-gp / ws-grand-count in col 111 pic zzzzzzz9.99-
+		(((total-ws-gp / ws-grand-count) / (total-so-order-total-amount / ws-grand-count)) * 100) in col 125 pic z9.9-
+
+
+	skip 3
+	print "NOTE: this report includes delivery charges " in col 19 bold 
+	skip
+	print
+		'Program Name     :' in col 19
+		"saleavgrep.enq" in col 39
+	skip
+	print "Start date       :" in col 19
+		ws-start-date in col 39
+	print "End   date       :" in col 19
+		ws-end-date in col 39
+	print "Start territory  :" in col 19
+		ws-start-territory in col 39 pic x(4)
+	print "End   territory  :" in col 19
+		ws-end-territory in col 39 pic x(4)

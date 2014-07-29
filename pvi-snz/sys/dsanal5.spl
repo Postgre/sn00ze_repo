@@ -1,0 +1,1349 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	dsanal5.spl
+//  Program Desc:	Analysis of two objects (A and B) from different datasets
+//					table A is shown in full, table B will only display where
+//					there are dupes in both, unmatched items can be found by
+//					filtering for blank key field in B (2nd) table.
+//					tables A and B can be reversed to show matched/unmatched
+//					from each perspective, A-centric or B-centric.
+//  Requested By:
+//  Request Date:	25may11
+//	To Do		:
+//===========================================================================//
+//  Copyright (C) ProView IT Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	20jun11	rmd			add batch-entry-control-file.batch-code
+//	17jun11	rmd			add stock-serial-number
+//						asset-register
+//	16jun11	rmd			add contract-master
+//	06jun11	rmd			stock and rep not looking up
+//						#3 addded system-table
+//	02jun11	rmd			two object version
+//	01jun11	rmd vers 2 	snooze centralised version
+//	31may11	rmd			amg version added no match option (ws-mode)
+//	26may11	rmd			snooze version added cre-master
+//	26may11	rmd			cpi version
+//	25may11	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+//master files
+object tmp-stock-master				like stock-master type isam
+object tmp-deb-master				like deb-master type isam
+object tmp-rep-master				like rep-master type isam
+object tmp-cre-master				like cre-master type isam
+object tmp-system-table				like system-table type isam
+object tmp-contract-master			like contract-master type isam
+object tmp-stock-serial-number		like stock-serial-number type isam
+object tmp-asset-register			like asset-register type isam
+object tmp-batch-entry-control-file	like batch-entry-control-file type isam
+
+//transactional files
+object tmp-sales-order			like sales-order type isam
+object tmp-sales-order-archive	like sales-order-archive type isam
+
+
+mode md-select
+	prompt "Select"
+	help "Select this item"
+	currency
+
+mode md-view-env
+	prompt "View ENV"
+	help "View Environment file"
+	currency
+
+mode md-tag
+	prompt "Tag"
+	help "Tag/Untag this item"
+	currency
+
+mode md-tag-all
+	prompt "Tag All"
+	help "Tag ALL items"
+	currency
+
+mode md-untag-all
+	prompt "Untag All"
+	help "Untag ALL items"
+	currency
+
+
+object tmp-review-object
+	type isam
+	file "tmp-review-object"
+	record
+		tro-key-a-1			pic x(20)
+		tro-key-a-2 		pic x(20)
+		tro-key-a-3 		pic x(20)
+		tro-key-a-4 		pic x(20)
+		tro-desc-a-1		pic x(30)
+		tro-desc-a-2		pic x(30)
+		tro-desc-a-3		pic x(30)
+		tro-key-b-1 		pic x(20)
+		tro-key-b-2 		pic x(20)
+		tro-key-b-3 		pic x(20)
+		tro-key-b-4 		pic x(20)
+		tro-desc-b-1		pic x(30)
+		tro-desc-b-2		pic x(30)
+		tro-desc-b-3		pic x(30)
+		tro-tag				pic x
+	endrecord
+	key is tro-key-a-1
+	key is tro-key-a-1 tro-key-a-2
+	key is tro-key-b-1
+
+field
+	ws-sys-comp-code-a      like sys-comp-code
+	ws-sys-comp-code-b      like sys-comp-code
+    ws-sys-comp-desc-a      like sys-comp-desc
+	ws-sys-comp-desc-b      like sys-comp-desc
+    ws-sys-comp-path-a      like sys-comp-path
+    ws-sys-comp-path-b      like sys-comp-path
+    ws-object				pic x(30)
+    ws-sys-tbl-type			like sys-tbl-type
+    ws-obj-id				like obj-id
+    ws-mode					pic x
+    ws-match-count-a		type numeric
+    ws-match-count-b		type numeric
+    ws-max-len-a			type numeric
+    ws-max-len-b			type numeric
+    ws-max-str-a			pic x(20)
+    ws-max-str-b			pic x(20)
+    //ws-allow-len-a			type numeric
+    //ws-allow-len-b			type numeric
+    ws-max-allow-a			pic x(20)
+    ws-max-allow-b			pic x(20)
+
+procedure main
+	set ws-mode 			= "M"
+	set ws-sys-comp-code-a 	= SPACES //"31T"
+	set ws-sys-comp-code-b 	= SPACES //"312"
+	set ws-object			= SPACES //"cre-master"
+	set ws-match-count-a    = 0
+	set ws-match-count-b    = 0
+	do user-input entry-once
+
+endprocedure // main ----------------------------------------------------------
+
+screen user-input
+window @1,1 to @8,80 title "User Input"
+box @1,1 to @7,80 title SPACES
+	accept ws-sys-comp-code-a @2,20 title "Main Company (A):"
+		default ws-sys-comp-code-a
+		on help-key
+			do find-company
+				returning
+					ws-sys-comp-code-a
+					ws-sys-comp-desc-a
+					ws-sys-comp-path-a
+			reenter ws-sys-comp-code-a optional
+		endon
+		validation
+			get system-companies
+				on index sys-comp-code
+				key is ws-sys-comp-code-a
+			on error
+				message "Cannot find company " ws-sys-comp-code-a
+				reenter ws-sys-comp-code-a
+			else
+				set ws-sys-comp-desc-a = sys-comp-desc
+				set ws-sys-comp-path-a = sys-comp-path
+			endon
+		endvalidation
+	display ws-sys-comp-desc-a @2,28 background
+	accept ws-sys-comp-code-b @3,20 title "Company B:"
+		default ws-sys-comp-code-b
+		on help-key
+			do find-company
+				returning
+					ws-sys-comp-code-b
+					ws-sys-comp-desc-b
+					ws-sys-comp-path-b
+			reenter ws-sys-comp-code-b optional
+		endon
+		validation
+			get system-companies
+				on index sys-comp-code
+				key is ws-sys-comp-code-b
+			on error
+				message "Cannot find company " ws-sys-comp-code-b
+				reenter ws-sys-comp-code-b
+			else
+				set ws-sys-comp-desc-b = sys-comp-desc
+				set ws-sys-comp-path-b = sys-comp-path
+			endon
+		endvalidation
+	display ws-sys-comp-desc-b @3,28 background
+	accept ws-object @4,20 title "Object:"
+		default ws-object
+		help "Object to analyse, e.g. stock-master, deb-master, cre-master"
+		on help-key
+			do lookup-object //entry-once
+				returning
+					ws-obj-id
+					ws-object
+			reenter ws-object optional
+		endon
+		validation
+			if ws-object not in {"stock-master" "deb-master" "cre-master" "rep-master" "sales-order" "sales-order-archive" "system-table" "contract-master" "stock-serial-number" "asset-register" "batch-entry-control-file"}
+				message "Cannot work with " ws-object
+				reenter ws-object
+			endif
+			get dict-object
+				on index obj-name
+				key is ws-object
+			on error
+				message "Cannot find object " ws-object
+				reenter ws-object
+			else
+				set ws-obj-id = obj-id
+			endon
+		endvalidation
+	if ws-object = "system-table"
+	    display "Table Code:" @5,8 prompt right
+		accept ws-sys-tbl-type @5,20 optional
+			uppercase
+			validation
+				if ws-sys-tbl-type = SPACES
+					display sys-description @5,25 background
+				else
+					get system-table
+						on index sys-tbl-type sys-tbl-code
+						key is "ZZ" ws-sys-tbl-type
+					on error
+						message ws-sys-tbl-type " not valid."
+						reenter ws-sys-tbl-type
+					else
+						display sys-description @5,25 background
+					endon
+				endif
+			endvalidation
+	else
+		clear @5,8 to @5,60
+	endif
+	accept ws-mode @6,20 title "Mode:"
+		uppercase
+		allowed "M" "N" //"B"
+		default ws-mode
+		help "Please choose (M)atching or (N)on-Matching" // or (B)oth"
+confirm
+confirmed
+	open tmp-review-object truncate temporary
+	do build-dataset
+	do massage-dateset
+	do display-in-grid
+endconfirm
+endscreen // user-input -------------------------------------------------------
+
+
+screen find-company
+returning
+	lr-sys-comp-code		like sys-comp-code
+	lr-sys-comp-desc		like sys-comp-desc
+	lr-sys-comp-path		like sys-comp-path
+	window @1,1 to @10,90
+		title concat("Select Company")
+		primary system-companies
+		datagrid occurs 8
+	allowed md-select md-view-env search //md-mode
+	review-from-start
+detail
+	display sys-comp-code 				@1,010 title "Company Code"
+	display sys-comp-desc				@1,020 title "Description"
+	display sys-comp-path				@1,030 title "Path"
+	display sys-comp-environment-code   @1,040 title "Env"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-sys-comp-code = sys-comp-code
+			set lr-sys-comp-desc = sys-comp-desc
+			set lr-sys-comp-path = sys-comp-path
+			exit
+	endswitch
+endconfirm
+endscreen // find-company -----------------------------------------------------
+
+procedure build-dataset
+	switch on ws-object
+		case "deb-master"
+			do check-deb
+		case "stock-master"
+			do check-stock
+		case "rep-master"
+			do check-rep
+		case "cre-master"
+			do check-cre
+		case "sales-order"
+			do check-sales
+		case "sales-order-archive"
+			do check-sales-archive
+		case "system-table"
+			do check-system-table
+		case "contract-master"
+			do check-contract
+		case "stock-serial-number"
+			do check-stock-serial
+		case "asset-register"
+			do check-asset
+		case "batch-entry-control-file"
+			do check-batch
+	endswitch
+endprocedure // build-dataset -------------------------------------------------
+
+screen lookup-object
+returning
+	lr-obj-id				like obj-id
+	lr-obj-name				like obj-name
+	window @1,1 to @14,35
+		title concat("Object")
+		primary dict-object
+		datagrid occurs 12
+	allowed md-select search
+	review-from-start
+detail
+	display obj-name	@1,010 title "Object" pic x(30)
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-obj-id	= obj-id
+			set lr-obj-name = obj-name
+			exit
+	endswitch
+endconfirm
+endscreen // lookup-object ----------------------------------------------------
+
+procedure massage-dateset
+	display "Preparing Results" @4,27 background bold colour green
+	if ws-mode = "M"
+		extract tmp-review-object
+			on index tro-key-b-1
+			key is SPACES
+			next same tro-key-b-1
+		detail
+			//if tro-key-b-1 = SPACES
+				delete tmp-review-object
+			//endif
+			//if ws-mode = "N" and tro-key-a-1 != SPACES
+			//	delete tmp-review-object
+			//elseif ws-mode = "M" and tro-key-b-1 = SPACES
+			//	delete tmp-review-object
+			//elseif tro-key-a-1 != SPACES
+			//	set ws-match-count-a += 1
+			//endif
+			//if tro-key-b-1 != SPACES
+			//	set ws-match-count-b += 1
+			//endif
+		endextract
+	endif
+endprocedure // massage-dateset -----------------------------------------------
+
+screen display-in-grid
+local field
+	lf-tro-key-a-1			like tro-key-a-1
+	lf-tro-key-a-2			like tro-key-a-2
+	lf-result				pic x(30)
+	window @1,1 to @24,135
+		title strconcat(ws-object ": Multi Dataset Analysis")
+		primary tmp-review-object
+		datagrid occurs 20
+	allowed search //md-tag md-tag-all md-untag-all search //md-mode
+	review-from-start
+detail
+	//display tro-tag				@1,004 title "Tag"		pic x(6)
+	display tro-key-a-1			@1,010 title "A Key 1"	pic x(10)
+	display tro-key-a-2 		@1,020 title "A Key 2"  pic x(12)
+	display tro-desc-a-1		@1,030 title "A Desc 1" pic x(16)
+	display tro-desc-a-2		@1,040 title "A Desc 2" pic x(16)
+	display tro-desc-a-3		@1,044 title "A Desc 3" pic x(16)
+	display tro-key-b-1 		@1,050 title "B Key 1"  pic x(10)
+	display tro-key-b-2 		@1,060 title "B Key 2"  pic x(12)
+	display tro-desc-b-1		@1,070 title "B Desc 1" pic x(16)
+	display tro-desc-b-2		@1,080 title "B Desc 2" pic x(16)
+	display tro-desc-b-3		@1,090 title "B Desc 3" pic x(16)
+	display ws-match-count-a	@21,10 title "A Count:" pic zzzzzzzz9
+	display ws-match-count-b    @22,10 title "B Count:" pic zzzzzzzz9
+	display ws-max-len-a        @21,40 title "A Max Len:" pic zzz9
+	display ws-max-str-a		@21,46 background
+	display ws-max-allow-a		@21,80 title "Max Allowed:"
+	display ws-max-len-b		@22,40 title "B Max Len:" pic zzz9
+	display ws-max-str-b		@22,46 background
+	display ws-max-allow-a		@22,80 title "Max Allowed:"
+
+confirm
+	auto
+confirmed
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+
+//procedure check-deb
+//local field
+//	lf-count				type numeric
+//	set lf-count = 0
+//	open tmp-deb-master read-only
+//		file is strconcat(ws-sys-comp-path-a "/DEB5MF") //O"
+//	extract tmp-deb-master
+//	detail
+//		set tro-key-a-1		= accountcode
+//		set tro-desc-a-1	= shortname
+//		insert tmp-review-object
+//		set lf-count += 1
+//		display fstr(lf-count,9,0) @2,70 background
+//	endextract
+//	display ws-sys-comp-desc-a @2,27 background bold colour green
+//	close tmp-deb-master
+//	set lf-count = 0
+//	open tmp-deb-master read-only
+//		file is strconcat(ws-sys-comp-path-b "/DEB5MF") //O"
+//	extract tmp-deb-master
+//	detail
+//		get tmp-review-object
+//			on index tro-key-a-1
+//			key is accountcode
+//		//on error
+//		//else
+//		//	set tro-key-b-1		= accountcode
+//		//	set tro-desc-b-1	= shortname
+//		//	update tmp-review-object
+//		//	set lf-count += 1
+//		//	display fstr(lf-count,9,0) @3,70 background
+//		//endon
+//		on error
+//			if ws-mode in {"N" "B"}
+//				set tro-key-b-1		= accountcode
+//				set tro-desc-b-1	= shortname
+//				insert tmp-review-object
+//				set lf-count += 1
+//			endif
+//		else
+//			if ws-mode in {"M" "B"}
+//				set tro-key-b-1		= accountcode
+//				set tro-desc-b-1	= shortname
+//				update tmp-review-object
+//				set lf-count += 1
+//			endif
+//		endon
+//		display fstr(lf-count,9,0) @3,70 background
+//	endextract
+//	display ws-sys-comp-desc-b @3,27 background bold colour green
+//	if ws-sys-comp-code-c != SPACES
+//		close tmp-deb-master
+//		set lf-count = 0
+//		open tmp-deb-master read-only
+//			file is strconcat(ws-sys-comp-path-c "/DEB5MF") //O"
+//		extract tmp-deb-master
+//		detail
+//			get tmp-review-object
+//				on index tro-key-a-1
+//				key is accountcode
+//			on error
+//				if ws-mode in {"N" "B"}
+//					set tro-key-c-1		= accountcode
+//					set tro-desc-c-1	= shortname
+//					insert tmp-review-object
+//					set lf-count += 1
+//				endif
+//			else
+//				if ws-mode in {"M" "B"}
+//					set tro-key-c-1		= accountcode
+//					set tro-desc-c-1	= shortname
+//					update tmp-review-object
+//					set lf-count += 1
+//				endif
+//			endon
+//			display fstr(lf-count,9,0) @4,70 background
+//		endextract
+//		display ws-sys-comp-desc-c @4,27 background bold colour green
+//	endif
+//	if ws-sys-comp-code-d != SPACES
+//		close tmp-deb-master
+//		set lf-count = 0
+//		open tmp-deb-master read-only
+//			file is strconcat(ws-sys-comp-path-d "/DEB5MF") //O"
+//		extract tmp-deb-master
+//		detail
+//			get tmp-review-object
+//				on index tro-key-a-1
+//				key is accountcode
+//			//on error
+//			//else
+//			//	set tro-key-d-1		= accountcode
+//			//	set tro-desc-d-1	= shortname
+//			//	update tmp-review-object
+//			//	set lf-count += 1
+//			//	display fstr(lf-count,9,0) @5,70 background
+//			//endon
+//			on error
+//				if ws-mode in {"N" "B"}
+//					set tro-key-d-1		= accountcode
+//					set tro-desc-d-1	= shortname
+//					insert tmp-review-object
+//					set lf-count += 1
+//				endif
+//			else
+//				if ws-mode in {"M" "B"}
+//					set tro-key-d-1		= accountcode
+//					set tro-desc-d-1	= shortname
+//					update tmp-review-object
+//					set lf-count += 1
+//				endif
+//			endon
+//			display fstr(lf-count,9,0) @4,70 background
+//		endextract
+//		display ws-sys-comp-desc-d @5,27 background bold colour green
+//	endif
+//endprocedure // check-deb -----------------------------------------------------
+
+//procedure check-stock
+//local field
+//	lf-count				type numeric
+//	set lf-count = 0
+//	open tmp-stock-master read-only
+//		file is strconcat(ws-sys-comp-path-a "/STK5MF") //O"
+//	extract tmp-stock-master
+//	detail
+//		set tro-key-a-1		= stock-code
+//		set tro-desc-a-1	= stk-description
+//		insert tmp-review-object
+//		set lf-count += 1
+//		display fstr(lf-count,9,0) @2,70 background
+//	endextract
+//	display ws-sys-comp-desc-a @2,27 background bold colour green
+//	close tmp-stock-master
+//	set lf-count = 0
+//	open tmp-stock-master read-only
+//		file is strconcat(ws-sys-comp-path-b "/STK5MF") //O"
+//	extract tmp-stock-master
+//	detail
+//		get tmp-review-object
+//			on index tro-key-a-1
+//			key is stock-code
+//		on error
+//		else
+//			set tro-key-b-1		= stock-code
+//			set tro-desc-b-1	= stk-description
+//			update tmp-review-object
+//			set lf-count += 1
+//			display fstr(lf-count,9,0) @3,70 background
+//		endon
+//	endextract
+//	display ws-sys-comp-desc-b @3,27 background bold colour green
+//	if ws-sys-comp-code-c != SPACES
+//		close tmp-stock-master
+//		set lf-count = 0
+//		open tmp-stock-master read-only
+//			file is strconcat(ws-sys-comp-path-c "/STK5MF") //O"
+//		extract tmp-stock-master
+//		detail
+//			get tmp-review-object
+//				on index tro-key-a-1
+//				key is stock-code
+//			on error
+//			else
+//				set tro-key-c-1		= stock-code
+//				set tro-desc-c-1	= stk-description
+//				update tmp-review-object
+//				set lf-count += 1
+//				display fstr(lf-count,9,0) @4,70 background
+//			endon
+//		endextract
+//		display ws-sys-comp-desc-c @4,27 background bold colour green
+//	endif
+//	if ws-sys-comp-code-d != SPACES
+//		close tmp-stock-master
+//		set lf-count = 0
+//		open tmp-stock-master read-only
+//			file is strconcat(ws-sys-comp-path-d "/STK5MF") //O"
+//		extract tmp-stock-master
+//		detail
+//			get tmp-review-object
+//				on index tro-key-a-1
+//				key is stock-code
+//			on error
+//			else
+//				set tro-key-d-1		= stock-code
+//				set tro-desc-d-1	= stk-description
+//				update tmp-review-object
+//				set lf-count += 1
+//				display fstr(lf-count,9,0) @5,70 background
+//			endon
+//		endextract
+//		display ws-sys-comp-desc-d @5,27 background bold colour green
+//	endif
+//endprocedure // check-stock ---------------------------------------------------
+
+
+//procedure check-rep
+//local field
+//	lf-count				type numeric
+//	set lf-count = 0
+//	open tmp-rep-master read-only
+//		file is strconcat(ws-sys-comp-path-a "/REP5MF") //O"
+//	extract tmp-rep-master
+//	detail
+//		set tro-key-a-1		= rep-code
+//		set tro-desc-a-1	= rep-description
+//		insert tmp-review-object
+//		set lf-count += 1
+//		display fstr(lf-count,9,0) @2,70 background
+//	endextract
+//	display ws-sys-comp-desc-a @2,27 background bold colour green
+//	close tmp-rep-master
+//	set lf-count = 0
+//	open tmp-rep-master read-only
+//		file is strconcat(ws-sys-comp-path-b "/REP5MF") //O"
+//	extract tmp-rep-master
+//	detail
+//		get tmp-review-object
+//			on index tro-key-a-1
+//			key is rep-code
+//		on error
+//		else
+//			set tro-key-b-1		= rep-code
+//			set tro-desc-b-1	= rep-description
+//			update tmp-review-object
+//			set lf-count += 1
+//			display fstr(lf-count,9,0) @3,70 background
+//		endon
+//	endextract
+//	display ws-sys-comp-desc-b @3,27 background bold colour green
+//	if ws-sys-comp-code-c != SPACES
+//		close tmp-rep-master
+//		set lf-count = 0
+//		open tmp-rep-master read-only
+//			file is strconcat(ws-sys-comp-path-c "/REP5MF") //O"
+//		extract tmp-rep-master
+//		detail
+//			get tmp-review-object
+//				on index tro-key-a-1
+//				key is rep-code
+//			on error
+//			else
+//				set tro-key-c-1		= rep-code
+//				set tro-desc-c-1	= rep-description
+//				update tmp-review-object
+//				set lf-count += 1
+//				display fstr(lf-count,9,0) @4,70 background
+//			endon
+//		endextract
+//		display ws-sys-comp-desc-c @4,27 background bold colour green
+//	endif
+//	if ws-sys-comp-code-d != SPACES
+//		close tmp-rep-master
+//		set lf-count = 0
+//		open tmp-rep-master read-only
+//			file is strconcat(ws-sys-comp-path-d "/REP5MF") //O"
+//		extract tmp-rep-master
+//		detail
+//			get tmp-review-object
+//				on index tro-key-a-1
+//				key is rep-code
+//			on error
+//			else
+//				set tro-key-d-1		= rep-code
+//				set tro-desc-d-1	= rep-description
+//				update tmp-review-object
+//				set lf-count += 1
+//				display fstr(lf-count,9,0) @5,70 background
+//			endon
+//		endextract
+//		display ws-sys-comp-desc-d @5,27 background bold colour green
+//	endif
+//endprocedure // check-rep -----------------------------------------------------
+
+
+procedure check-cre
+local field
+	lf-count				type numeric
+	lf-fld-name				like fld-name
+	set lf-count 			= 0
+	set ws-match-count-a 	= 0
+	set ws-match-count-b 	= 0
+	set ws-max-len-a 		= 0
+	set ws-max-str-a 		= SPACES
+	set ws-max-allow-a		= SPACES
+	set ws-max-len-b 		= 0
+	set ws-max-str-b 		= SPACES
+	set ws-max-allow-b		= SPACES
+	set lf-fld-name			= "cre-accountcode"
+	get dict-field
+		on index fld-name
+		key is lf-fld-name
+	if fld-type = "A"
+		set ws-max-allow-a = substring("ZZZZZZZZZZZZZZZZZZZZ",1,fld-size)
+		set ws-max-allow-b = substring("ZZZZZZZZZZZZZZZZZZZZ",1,fld-size)
+		set ws-max-allow-a = concat(strconcat(ws-max-allow-a)," (",str(strlen(ws-max-allow-a)),")")
+		set ws-max-allow-b = concat(strconcat(ws-max-allow-b)," (",str(strlen(ws-max-allow-b)),")")
+	elseif fld-type = "N"
+		set ws-max-allow-a = max-value(lf-fld-name)
+		set ws-max-allow-b = max-value(lf-fld-name)
+	endif
+	open tmp-cre-master read-only
+		file is strconcat(ws-sys-comp-path-a "/CRE5MF") //O"
+	extract tmp-cre-master
+	detail
+		set tro-key-a-1		= cre-accountcode
+		set tro-desc-a-1	= cr-shortname
+		insert tmp-review-object
+		set lf-count += 1
+		display fstr(lf-count,9,0) @2,70 background
+		if strlen(tro-key-a-1) > ws-max-len-a
+			set ws-max-len-a = strlen(tro-key-a-1)
+			set ws-max-str-a = tro-key-a-1
+		endif
+	endextract
+	set ws-match-count-a = lf-count
+	display ws-sys-comp-desc-a @2,28 background bold colour green
+	close tmp-cre-master
+	set lf-count = 0
+	open tmp-cre-master read-only
+		file is strconcat(ws-sys-comp-path-b "/CRE5MF") //O"
+	extract tmp-cre-master
+	detail
+		get tmp-review-object
+			on index tro-key-a-1
+			key is cre-accountcode
+		on error
+			if ws-mode in {"N" "B"}
+				initialise tmp-review-object
+				set tro-key-b-1		= cre-accountcode
+				set tro-desc-b-1	= cr-shortname
+				insert tmp-review-object
+				set lf-count += 1
+			endif
+		else
+			if ws-mode in {"M" "B"}
+				set tro-key-b-1		= cre-accountcode
+				set tro-desc-b-1	= cr-shortname
+				update tmp-review-object
+				set lf-count += 1
+			endif
+		endon
+		display fstr(lf-count,9,0) @3,70 background
+		if strlen(tro-key-b-1) > ws-max-len-b
+			set ws-max-len-b = strlen(tro-key-b-1)
+			set ws-max-str-b = tro-key-b-1
+		endif
+	endextract
+	set ws-match-count-b = lf-count
+	display ws-sys-comp-desc-b @3,28 background bold colour green
+endprocedure // check-cre -----------------------------------------------------
+
+procedure check-asset
+local field
+	lf-count				type numeric
+	lf-fld-name				like fld-name
+	set lf-count 			= 0
+	set ws-match-count-a 	= 0
+	set ws-match-count-b 	= 0
+	set ws-max-len-a 		= 0
+	set ws-max-str-a 		= SPACES
+	set ws-max-allow-a		= SPACES
+	set ws-max-len-b 		= 0
+	set ws-max-str-b 		= SPACES
+	set ws-max-allow-b		= SPACES
+	set lf-fld-name			= "asset-no"
+	get dict-field
+		on index fld-name
+		key is lf-fld-name
+	if fld-type = "A"
+		set ws-max-allow-a = substring("ZZZZZZZZZZZZZZZZZZZZ",1,fld-size)
+		set ws-max-allow-b = substring("ZZZZZZZZZZZZZZZZZZZZ",1,fld-size)
+		set ws-max-allow-a = concat(strconcat(ws-max-allow-a)," (",str(strlen(ws-max-allow-a)),")")
+		set ws-max-allow-b = concat(strconcat(ws-max-allow-b)," (",str(strlen(ws-max-allow-b)),")")
+	elseif fld-type = "N"
+		set ws-max-allow-a = max-value(lf-fld-name)
+		set ws-max-allow-b = max-value(lf-fld-name)
+	endif
+	open tmp-asset-register read-only
+		file is strconcat(ws-sys-comp-path-a "/ASS5MF") //O"
+	extract tmp-asset-register
+	detail
+		set tro-key-a-1		= asset-no
+		set tro-desc-a-1	= asset-desc
+		insert tmp-review-object
+		set lf-count += 1
+		display fstr(lf-count,9,0) @2,70 background
+		if strlen(tro-key-a-1) > ws-max-len-a
+			set ws-max-len-a = strlen(tro-key-a-1)
+			set ws-max-str-a = tro-key-a-1
+		endif
+	endextract
+	set ws-match-count-a = lf-count
+	display ws-sys-comp-desc-a @2,28 background bold colour green
+	close tmp-asset-register
+	set lf-count = 0
+	open tmp-asset-register read-only
+		file is strconcat(ws-sys-comp-path-b "/ASS5MF") //O"
+	extract tmp-asset-register
+	detail
+		get tmp-review-object
+			on index tro-key-a-1
+			key is asset-no
+		on error
+			if ws-mode in {"N" "B"}
+				initialise tmp-review-object
+				set tro-key-b-1		= asset-no
+				set tro-desc-b-1	= asset-desc
+				insert tmp-review-object
+				set lf-count += 1
+			endif
+		else
+			if ws-mode in {"M" "B"}
+				set tro-key-b-1		= asset-no
+				set tro-desc-b-1	= asset-desc
+				update tmp-review-object
+				set lf-count += 1
+			endif
+		endon
+		display fstr(lf-count,9,0) @3,70 background
+		if strlen(tro-key-b-1) > ws-max-len-b
+			set ws-max-len-b = strlen(tro-key-b-1)
+			set ws-max-str-b = tro-key-b-1
+		endif
+	endextract
+	set ws-match-count-b = lf-count
+	display ws-sys-comp-desc-b @3,28 background bold colour green
+endprocedure // check-asset ---------------------------------------------------
+
+procedure check-batch //20jun11
+local field
+	lf-count				type numeric
+	lf-fld-name				like fld-name
+	set lf-count 			= 0
+	set ws-match-count-a 	= 0
+	set ws-match-count-b 	= 0
+	set ws-max-len-a 		= 0
+	set ws-max-str-a 		= SPACES
+	set ws-max-allow-a		= SPACES
+	set ws-max-len-b 		= 0
+	set ws-max-str-b 		= SPACES
+	set ws-max-allow-b		= SPACES
+	set lf-fld-name			= "batch-code"
+	get dict-field
+		on index fld-name
+		key is lf-fld-name
+	if fld-type = "A"
+		set ws-max-allow-a = substring("ZZZZZZZZZZZZZZZZZZZZ",1,fld-size)
+		set ws-max-allow-b = substring("ZZZZZZZZZZZZZZZZZZZZ",1,fld-size)
+		set ws-max-allow-a = concat(strconcat(ws-max-allow-a)," (",str(strlen(ws-max-allow-a)),")")
+		set ws-max-allow-b = concat(strconcat(ws-max-allow-b)," (",str(strlen(ws-max-allow-b)),")")
+	elseif fld-type = "N"
+		set ws-max-allow-a = max-value(lf-fld-name)
+		set ws-max-allow-b = max-value(lf-fld-name)
+	endif
+	open tmp-batch-entry-control-file read-only
+		file is strconcat(ws-sys-comp-path-a "/SYS5BAT") //O"
+	extract tmp-batch-entry-control-file
+	detail
+		set tro-key-a-1		= batch-code
+		set tro-desc-a-1	= batch-trans-description
+		insert tmp-review-object
+		set lf-count += 1
+		display fstr(lf-count,9,0) @2,70 background
+		if strlen(tro-key-a-1) > ws-max-len-a
+			set ws-max-len-a = strlen(tro-key-a-1)
+			set ws-max-str-a = tro-key-a-1
+		endif
+	endextract
+	set ws-match-count-a = lf-count
+	display ws-sys-comp-desc-a @2,28 background bold colour green
+	close tmp-batch-entry-control-file
+	set lf-count = 0
+	open tmp-batch-entry-control-file read-only
+		file is strconcat(ws-sys-comp-path-b "/SYS5BAT") //O"
+	extract tmp-batch-entry-control-file
+	detail
+		get tmp-review-object
+			on index tro-key-a-1
+			key is batch-code
+		on error
+			if ws-mode in {"N" "B"}
+				initialise tmp-review-object
+				set tro-key-b-1		= batch-code
+				set tro-desc-b-1	= batch-trans-description
+				insert tmp-review-object
+				set lf-count += 1
+			endif
+		else
+			if ws-mode in {"M" "B"}
+				set tro-key-b-1		= batch-code
+				set tro-desc-b-1	= batch-trans-description
+				update tmp-review-object
+				set lf-count += 1
+			endif
+		endon
+		display fstr(lf-count,9,0) @3,70 background
+		if strlen(tro-key-b-1) > ws-max-len-b
+			set ws-max-len-b = strlen(tro-key-b-1)
+			set ws-max-str-b = tro-key-b-1
+		endif
+	endextract
+	set ws-match-count-b = lf-count
+	display ws-sys-comp-desc-b @3,28 background bold colour green
+endprocedure // check-asset ---------------------------------------------------
+
+procedure check-stock-serial
+local field
+	lf-count				type numeric
+	lf-fld-name				like fld-name
+	set lf-count 			= 0
+	set ws-match-count-a 	= 0
+	set ws-match-count-b 	= 0
+	set ws-max-len-a 		= 0
+	set ws-max-str-a 		= SPACES
+	set ws-max-allow-a		= SPACES
+	set ws-max-len-b 		= 0
+	set ws-max-str-b 		= SPACES
+	set ws-max-allow-b		= SPACES
+	set lf-fld-name			= "serial-no"
+	get dict-field
+		on index fld-name
+		key is lf-fld-name
+	if fld-type = "A"
+		set ws-max-allow-a = substring("ZZZZZZZZZZZZZZZZZZZZ",1,fld-size)
+		set ws-max-allow-b = substring("ZZZZZZZZZZZZZZZZZZZZ",1,fld-size)
+		set ws-max-allow-a = concat(strconcat(ws-max-allow-a)," (",str(strlen(ws-max-allow-a)),")")
+		set ws-max-allow-b = concat(strconcat(ws-max-allow-b)," (",str(strlen(ws-max-allow-b)),")")
+	elseif fld-type = "N"
+		set ws-max-allow-a = max-value(lf-fld-name)
+		set ws-max-allow-b = max-value(lf-fld-name)
+	endif
+	open tmp-stock-serial-number read-only
+		file is strconcat(ws-sys-comp-path-a "/SERIALMF") //O"
+	extract tmp-stock-serial-number
+	detail
+		set tro-key-a-1		= serial-no
+		set tro-desc-a-1	= contract-no
+		insert tmp-review-object
+		set lf-count += 1
+		display fstr(lf-count,9,0) @2,70 background
+		if strlen(tro-key-a-1) > ws-max-len-a
+			set ws-max-len-a = strlen(tro-key-a-1)
+			set ws-max-str-a = tro-key-a-1
+		endif
+	endextract
+	set ws-match-count-a = lf-count
+	display ws-sys-comp-desc-a @2,28 background bold colour green
+	close tmp-stock-serial-number
+	set lf-count = 0
+	open tmp-stock-serial-number read-only
+		file is strconcat(ws-sys-comp-path-b "/SERIALMF") //O"
+	extract tmp-stock-serial-number
+	detail
+		get tmp-review-object
+			on index tro-key-a-1
+			key is serial-no
+		on error
+			if ws-mode in {"N" "B"}
+				initialise tmp-review-object
+				set tro-key-b-1		= serial-no
+				set tro-desc-b-1	= contract-no
+				insert tmp-review-object
+				set lf-count += 1
+			endif
+		else
+			if ws-mode in {"M" "B"}
+				set tro-key-b-1		= serial-no
+				set tro-desc-b-1	= contract-no
+				update tmp-review-object
+				set lf-count += 1
+			endif
+		endon
+		display fstr(lf-count,9,0) @3,70 background
+		if strlen(tro-key-b-1) > ws-max-len-b
+			set ws-max-len-b = strlen(tro-key-b-1)
+			set ws-max-str-b = tro-key-b-1
+		endif
+	endextract
+	set ws-match-count-b = lf-count
+	display ws-sys-comp-desc-b @3,28 background bold colour green
+endprocedure // check-stock-serial --------------------------------------------
+
+procedure check-contract
+local field
+	lf-count				type numeric
+	lf-fld-name				like fld-name
+	set lf-count 			= 0
+	set ws-match-count-a 	= 0
+	set ws-match-count-b 	= 0
+	set ws-max-len-a 		= 0
+	set ws-max-str-a 		= SPACES
+	set ws-max-allow-a		= SPACES
+	set ws-max-len-b 		= 0
+	set ws-max-str-b 		= SPACES
+	set ws-max-allow-b		= SPACES
+	set lf-fld-name			= "contract-no"
+	get dict-field
+		on index fld-name
+		key is lf-fld-name
+	if fld-type = "A"
+		set ws-max-allow-a = substring("ZZZZZZZZZZZZZZZZZZZZ",1,fld-size)
+		set ws-max-allow-b = substring("ZZZZZZZZZZZZZZZZZZZZ",1,fld-size)
+		set ws-max-allow-a = concat(strconcat(ws-max-allow-a)," (",str(strlen(ws-max-allow-a)),")")
+		set ws-max-allow-b = concat(strconcat(ws-max-allow-b)," (",str(strlen(ws-max-allow-b)),")")
+	elseif fld-type = "N"
+		set ws-max-allow-a = max-value(lf-fld-name)
+		set ws-max-allow-b = max-value(lf-fld-name)
+	endif
+	open tmp-contract-master read-only
+		file is strconcat(ws-sys-comp-path-a "/CON5MF") //O"
+	extract tmp-contract-master
+	detail
+		set tro-key-a-1		= contract-no
+		set tro-desc-a-1	= SPACES
+		insert tmp-review-object
+		set lf-count += 1
+		display fstr(lf-count,9,0) @2,70 background
+		if strlen(tro-key-a-1) > ws-max-len-a
+			set ws-max-len-a = strlen(tro-key-a-1)
+			set ws-max-str-a = tro-key-a-1
+		endif
+	endextract
+	set ws-match-count-a = lf-count
+	display ws-sys-comp-desc-a @2,28 background bold colour green
+	close tmp-contract-master
+	set lf-count = 0
+	open tmp-contract-master read-only
+		file is strconcat(ws-sys-comp-path-b "/CON5MF") //O"
+	extract tmp-contract-master
+	detail
+		get tmp-review-object
+			on index tro-key-a-1
+			key is contract-no
+		on error
+			if ws-mode in {"N" "B"}
+				initialise tmp-review-object
+				set tro-key-b-1		= contract-no
+				set tro-desc-b-1	= SPACES
+				insert tmp-review-object
+				set lf-count += 1
+			endif
+		else
+			if ws-mode in {"M" "B"}
+				set tro-key-b-1		= contract-no
+				set tro-desc-b-1	= SPACES
+				update tmp-review-object
+				set lf-count += 1
+			endif
+		endon
+		display fstr(lf-count,9,0) @3,70 background
+		if strlen(tro-key-b-1) > ws-max-len-b
+			set ws-max-len-b = strlen(tro-key-b-1)
+			set ws-max-str-b = tro-key-b-1
+		endif
+	endextract
+	set ws-match-count-b = lf-count
+	display ws-sys-comp-desc-b @3,28 background bold colour green
+endprocedure // check-contract ------------------------------------------------
+
+procedure check-deb
+local field
+	lf-count				type numeric
+	set lf-count = 0
+	open tmp-deb-master read-only
+		file is strconcat(ws-sys-comp-path-a "/DEB5MF") //O"
+	extract tmp-deb-master
+	detail
+		set tro-key-a-1		= accountcode
+		set tro-desc-a-1	= shortname
+		insert tmp-review-object
+		set lf-count += 1
+		display fstr(lf-count,9,0) @2,70 background
+	endextract
+	display ws-sys-comp-desc-a @2,28 background bold colour green
+	close tmp-deb-master
+	set lf-count = 0
+	open tmp-deb-master read-only
+		file is strconcat(ws-sys-comp-path-b "/DEB5MF") //O"
+	extract tmp-deb-master
+	detail
+		get tmp-review-object
+			on index tro-key-a-1
+			key is accountcode
+		on error
+			if ws-mode in {"N" "B"}
+				initialise tmp-review-object
+				set tro-key-b-1		= accountcode
+				set tro-desc-b-1	= shortname
+				insert tmp-review-object
+				set lf-count += 1
+			endif
+		else
+			if ws-mode in {"M" "B"}
+				set tro-key-b-1		= accountcode
+				set tro-desc-b-1	= shortname
+				update tmp-review-object
+				set lf-count += 1
+			endif
+		endon
+		display fstr(lf-count,9,0) @3,70 background
+	endextract
+	display ws-sys-comp-desc-b @3,28 background bold colour green
+endprocedure // check-deb -----------------------------------------------------
+
+
+procedure check-rep
+local field
+	lf-count				type numeric
+	set lf-count = 0
+	open tmp-rep-master read-only
+		file is strconcat(ws-sys-comp-path-a "/REP5MF") //O"
+	extract tmp-rep-master
+	detail
+		set tro-key-a-1		= rep-code
+		set tro-desc-a-1	= rep-description
+		insert tmp-review-object
+		set lf-count += 1
+		display fstr(lf-count,9,0) @2,70 background
+	endextract
+	display ws-sys-comp-desc-a @2,28 background bold colour green
+	close tmp-rep-master
+	set lf-count = 0
+	open tmp-rep-master read-only
+		file is strconcat(ws-sys-comp-path-b "/REP5MF") //O"
+	extract tmp-rep-master
+	detail
+		get tmp-review-object
+			on index tro-key-a-1
+			//key is accountcode    //06jun11
+			key is rep-code			//06jun11
+		on error
+			if ws-mode in {"N" "B"}
+				initialise tmp-review-object
+				set tro-key-b-1		= rep-code
+				set tro-desc-b-1	= rep-description
+				insert tmp-review-object
+				set lf-count += 1
+			endif
+		else
+			if ws-mode in {"M" "B"}
+				set tro-key-b-1		= rep-code
+				set tro-desc-b-1	= rep-description
+				update tmp-review-object
+				set lf-count += 1
+			endif
+		endon
+		display fstr(lf-count,9,0) @3,70 background
+	endextract
+	display ws-sys-comp-desc-b @3,28 background bold colour green
+endprocedure // check-rep -----------------------------------------------------
+
+procedure check-stock
+local field
+	lf-count				type numeric
+	set lf-count = 0
+	open tmp-stock-master read-only
+		file is strconcat(ws-sys-comp-path-a "/STK5MF") //O"
+	extract tmp-stock-master
+	detail
+		set tro-key-a-1		= stock-code
+		set tro-desc-a-1	= stk-description
+		insert tmp-review-object
+		set lf-count += 1
+		display fstr(lf-count,9,0) @2,70 background
+	endextract
+	display ws-sys-comp-desc-a @2,28 background bold colour green
+	close tmp-stock-master
+	set lf-count = 0
+	open tmp-stock-master read-only
+		file is strconcat(ws-sys-comp-path-b "/STK5MF") //O"
+	extract tmp-stock-master
+	detail
+		get tmp-review-object
+			on index tro-key-a-1
+			//key is accountcode	//06jun11
+			key is stock-code       //06jun11
+		on error
+			if ws-mode in {"N" "B"}
+				initialise tmp-review-object
+				set tro-key-b-1		= stock-code
+				set tro-desc-b-1	= stk-description
+				insert tmp-review-object
+				set lf-count += 1
+			endif
+		else
+			if ws-mode in {"M" "B"}
+				set tro-key-b-1		= stock-code
+				set tro-desc-b-1	= stk-description
+				update tmp-review-object
+				set lf-count += 1
+			endif
+		endon
+		display fstr(lf-count,9,0) @3,70 background
+	endextract
+	display ws-sys-comp-desc-b @3,28 background bold colour green
+endprocedure // check-stock ---------------------------------------------------
+
+procedure check-sales
+local field
+	lf-count				type numeric
+	set lf-count = 0
+	open tmp-sales-order read-only
+		file is strconcat(ws-sys-comp-path-a "/SOR5MF") //O"
+	extract tmp-sales-order
+	detail
+		set tro-key-a-1		= str(so-order-no)
+		set tro-desc-a-1	= so-invoice-no
+		set tro-desc-a-2	= julian2date(so-order-date)
+		set tro-desc-a-3	= so-cust-code
+		insert tmp-review-object
+		set lf-count += 1
+		display fstr(lf-count,9,0) @2,70 background
+	endextract
+	display ws-sys-comp-desc-a @2,28 background bold colour green
+	close tmp-sales-order
+	set lf-count = 0
+	open tmp-sales-order read-only
+		file is strconcat(ws-sys-comp-path-b "/SOR5MF") //O"
+	extract tmp-sales-order
+	detail
+		get tmp-review-object
+			on index tro-key-a-1
+			key is str(so-order-no)
+		on error
+			if ws-mode in {"N" "B"}
+				initialise tmp-review-object
+				set tro-key-b-1		= str(so-order-no)
+				set tro-desc-b-1	= so-invoice-no
+				set tro-desc-b-2	= julian2date(so-order-date)
+				set tro-desc-b-3	= so-cust-code
+				insert tmp-review-object
+				set lf-count += 1
+			endif
+		else
+			if ws-mode in {"M" "B"}
+				set tro-key-b-1		= str(so-order-no)
+				set tro-desc-b-1	= so-invoice-no
+				set tro-desc-b-2	= julian2date(so-order-date)
+				set tro-desc-b-3	= so-cust-code
+				update tmp-review-object
+				set lf-count += 1
+			endif
+		endon
+		display fstr(lf-count,9,0) @3,70 background
+	endextract
+	display ws-sys-comp-desc-b @3,28 background bold colour green
+endprocedure // check-sales ---------------------------------------------------
+
+procedure check-sales-archive
+local field
+	lf-count				type numeric
+	set lf-count = 0
+	open tmp-sales-order-archive read-only
+		file is strconcat(ws-sys-comp-path-a "/SOR5MFA") //O"
+	extract tmp-sales-order-archive
+	detail
+		set tro-key-a-1		= str(so-order-no)
+		set tro-desc-a-1	= so-invoice-no
+		set tro-desc-a-2	= julian2date(so-order-date)
+		set tro-desc-a-3	= so-cust-code
+		insert tmp-review-object
+		set lf-count += 1
+		display fstr(lf-count,9,0) @2,70 background
+	endextract
+	set ws-match-count-a = lf-count
+	display ws-sys-comp-desc-a @2,28 background bold colour green
+	close tmp-sales-order-archive
+	set lf-count = 0
+	open tmp-sales-order-archive read-only
+		file is strconcat(ws-sys-comp-path-b "/SOR5MFA") //O"
+	extract tmp-sales-order-archive
+	detail
+		get tmp-review-object
+			on index tro-key-a-1
+			key is str(so-order-no)
+		on error
+			if ws-mode in {"N" "B"}
+				initialise tmp-review-object
+				set tro-key-b-1		= str(so-order-no)
+				set tro-desc-b-1	= so-invoice-no
+				set tro-desc-b-2	= julian2date(so-order-date)
+				set tro-desc-b-3	= so-cust-code
+				insert tmp-review-object
+				set lf-count += 1
+			endif
+		else
+			if ws-mode in {"M" "B"}
+				set tro-key-b-1		= str(so-order-no)
+				set tro-desc-b-1	= so-invoice-no
+				set tro-desc-b-2	= julian2date(so-order-date)
+				set tro-desc-b-3	= so-cust-code
+				update tmp-review-object
+				set lf-count += 1
+			endif
+		endon
+		display fstr(lf-count,9,0) @3,70 background
+	endextract
+	set ws-match-count-b = lf-count
+	display ws-sys-comp-desc-b @3,28 background bold colour green
+endprocedure // check-sales-archive -------------------------------------------
+
+
+// ws-match-count-a		type numeric
+// ws-match-count-b		type numeric
+// ws-max-len-a			type numeric
+// ws-max-len-b			type numeric
+// ws-allow-len-a		type numeric
+// ws-allow-len-b		type numeric
+
+procedure check-system-table
+//window @1,1 to @5,50 title "Check System Table"
+//box @1,1, to @4,50 title SPACES
+local field
+	lf-count				type numeric
+	set lf-count = 0
+	open tmp-system-table read-only
+		file is strconcat(ws-sys-comp-path-a "/SYS5TBL") //O"
+	extract tmp-system-table
+	detail
+		if ws-sys-tbl-type in {SPACES sys-tbl-type}
+			set tro-key-a-1		= sys-tbl-type
+			set tro-key-a-2		= sys-tbl-code
+			set tro-desc-a-1	= sys-description
+			insert tmp-review-object
+			set lf-count += 1
+			display fstr(lf-count,9,0) @2,70 background
+		endif
+	endextract
+	display ws-sys-comp-desc-a @2,28 background bold colour green
+	close tmp-system-table
+	set lf-count = 0
+	open tmp-system-table read-only
+		file is strconcat(ws-sys-comp-path-b "/SYS5TBL") //O"
+	extract tmp-system-table
+	detail
+		get tmp-review-object
+			on index tro-key-a-1 tro-key-a-2
+			key is sys-tbl-type sys-tbl-code
+		on error
+			if ws-mode in {"N" "B"}
+				initialise tmp-review-object
+				set tro-key-b-1		= sys-tbl-type
+				set tro-key-b-2		= sys-tbl-code
+				set tro-desc-b-1	= sys-description
+				insert tmp-review-object
+				set lf-count += 1
+			endif
+		else
+			if ws-mode in {"M" "B"}
+				set tro-key-b-1		= sys-tbl-type
+				set tro-key-b-2		= sys-tbl-code
+				set tro-desc-b-1	= sys-description
+				update tmp-review-object
+				set lf-count += 1
+			endif
+		endon
+		display fstr(lf-count,9,0) @3,70 background
+	endextract
+	display ws-sys-comp-desc-b @3,28 background bold colour green
+endprocedure // check-system-table --------------------------------------------

@@ -1,0 +1,24 @@
+// lst-del.enq
+// to list the records with a D in their user 1 field 
+// 
+select
+	stock-code
+	stock-group
+	stk-user-group
+	stk-description
+	stk-sort-analysis-code
+	stk-abc-class
+	stk-condition-code
+from
+	stock-master
+where
+	stk-user-group[1] = 'D' 
+	and stk-user-group[2] = input alpha "Enter the Status Code" 
+format is lst
+report width is 133
+title line 1 is "Capt'n Snooze" 
+title line 2 is " " 
+title line 3 is "Report : Lst-del.enq" 
+title line 4 is " " 
+title line 5 is "Report to list the Uniface deleted records for a user 2 field" 
+suppress stk-user-group[1]

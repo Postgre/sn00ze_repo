@@ -1,0 +1,1077 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/discsales.spl
+//  Program Desc:	Discounted Sales datagrid
+//  Requested By:	Simon Beaty
+//  Request Date:	14feb13
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	02jun14	mb		{6}	upgrade to 710.3
+//	08may13	rmd	{5}		display date column and suppress popup messages
+//	13mar13	rmd	{4}		filter date using creation date of disc so line.. ToDo
+//						proposed approach extract saf within date range, build
+//							so collection, use this to then grab sol/sola
+//	15feb13	rmd	{1}		don't flag as discounted if discount removed
+//				{2}		inc written and inv sales, use order-date to filter both
+//						show status, always show ord qty regardless
+//						into one display column
+//				{3}		use origsolprc routine to recalc true original unit price ex
+//						store this in a new column
+//	14feb13	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+version-number "140604.000" //"CUSTOM pvi-snz/so/discsales 140602" //{6}
+
+//#include "../../../../bms/include/i85codes.spl" //{6}
+
+//06may10 report layout requested
+//store tmp-so-territory-code tmp-so-territory-desc
+	//rep
+	// tmp-so-rep-code tmp-rep-description
+		//so#				date				customer			item			desc					reason					unit-price			disc-amt			gp%
+		//tmp-so-order-no	tmp-so-order-date	tmp-so-cust-code 	tmp-stock-code	tmp-stk-description		tmp-reason-description	tmp-rpt-unit-price	tmp-rpt-disc-amt	tmp-rpt-gp-perc
+mode md-print-report
+	prompt "Print"
+
+mode md-so-enq
+	prompt "SO Enq"                                        `
+	help "Enquire on this sales order"
+
+object tmp-price-audit
+	type memory
+	record
+		tmp-so-order-date         	like so-order-date
+		tmp-so-order-no           	like so-order-no
+		tmp-so-bo-suffix          	like so-bo-suffix
+		tmp-sol-line-seq          	like sol-line-seq
+		tmp-stock-code            	like stock-code
+		tmp-stk-description			like stk-description
+		tmp-so-territory-code     	like so-territory-code
+		tmp-territory-desc			pic x(30)
+		tmp-so-rep-code           	like so-rep-code
+		tmp-rep-description       	like rep-description
+		tmp-so-cust-code   			like so-cust-code
+		tmp-shortname   			like shortname
+		tmp-reason-code           	pic x(2)
+		tmp-reason-description    	pic x(30)
+		tmp-reason-effect			pic x(30)
+		tmp-rpt-qty                	type numeric
+		tmp-rpt-unit-cost			type numeric
+		tmp-rpt-unit-price-old-ex	type numeric
+		tmp-rpt-unit-price-new-ex	type numeric
+		tmp-rpt-unit-disc-amt		type numeric
+		tmp-rpt-gp-perc             type numeric
+	endrecord
+	key is
+		tmp-so-order-date
+		tmp-so-order-no
+		tmp-so-bo-suffix
+		tmp-sol-line-seq
+	key is
+		tmp-so-territory-code
+		tmp-so-order-no
+		tmp-so-bo-suffix
+		tmp-sol-line-seq
+	key is
+		tmp-so-territory-code
+		tmp-so-rep-code
+		tmp-so-order-no
+		tmp-so-bo-suffix
+		tmp-sol-line-seq
+	key is
+		tmp-so-territory-code
+		tmp-reason-code
+		tmp-so-order-no
+		tmp-so-bo-suffix
+		tmp-sol-line-seq
+
+	object tmp-disc-reconcile
+		type memory
+		record
+			tdr-sys-consolidation-division 		like sys-consolidation-division
+			tdr-territory                       like territory
+			tdr-all-sales-gross                 type numeric
+			tdr-all-sales-count                 type numeric
+			tdr-all-sales-cost                  type numeric
+			tdr-all-sales-gp                    type numeric
+			tdr-all-sales-ips                   type numeric
+			tdr-all-sales-avg                   type numeric
+			tdr-disc-sales-gross                type numeric
+			tdr-disc-sales-disc	                type numeric
+			tdr-disc-sales-count                type numeric
+			tdr-disc-sales-cost                 type numeric
+			tdr-disc-sales-gp                   type numeric
+			tdr-disc-sales-ips                  type numeric
+			tdr-disc-sales-avg                  type numeric
+		endrecord
+		key is tdr-sys-consolidation-division tdr-territory
+
+	object tmp-sales-order
+		type memory
+		record
+			tso-sys-consolidation-division      like sys-consolidation-division
+		    tso-territory                       like territory
+		    tso-whse-code						like whse-code
+		    tso-so-rep-code                 	like so-rep-code
+		    tso-so-order-date					like so-order-date	//{5}
+		    tso-so-order-no                     like so-order-no
+		    tso-so-bo-suffix                    like so-bo-suffix
+		    tso-so-order-status					like so-order-status  //{2}
+		    tso-sol-line-seq                    like sol-line-seq
+		    tso-stock-code                      like stock-code
+		    tso-sol-ordered-qty             	like sol-ordered-qty
+		    tso-sol-shipped-qty             	like sol-shipped-qty
+		    tso-display-qty						like sol-shipped-qty //{2}
+		    tso-sol-tax-rate					like sol-tax-rate
+		    tso-sol-item-price					like sol-item-price
+		    tso-orig-sol-unit-price-ex          type numeric	//{3}
+		    tso-original-price-ex               type numeric
+		    tso-corrected-price-ex              type numeric
+		    tso-discounted-price-ex             type numeric
+		    tso-sol-item-cost                   like sol-item-cost
+		    tso-price-overridden                type boolean
+		    tso-discounted                      type boolean
+		    tso-p-reason						like sol-user-only-alpha4-1
+		    tso-d-reason                        like sol-user-only-alpha4-1
+		    tso-sol-disc-rate					like sol-disc-rate	//{1}
+		endrecord
+		key is
+			tso-sys-consolidation-division
+			tso-territory
+			tso-so-order-no
+			tso-so-bo-suffix
+			tso-sol-line-seq
+			unique
+
+field
+	ws-start-date			type date
+	ws-end-date             type date
+	ws-store-code           like so-territory-code
+	ws-rep-code             like so-rep-code
+	ws-reason-code			pic xx
+	ws-print-mode			pic x(5)
+
+
+procedure main
+	get system-control first
+	do get-user-input entry once
+endprocedure // main ----------------------------------------------------------
+
+screen get-user-input
+//capture user input
+	window @5,5 to @14,40 title "Price Audit Report"
+before
+	box @6,5 to @14,40 title SPACES
+	set ws-start-date 	= add-month(today(),-2,0) // - 7
+	set ws-end-date   	= today() - 1
+	set ws-store-code 	= "*"
+	set ws-rep-code   	= "*"
+	set ws-reason-code  = "*"
+	//
+detail
+	accept ws-start-date 	@07,20 title is "Start Date"    default ws-start-date
+	accept ws-end-date   	@08,20 title is "End Date"      default ws-end-date
+	//accept ws-store-code 	@09,20 title is "Store Code"    default ws-store-code
+	//accept ws-rep-code   	@10,20 title is "Rep Code"      default ws-rep-code
+	//accept ws-reason-code   @11,20 title is "Reason Code"   default ws-reason-code
+	//accept ws-print-mode	@12,20 title is "Print Mode"   	default ws-print-mode
+	//	uppercase
+	//
+confirm
+	//auto
+confirmed
+	//message "Run Report"
+//<{6}
+//<{6}
+	spl "pvi-snz/so/origsolprc"
+		parameters
+			ws-start-date
+	do run-report
+notconfirmed
+	//message "Not Running Report"
+endconfirm
+endscreen // get-user-input ---------------------------------------------------
+
+
+procedure run-report
+	//do build-dataset
+	do build-dataset-disc-reconcile
+	//do display-in-grid
+	do dig-disc-reconcile
+endprocedure // run-report ----------------------------------------------------
+
+procedure build-dataset-disc-reconcile
+local field
+	lf-so-order-no          like so-order-no
+	lf-so-bo-suffix         like so-bo-suffix                                                   //tdr-sys-consolidation-division
+	lf-sol-line-seq			like sol-line-seq                                                   //tdr-territory
+	lf-sol-line-seq-int		like sol-line-seq                                                   //tdr-all-sales-gross
+	lf-fall-back-old-ex		like sol-item-price                                                 //tdr-all-sales-count
+	lf-sol-tax-rate			like sol-tax-rate	                                                //tdr-all-sales-cost
+	lf-disc-effect			type numeric
+	//                                                                                          //
+	//open tmp-price-audit truncate temporary                                                     //
+	//open tmp-disc-reconcile truncate temporary
+	open tmp-sales-order truncate temporary                                                  	//
+	//
+	report "wtf"
+		spool-only
+	//message "archived sales" //{5}                                                                                    //                                                                      //
+	extract sales-order-archive                                                                         //
+		//on index so-processing-date so-order-no
+		//key is ws-start-date 0
+		//finish when so-processing-date > ws-end-date
+	detail
+		//if so-order-status in { "02" "06" "25" "35" "45" "65" "75" "85" "91" "14" "95" "96" "98"} or so-order-type-code = "Q"
+		//	continue
+		//endif
+		if so-order-status not = "90" or so-order-type-code = "Q"
+			continue
+		endif
+		if not so-order-date between ws-start-date and ws-end-date
+		//if not so-processing-date between ws-start-date and ws-end-date
+			continue
+		endif
+		//test rep
+		if ws-rep-code != "*"   //ws-reason-code
+			if so-rep-code != ws-rep-code
+				continue
+			endif
+		endif
+		//test store
+		if ws-store-code != "*"
+			if so-territory-code != ws-store-code
+				continue
+			endif
+		endif
+		//get system-table
+		//	on index sys-tbl-type sys-tbl-code
+		//	key is "TC" so-territory-code
+		//on error
+		//	set tmp-territory-desc		= "Store not found"
+		//else
+		//	set tmp-territory-desc		= sys-description
+		//endon
+		//set tmp-so-cust-code   			= so-cust-code
+		//get deb-master
+		//	on index accountcode
+		//	key is so-cust-code
+		//on error
+		//	set tmp-shortname			= "Cust not found"
+		//else
+		//	set tmp-shortname			= shortname
+		//endon
+		//get rep-master
+		//	on index rep-code
+		//	key is so-rep-code
+		//on error
+		//	set rep-description = "Rep not found"
+		//endon
+		//review lines
+		//normal line pass
+		print
+			so-order-no
+			so-bo-suffix
+			so-order-status
+			so-order-date
+		extract sales-order-line-archive
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is so-order-no so-bo-suffix 0
+			next same so-order-no so-bo-suffix
+		detail
+			if sol-line-type not in {"SN" "KN" "WN"}
+				continue
+			endif
+			if sol-ordered-qty = 0
+				continue
+			endif
+			print
+				sol-line-seq 		in col 5
+				stock-code
+				"O:" sol-ordered-qty
+				"S:" sol-shipped-qty
+				"I:" sol-item-price
+				"L:" sol-line-amount
+				"D:" sol-disc-rate
+				"T:" sol-tax-rate
+            //
+			initialise tmp-sales-order
+			set tso-sys-consolidation-division 	= sys-consolidation-division
+			set tso-territory                   = so-territory-code
+			set tso-whse-code					= so-whse-code
+			set tso-so-rep-code                 = so-rep-code
+			set tso-so-order-date				= so-order-date	//{5}
+			set tso-so-order-no                 = so-order-no
+			set tso-so-bo-suffix                = so-bo-suffix
+			set tso-so-order-status				= so-order-status	//{2}
+			set tso-sol-line-seq                = sol-line-seq
+			set tso-stock-code                  = stock-code
+			set tso-sol-ordered-qty             = sol-ordered-qty
+			//set tso-sol-shipped-qty             = sol-shipped-qty
+			//set tso-display-qty               	= sol-shipped-qty	//{2}
+			set tso-sol-disc-rate				= sol-disc-rate	//{1}
+			set tso-sol-tax-rate				= sol-tax-rate
+			set tso-sol-item-price				= sol-item-price
+			set tso-orig-sol-unit-price-ex		= sol-user-only-num1	//{3}
+			set tso-original-price-ex			= sol-item-price / (1 + (tso-sol-tax-rate / 100))	//sol-item-price - (sol-item-price * tso-sol-tax-rate / 100)
+			if tso-orig-sol-unit-price-ex = 0 //in the case of un overidden items
+				set tso-orig-sol-unit-price-ex = tso-original-price-ex
+			endif
+			set tso-corrected-price-ex          = sol-item-price / (1 + (tso-sol-tax-rate / 100))	//sol-item-price - (sol-item-price * tso-sol-tax-rate / 100)
+			set tso-discounted-price-ex       	= (sol-line-amount / (1 + (tso-sol-tax-rate / 100))) / sol-ordered-qty	//(sol-line-amount - (sol-line-amount * tso-sol-tax-rate / 100)) / tso-sol-shipped-qty
+			set tso-sol-item-cost				= sol-item-cost
+			set tso-price-overridden 			= FALSE
+			set tso-discounted                	= FALSE
+			get tmp-sales-order
+			on error
+				print
+					sol-line-seq 		in col 5
+					stock-code
+					"1>"
+				    "O:" tso-original-price-ex
+					"C:" tso-corrected-price-ex
+				    "D:" tso-discounted-price-ex
+				insert tmp-sales-order
+			endon
+		    //sol-ordered-disc-amt
+		endextract
+		//discount run
+		extract sales-order-line-archive
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is so-order-no so-bo-suffix 0
+			next same so-order-no so-bo-suffix
+		detail
+			if sol-line-type not in {"DN"}
+				continue
+			endif
+			initialise tmp-sales-order
+			set tso-sys-consolidation-division 	= sys-consolidation-division
+			set tso-territory                   = so-territory-code
+			set tso-so-rep-code                 = so-rep-code
+			set tso-so-order-date				= so-order-date	//{5}
+			set tso-so-order-no                 = so-order-no
+			set tso-so-bo-suffix                = so-bo-suffix
+			set tso-sol-line-seq                = integer(sol-line-seq)
+			set lf-disc-effect			  		= sol-user-only-num1 - sol-user-only-num2
+			//message "found:" sol-user-only-alpha4-1 ":" tso-so-order-no tso-so-bo-suffix sol-line-seq "/" tso-sol-line-seq
+			get tmp-sales-order
+			on error
+				//message "can't find:" tso-so-order-no tso-so-bo-suffix sol-line-seq "/" tso-sol-line-seq
+			else
+				if sol-user-only-alpha4-2 = "P"
+					set tso-price-overridden 		= TRUE
+					set tso-p-reason				= sol-user-only-alpha4-1
+					//message tso-d-reason
+				//elseif sol-user-only-alpha4-2                                 //{1}
+				elseif sol-user-only-alpha4-2 = "D" and tso-sol-disc-rate <> 0	//{1}
+					set tso-discounted             	= TRUE
+					set tso-d-reason				= sol-user-only-alpha4-1
+					//message tso-d-reason
+				else
+					//message "cannot match" sol-user-only-alpha4-2
+				endif
+				//message "pre" tso-d-reason
+				//message "mid" tso-d-reason
+				if sol-user-only-alpha4-2 = "P"
+					set tso-original-price-ex	+= lf-disc-effect / (1 + (tso-sol-tax-rate / 100)) //lf-disc-effect - (lf-disc-effect * tso-sol-tax-rate / 100)
+				endif
+				print
+					sol-line-seq 		in col 5
+					stock-code
+					strconcat(substring(sol-user-only-alpha4-2,1,1) ">")
+					"E:" lf-disc-effect
+				    "O:" tso-original-price-ex
+					"C:" tso-corrected-price-ex
+				    "D:" tso-discounted-price-ex
+				if ws-reason-code = "*"
+					update tmp-sales-order
+				elseif ws-reason-code = sol-user-only-alpha4-1
+					update tmp-sales-order
+				endif
+				//message "post" tso-d-reason
+			endon
+		endextract
+	endextract
+	//written sales pass
+	//message "un-archived sales"	//{5}
+	extract sales-order                                                                         //
+		//on index so-processing-date so-order-no
+		//key is ws-start-date 0
+		//finish when so-processing-date > ws-end-date
+	detail
+		if so-order-status in { "02" "06" "25" "35" "45" "65" "75" "85" "91" "14" "95" "96" "98"} or so-order-type-code = "Q"
+			continue
+		endif
+		//if so-order-status not = "90" or so-order-type-code = "Q"
+		//	continue
+		//endif
+		if not so-order-date between ws-start-date and ws-end-date
+		//if not so-processing-date between ws-start-date and ws-end-date
+			continue
+		endif
+		//test rep
+		if ws-rep-code != "*"   //ws-reason-code
+			if so-rep-code != ws-rep-code
+				continue
+			endif
+		endif
+		//test store
+		if ws-store-code != "*"
+			if so-territory-code != ws-store-code
+				continue
+			endif
+		endif
+		//get system-table
+		//	on index sys-tbl-type sys-tbl-code
+		//	key is "TC" so-territory-code
+		//on error
+		//	set tmp-territory-desc		= "Store not found"
+		//else
+		//	set tmp-territory-desc		= sys-description
+		//endon
+		//set tmp-so-cust-code   			= so-cust-code
+		//get deb-master
+		//	on index accountcode
+		//	key is so-cust-code
+		//on error
+		//	set tmp-shortname			= "Cust not found"
+		//else
+		//	set tmp-shortname			= shortname
+		//endon
+		//get rep-master
+		//	on index rep-code
+		//	key is so-rep-code
+		//on error
+		//	set rep-description = "Rep not found"
+		//endon
+		//review lines
+		//normal line pass
+		print
+			so-order-no
+			so-bo-suffix
+			so-order-status
+			so-order-date
+		extract sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is so-order-no so-bo-suffix 0
+			next same so-order-no so-bo-suffix
+		detail
+			if sol-line-type not in {"SN" "KN" "WN"}
+				continue
+			endif
+			if sol-ordered-qty = 0
+				continue
+			endif
+			print
+				sol-line-seq 		in col 5
+				stock-code
+				"O:" sol-ordered-qty
+				"S:" sol-shipped-qty
+				"I:" sol-item-price
+				"L:" sol-line-amount
+				"D:" sol-disc-rate
+				"T:" sol-tax-rate
+            //
+			initialise tmp-sales-order
+			set tso-sys-consolidation-division 	= sys-consolidation-division
+			set tso-territory                   = so-territory-code
+			set tso-whse-code					= so-whse-code
+			set tso-so-rep-code                 = so-rep-code
+			set tso-so-order-date				= so-order-date	//{5}
+			set tso-so-order-no                 = so-order-no
+			set tso-so-bo-suffix                = so-bo-suffix
+			set tso-so-order-status				= so-order-status	//{2}
+			set tso-sol-line-seq                = sol-line-seq
+			set tso-stock-code                  = stock-code
+			set tso-sol-ordered-qty             = sol-ordered-qty
+			//set tso-sol-shipped-qty             = sol-shipped-qty
+			//set tso-display-qty               	= sol-shipped-qty	//{2}
+			set tso-sol-disc-rate				= sol-disc-rate	//{1}
+			set tso-sol-tax-rate				= sol-tax-rate
+			set tso-sol-item-price				= sol-item-price
+			set tso-orig-sol-unit-price-ex		= sol-user-only-num1	//{3}
+			set tso-original-price-ex			= sol-item-price / (1 + (tso-sol-tax-rate / 100))	//sol-item-price - (sol-item-price * tso-sol-tax-rate / 100)
+			if tso-orig-sol-unit-price-ex = 0 //in the case of un overidden items
+				set tso-orig-sol-unit-price-ex = tso-original-price-ex
+			endif
+			set tso-corrected-price-ex          = sol-item-price / (1 + (tso-sol-tax-rate / 100))	//sol-item-price - (sol-item-price * tso-sol-tax-rate / 100)
+			set tso-discounted-price-ex       	= (sol-line-amount / (1 + (tso-sol-tax-rate / 100))) / sol-ordered-qty	//(sol-line-amount - (sol-line-amount * tso-sol-tax-rate / 100)) / tso-sol-shipped-qty
+			set tso-sol-item-cost				= sol-item-cost
+			set tso-price-overridden 			= FALSE
+			set tso-discounted                	= FALSE
+			get tmp-sales-order
+			on error
+				print
+					sol-line-seq 		in col 5
+					stock-code
+					"1>"
+				    "O:" tso-original-price-ex
+					"C:" tso-corrected-price-ex
+				    "D:" tso-discounted-price-ex
+				insert tmp-sales-order
+			endon
+		    //sol-ordered-disc-amt
+		endextract
+		//discount run
+		extract sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is so-order-no so-bo-suffix 0
+			next same so-order-no so-bo-suffix
+		detail
+			if sol-line-type not in {"DN"}
+				continue
+			endif
+			initialise tmp-sales-order
+			set tso-sys-consolidation-division 	= sys-consolidation-division
+			set tso-territory                   = so-territory-code
+			set tso-so-rep-code                 = so-rep-code
+			set tso-so-order-date				= so-order-date	//{5}
+			set tso-so-order-no                 = so-order-no
+			set tso-so-bo-suffix                = so-bo-suffix
+			set tso-sol-line-seq                = integer(sol-line-seq)
+			set lf-disc-effect			  		= sol-user-only-num1 - sol-user-only-num2
+			//message "found:" sol-user-only-alpha4-1 ":" tso-so-order-no tso-so-bo-suffix sol-line-seq "/" tso-sol-line-seq
+			get tmp-sales-order
+			on error
+				//message "can't find:" tso-so-order-no tso-so-bo-suffix sol-line-seq "/" tso-sol-line-seq
+			else
+				if sol-user-only-alpha4-2 = "P"
+					set tso-price-overridden 		= TRUE
+					set tso-p-reason				= sol-user-only-alpha4-1
+					//message tso-d-reason
+				//elseif sol-user-only-alpha4-2                                 //{1}
+				elseif sol-user-only-alpha4-2 = "D" and tso-sol-disc-rate <> 0	//{1}
+					set tso-discounted             	= TRUE
+					set tso-d-reason				= sol-user-only-alpha4-1
+					//message tso-d-reason
+				else
+					//message "cannot match" sol-user-only-alpha4-2
+				endif
+				//message "pre" tso-d-reason
+				//message "mid" tso-d-reason
+				if sol-user-only-alpha4-2 = "P"
+					set tso-original-price-ex	+= lf-disc-effect / (1 + (tso-sol-tax-rate / 100)) //lf-disc-effect - (lf-disc-effect * tso-sol-tax-rate / 100)
+				endif
+				print
+					sol-line-seq 		in col 5
+					stock-code
+					strconcat(substring(sol-user-only-alpha4-2,1,1) ">")
+					"E:" lf-disc-effect
+				    "O:" tso-original-price-ex
+					"C:" tso-corrected-price-ex
+				    "D:" tso-discounted-price-ex
+				if ws-reason-code = "*"
+					update tmp-sales-order
+				elseif ws-reason-code = sol-user-only-alpha4-1
+					update tmp-sales-order
+				endif
+				//message "post" tso-d-reason
+			endon
+		endextract
+	endextract
+	report finished
+endprocedure // build-dataset-disc-reconcile ----------------------------------
+
+screen dig-disc-reconcile
+	window @1,1 to @24,90
+		title concat("Disc/Price Override analysis")
+		primary tmp-sales-order
+		datagrid occurs 20
+	allowed search md-so-enq//md-mode
+	review-from-start
+detail
+	display tso-sys-consolidation-division  @1,02 title "SCD"
+	display tso-territory                   @1,04 title "Terr"
+	display tso-whse-code                   @1,05 title "Whse"
+	display tso-so-rep-code                 @1,06 title "Rep"
+	display tso-so-order-date				@1,07 title "Date"	//{5}
+	display tso-so-order-no                 @1,08 title "SO"
+	display tso-so-bo-suffix                @1,10 title "BO"
+	display tso-sol-line-seq                @1,12 title "Seq"
+	display tso-stock-code                  @1,14 title "Stock Code"
+	display tso-sol-ordered-qty             @1,16 title "Ord Qty"
+	//display tso-sol-shipped-qty             @1,16 title "Shp Qty"	//{2}
+	//display tso-display-qty             	@1,16 title "Quantity"  //{2}
+	display tso-sol-tax-rate			    @1,18 title "Tax Rate"
+	display tso-orig-sol-unit-price-ex		@1,20 title "Orig Prc"// (soluo#1)"	//{3}
+	//display tso-original-price-ex           @1,20 title "Orig Prc"
+	display tso-corrected-price-ex          @1,22 title "Corr Prc"
+	display tso-discounted-price-ex         @1,24 title "Disc Prc"
+	display tso-sol-item-cost               @1,26 title "Cost"
+	display tso-price-overridden            @1,28 title "P Flag"
+	display tso-discounted                  @1,30 title "D Flag"
+	display tso-p-reason				    @1,32 title "P Reason"
+	display tso-d-reason                    @1,34 title "D Reason"
+	display tso-so-order-status             @1,36 title "Ord Stat"	//{2}
+	//display tso-sol-item-price				@1,38 title "tso-sol-item-price"
+	display "Orig Prc: Original item price ex GST before price override" 	@21,12 background
+	display "Corr Prc: Item price ex GST after price override" 				@22,12 background
+	display "Disc Prc: Item price ex GST after override and/or discount" 	@23,12 background
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-so-enq
+			spl "so/m5ordenq"
+				parameters
+					"-e"
+					tso-so-order-no
+					tso-so-bo-suffix
+					SPACES
+	endswitch
+endconfirm
+endscreen // dig-disc-reconcile -----------------------------------------------
+
+
+procedure calc-disc-2
+parameters
+	lp-sol-user-only-num1        	like sol-user-only-num1
+	lp-sol-user-only-num2        	like sol-user-only-num2
+	lp-tmp-rpt-unit-cost			type numeric
+	lp-sol-tax-rate					like sol-tax-rate
+returning
+	lr-tmp-rpt-unit-price-old-ex   	type numeric
+	lr-tmp-rpt-unit-price-new-ex	type numeric
+	lr-tmp-rpt-unit-disc-amt        type numeric
+	lr-tmp-rpt-gp-perc              type numeric
+local field
+	lf-old-gp-amt					type numeric
+	lf-new-gp-amt					type numeric
+	lf-old-gp-perc                  type numeric
+	lf-new-gp-perc                  type numeric
+	lf-disc-perc					type numeric
+	//
+	set lr-tmp-rpt-unit-price-old-ex 	= lp-sol-user-only-num1 - ( lp-sol-user-only-num1 * lp-sol-tax-rate / 100 )
+	set lr-tmp-rpt-unit-price-new-ex 	= lp-sol-user-only-num2 - ( lp-sol-user-only-num2 * lp-sol-tax-rate / 100 )
+	set lr-tmp-rpt-unit-disc-amt		= lr-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+	set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+	set lf-new-gp-amt					= lr-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+	if lr-tmp-rpt-unit-price-old-ex 	= 0
+		set lf-old-gp-perc				= 0
+	else
+		set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+	endif
+
+	if lr-tmp-rpt-unit-price-new-ex 	= 0
+		set lf-new-gp-perc				= 0
+	else
+		set lf-new-gp-perc				= lf-new-gp-amt / lr-tmp-rpt-unit-price-new-ex * 100
+	endif
+	set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+	//
+endprocedure // calc-disc-2 ---------------------------------------------------
+
+procedure calc-disc
+parameters
+	lp-sol-user-only-alpha4-2    	like sol-user-only-alpha4-2
+	lp-tmp-rpt-unit-price-new-ex 	type numeric
+	lp-sol-user-only-num1        	like sol-user-only-num1
+	lp-sol-user-only-num2        	like sol-user-only-num2
+	lp-tmp-rpt-unit-cost			type numeric
+	lp-fall-back-old-ex				type numeric	//03jun10
+	lp-sol-tax-rate					like sol-tax-rate
+returning
+	lr-tmp-rpt-unit-price-old-ex   	type numeric
+	lr-tmp-rpt-unit-disc-amt        type numeric
+	lr-tmp-rpt-gp-perc              type numeric
+local field
+	lf-old-gp-amt					type numeric
+	lf-new-gp-amt					type numeric
+	lf-old-gp-perc                  type numeric
+	lf-new-gp-perc                  type numeric
+	lf-disc-perc					type numeric
+
+
+	//message "so line:" so-order-no ":" so-bo-suffix ":" sol-line-seq
+	//message "lp-sol-user-only-alpha4-2    "  lp-sol-user-only-alpha4-2
+	//message "lp-tmp-rpt-unit-price-new-ex "  lp-tmp-rpt-unit-price-new-ex
+	//message "lp-sol-user-only-num1        "  lp-sol-user-only-num1
+	//message "lp-sol-user-only-num2        "  lp-sol-user-only-num2
+	//message "lp-tmp-rpt-unit-cost		  "  lp-tmp-rpt-unit-cost
+
+
+	if lp-sol-user-only-alpha4-2 = "P"
+		//set lr-tmp-rpt-unit-price-old-ex 	= lp-tmp-rpt-unit-price-new-ex - (lp-sol-user-only-num1 - lp-sol-user-only-num2)
+		set lr-tmp-rpt-unit-price-old-ex 	= lp-sol-user-only-num1 - ( lp-sol-user-only-num1 * lp-sol-tax-rate / 100 )  //07jun10
+		set lr-tmp-rpt-unit-disc-amt		= lp-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+		set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+		set lf-new-gp-amt					= lp-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+		if lr-tmp-rpt-unit-price-old-ex = 0
+			set lf-old-gp-perc				= 0
+		else
+			set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+		endif
+		if lp-tmp-rpt-unit-price-new-ex = 0
+			set lf-new-gp-perc				= 0
+		else
+			set lf-new-gp-perc				= lf-new-gp-amt / lp-tmp-rpt-unit-price-new-ex * 100
+		endif
+		set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+	elseif lp-sol-user-only-alpha4-2 = "D"
+		// e.g cost 60 old price 120, 20% disc = 96
+		set lf-disc-perc					= lp-sol-user-only-num2 - lp-sol-user-only-num1
+		if lf-disc-perc						= 100 // 100 % disc's cause a 0 div of their own..					//03jun10
+			//set lr-tmp-rpt-unit-price-old-ex 	= lp-tmp-rpt-unit-price-new-ex + (lp-tmp-rpt-unit-price-new-ex * 1 / (( 100 / lf-disc-perc) - 1)) //03jun10
+			set lr-tmp-rpt-unit-price-old-ex 	= lp-fall-back-old-ex  //03jun10
+			set lr-tmp-rpt-unit-disc-amt		= lp-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+			set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+			set lf-new-gp-amt					= lp-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+			if lr-tmp-rpt-unit-price-old-ex = 0
+				set lf-old-gp-perc				= 0
+			else
+				set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+			endif
+			if lp-tmp-rpt-unit-price-new-ex = 0
+				set lf-new-gp-perc				= 0
+			else
+				set lf-new-gp-perc				= lf-new-gp-amt / lp-tmp-rpt-unit-price-new-ex * 100
+			endif
+			set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+		elseif lf-disc-perc						> 0
+			set lr-tmp-rpt-unit-price-old-ex 	= lp-tmp-rpt-unit-price-new-ex + (lp-tmp-rpt-unit-price-new-ex * 1 / (( 100 / lf-disc-perc) - 1))
+			set lr-tmp-rpt-unit-disc-amt		= lp-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+			set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+			set lf-new-gp-amt					= lp-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+			if lr-tmp-rpt-unit-price-old-ex = 0
+				set lf-old-gp-perc				= 0
+			else
+				set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+			endif
+			if lp-tmp-rpt-unit-price-new-ex = 0
+				set lf-new-gp-perc				= 0
+			else
+				set lf-new-gp-perc				= lf-new-gp-amt / lp-tmp-rpt-unit-price-new-ex * 100
+			endif
+			set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+		endif
+	endif
+endprocedure // calc-disc -----------------------------------------------------
+
+procedure calc-disc-old
+parameters
+	lp-sol-user-only-alpha4-2    	like sol-user-only-alpha4-2
+	lp-tmp-rpt-unit-price-new-ex 	like tmp-rpt-unit-price-new-ex
+	lp-sol-user-only-num1        	like sol-user-only-num1
+	lp-sol-user-only-num2        	like sol-user-only-num2
+	lp-tmp-rpt-unit-cost			like tmp-rpt-unit-cost
+returning
+	lr-tmp-rpt-unit-price-old-ex   	like tmp-rpt-unit-price-old-ex
+	lr-tmp-rpt-unit-disc-amt        like tmp-rpt-unit-disc-amt
+	lr-tmp-rpt-gp-perc              like tmp-rpt-gp-perc
+local field
+	lf-old-gp-amt					type numeric
+	lf-new-gp-amt					type numeric
+	lf-old-gp-perc                  type numeric
+	lf-new-gp-perc                  type numeric
+	lf-disc-perc					type numeric
+
+	if lp-sol-user-only-alpha4-2 = "P"
+		set lr-tmp-rpt-unit-price-old-ex 	= lp-tmp-rpt-unit-price-new-ex - (lp-sol-user-only-num1 - lp-sol-user-only-num2)
+		set lr-tmp-rpt-unit-disc-amt		= lp-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+		set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+		set lf-new-gp-amt					= lp-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+		if lr-tmp-rpt-unit-price-old-ex = 0
+			set lf-old-gp-perc				= 0
+		else
+			set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+		endif
+		if lp-tmp-rpt-unit-price-new-ex = 0
+			set lf-new-gp-perc				= 0
+		else
+			set lf-new-gp-perc				= lf-new-gp-amt / lp-tmp-rpt-unit-price-new-ex * 100
+		endif
+		set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+	elseif lp-sol-user-only-alpha4-2 = "D"
+		// e.g cost 60 old price 120, 20% disc = 96
+		set lf-disc-perc					= lp-sol-user-only-num2 - lp-sol-user-only-num1
+		if lf-disc-perc						> 0
+			set lr-tmp-rpt-unit-price-old-ex 	= lp-tmp-rpt-unit-price-new-ex + (lp-tmp-rpt-unit-price-new-ex * 1 / (( 100 / lf-disc-perc) - 1))
+			set lr-tmp-rpt-unit-disc-amt		= lp-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+			set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+			set lf-new-gp-amt					= lp-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+		if lr-tmp-rpt-unit-price-old-ex = 0
+			set lf-old-gp-perc				= 0
+		else
+			set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+		endif
+		if lp-tmp-rpt-unit-price-new-ex = 0
+			set lf-new-gp-perc				= 0
+		else
+			set lf-new-gp-perc				= lf-new-gp-amt / lp-tmp-rpt-unit-price-new-ex * 100
+		endif
+			set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+		endif
+	endif
+endprocedure // calc-disc -----------------------------------------------------
+
+
+
+screen display-in-grid
+	window @1,1 to @24,90
+		title concat("***")
+		primary tmp-price-audit
+		datagrid occurs 20
+	allowed search md-print-report //md-mode
+	review-from-start
+detail
+	display tmp-so-order-date      		@01,02 title "Date"
+	display tmp-so-order-no         	@01,04 title "Order No"
+	display tmp-so-bo-suffix        	@01,06 title "BO Suffix"
+	display tmp-sol-line-seq        	@01,08 title "Seq"
+	display tmp-stock-code          	@01,10 title "Stock Code"
+	display tmp-stk-description			@01,11 title "Description"
+	display tmp-so-territory-code   	@01,12 title "Store"
+	display tmp-territory-desc			@01,13 title "Store Name"
+	display tmp-so-rep-code         	@01,14 title "Rep Code"
+	display tmp-rep-description     	@01,16 title "Rep Desc"
+	display tmp-so-cust-code			@01,18 title "Cust Code"
+	display tmp-shortname 				@01,20 title "Customer"
+	display tmp-reason-code         	@01,22 title "Reason Code"
+	display tmp-reason-description  	@01,24 title "Reason Desc"
+	display tmp-reason-effect			@01,26 title "Reason Effect"
+	display tmp-rpt-qty                 @01,28 title "Rpt: Qty"
+	display tmp-rpt-unit-cost		    @01,30 title "Rpt: Cost"
+	display tmp-rpt-unit-price-old-ex   @01,32 title "Rpt: Old Ex"
+	display tmp-rpt-unit-price-new-ex   @01,34 title "Rpt: New Ex"
+	display tmp-rpt-unit-disc-amt	    @01,36 title "Rpt: Disc $"
+	display tmp-rpt-gp-perc             @01,38 title "Rpt: GP % diff"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-print-report
+			//set ws-print-mode = "SRD"
+			do print-report
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+procedure print-report
+local field
+	st-tmp-rpt-unit-price-old-ex	like tmp-rpt-unit-price-old-ex
+	st-tmp-rpt-unit-disc-amt		like tmp-rpt-unit-disc-amt
+	gt-tmp-rpt-unit-price-old-ex	like tmp-rpt-unit-price-old-ex
+	gt-tmp-rpt-unit-disc-amt		like tmp-rpt-unit-disc-amt
+	st-so-count						type numeric
+	gt-so-count						type numeric
+	st-disc-perc					type numeric
+	gt-disc-perc					type numeric
+	report "Discount Reason"
+	header is top-of-page
+	footer is bottom-of-page
+	page
+
+	//ws-print-mode SRD, SDR
+	switch on ws-print-mode
+		case "SRD"	// Store, Rep, Discount Reason
+			extract tmp-price-audit
+				on index
+					tmp-so-territory-code
+					tmp-so-rep-code
+					tmp-so-order-no
+					tmp-so-bo-suffix
+					tmp-sol-line-seq
+			before tmp-so-territory-code
+				print
+					concat(strconcat(tmp-so-territory-code) ": " strconcat(tmp-territory-desc)) in col 001
+			before tmp-so-territory-code tmp-so-rep-code
+				print
+					concat(strconcat(tmp-so-rep-code) ": " strconcat(tmp-rep-description)) in col 008
+			detail
+				//print
+				//	"Store"		 						in col 005
+				//	"Salesperson"						in col 015
+				//	"Order #"		              		in col 030
+				//	"Order Date"       		     		in col 037
+				//	"Cust Code"	                		in col 050
+				//	"Item"		                		in col 060
+				//	"Reason"		 					in col 070
+				//	"Qty"								in col 100
+				//	"Price"								in col 105
+				//	"Disc"                              in col 115
+				//	"GP% Chg"                           in col 125
+				print
+					tmp-so-order-no		              	in col 017  - 5
+					tmp-so-order-date   	     		in col 028  - 5
+					tmp-so-cust-code            		in col 040  - 5
+					tmp-stock-code               		in col 050  - 5
+					concat(strconcat(tmp-reason-code) ": " strconcat(tmp-reason-description))				in col 060  - 5
+					tmp-rpt-qty							in col 090 pic zz9
+					tmp-rpt-unit-price-old-ex			in col 095 pic -----9.99
+					tmp-rpt-unit-disc-amt				in col 105 pic -----9.99
+					tmp-rpt-gp-perc		                in col 115 pic ---9.99%
+			endextract
+		case "SD"	// Store, Discount Reason
+			extract tmp-price-audit
+				on index
+					tmp-so-territory-code
+					tmp-reason-code
+					tmp-so-order-no
+					tmp-so-bo-suffix
+					tmp-sol-line-seq
+			before tmp-so-territory-code
+				print
+					concat(strconcat(tmp-so-territory-code) ": " strconcat(tmp-territory-desc)) in col 001
+				set gt-tmp-rpt-unit-price-old-ex	= 0
+				set gt-tmp-rpt-unit-disc-amt		= 0
+				set gt-so-count						= 0
+			before tmp-so-territory-code tmp-reason-code
+				set st-tmp-rpt-unit-price-old-ex	= 0
+				set st-tmp-rpt-unit-disc-amt		= 0
+				set st-so-count						= 0
+			detail
+				set gt-tmp-rpt-unit-price-old-ex	+= tmp-rpt-unit-price-old-ex
+				set gt-tmp-rpt-unit-disc-amt		+= tmp-rpt-unit-disc-amt
+				set st-tmp-rpt-unit-price-old-ex	+= tmp-rpt-unit-price-old-ex
+				set st-tmp-rpt-unit-disc-amt		+= tmp-rpt-unit-disc-amt
+			after tmp-so-territory-code tmp-reason-code tmp-so-order-no
+				set st-so-count						+= 1
+				set gt-so-count						+= 1
+			after tmp-so-territory-code tmp-reason-code
+				set st-disc-perc = (st-tmp-rpt-unit-disc-amt * -1) / st-tmp-rpt-unit-price-old-ex * 100
+				print
+					concat(strconcat(tmp-reason-code) ": " strconcat(tmp-reason-description)) in col 008
+					st-so-count						in col 069 pic -----9
+					st-tmp-rpt-unit-price-old-ex	in col 085 pic -----9.99
+					st-tmp-rpt-unit-disc-amt	    in col 103 pic -----9.99
+					st-disc-perc					in col 119 pic --9.99
+			after tmp-so-territory-code
+				set gt-disc-perc = (gt-tmp-rpt-unit-disc-amt * -1) / gt-tmp-rpt-unit-price-old-ex * 100
+				skip
+				print
+					85"-"							in col 40
+				print
+					concat(strconcat(tmp-so-territory-code) ": " strconcat(tmp-territory-desc)) in col 040
+					gt-so-count						in col 069 pic -----9
+					gt-tmp-rpt-unit-price-old-ex	in col 085 pic -----9.99
+					gt-tmp-rpt-unit-disc-amt	    in col 103 pic -----9.99
+					gt-disc-perc					in col 119 pic --9.99
+				print
+					85"-"							in col 40
+			endextract
+	endswitch
+	//page
+	//report finished
+	do bottom-of-page
+	report finished
+endprocedure
+
+//object tmp-price-audit
+//	type memory
+//	record
+//		tmp-so-order-date         	like so-order-date
+//		tmp-so-order-no           	like so-order-no
+//		tmp-so-bo-suffix          	like so-bo-suffix
+//		tmp-sol-line-seq          	like sol-line-seq
+//		tmp-stock-code            	like stock-code
+//		tmp-stk-description			like stk-description
+//		tmp-so-territory-code     	like so-territory-code
+//		tmp-territory-desc			pic x(30)
+//		tmp-so-rep-code           	like so-rep-code
+//		tmp-rep-description       	like rep-description
+//		tmp-so-cust-code   			like so-cust-code
+//		tmp-shortname   			like shortname
+//		tmp-reason-code           	pic x(2)
+//		tmp-reason-description    	pic x(30)
+//		tmp-reason-effect			pic x(30)
+//		tmp-rpt-qty                	type numeric
+//		tmp-rpt-unit-cost			type numeric
+//		tmp-rpt-unit-price-old-ex	type numeric
+//		tmp-rpt-unit-price-new-ex	type numeric
+//		tmp-rpt-unit-disc-amt		type numeric
+//		tmp-rpt-gp-perc             type numeric
+//	endrecord
+//	key is
+//		tmp-so-order-date
+//		tmp-so-order-no
+//		tmp-so-bo-suffix
+//		tmp-sol-line-seq
+//	key is
+//		tmp-so-territory-code
+//		tmp-so-order-no
+//		tmp-so-bo-suffix
+//		tmp-sol-line-seq
+//	key is
+//		tmp-so-rep-code
+//		tmp-so-order-no
+//		tmp-so-bo-suffix
+//		tmp-sol-line-seq
+//	key is
+//		tmp-reason-code
+//		tmp-so-order-no
+//		tmp-so-bo-suffix
+//		tmp-sol-line-seq
+
+
+
+
+procedure top-of-page
+	switch on ws-print-mode
+		case "SRD"	// Store, Rep, Discount Reason
+			print
+				company-name col 1 BOLD
+				concat("DISCOUNT REASON REPORT: "  julian2date(ws-start-date) " - " julian2date(ws-end-date)) col 35 bold
+				today() in col 99
+				tod() in col 111 pic HH:MM
+				"Page :" col 117
+				left-justify(str(page-no())) col 124
+			print
+				"Store"		 						in col 001
+				"Rep"								in col 008
+				"Ord#"			              		in col 020	- 5
+				"Ord Date"       		     		in col 028  - 5
+				"Customer"	                		in col 040  - 5
+				"Item"		                		in col 050  - 5
+				"Reason"		 					in col 060  - 5
+				"Qty"								in col 090
+				"Old Price"							in col 095
+				"Change"                            in col 108
+				"GP Chg"                           	in col 116
+		case "SD"
+			print
+				company-name col 1 BOLD
+				concat("DISCOUNT REASON SUMMARY: " julian2date(ws-start-date) " - " julian2date(ws-end-date)) col 35 bold
+				today() in col 99
+				tod() in col 111 pic HH:MM
+				"Page :" col 117
+				left-justify(str(page-no())) col 124
+			print
+				"Store"		 						in col 001
+				//"Rep"								in col 008
+				//"Ord#"			              		in col 020	- 5
+				//"Ord Date"       		     		in col 028  - 5
+				//"Customer"	                		in col 040  - 5
+				//"Item"		                		in col 050  - 5
+				"Reason"		 					in col 008
+				//"Qty"								in col 090
+				"Order Count"						in col 064
+				//"Sale Amount"						in col 083 //"Old Price"							in col 085
+				"Total Sales"						in col 083
+				//"Disc Amt"                          in col 104 //"Change"                            in col 108
+				"Total Discount"					in col 98
+				"Disc %"							in col 119
+				//"GP Chg"                           	in col 116
+	endswitch
+endprocedure // top-of-page ---------------------------------------------------
+
+
+procedure bottom-of-page
+	skip 5
+	print
+		"************************************************************" 	in col 015
+	print
+		"Please Note:" 	in col 015
+	print
+		"All values are are ex tax and are approximate"					in col 015
+	print
+		"amounts at the time the price change was audited." 			in col 015
+	print
+		"Program: so/priceaudrep" 										in col 015
+	print
+		"************************************************************" 	in col 015
+endprocedure // bottom-of-page ------------------------------------------------

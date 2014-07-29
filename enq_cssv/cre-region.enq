@@ -1,0 +1,6 @@
+update cre-master
+set cr-type = 'A'
+where
+	cr-type = 'V'
+and
+	sub-string(cre-accountcode,4,4,) = ' '

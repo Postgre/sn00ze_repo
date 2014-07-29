@@ -1,0 +1,26 @@
+select
+	cre-accountcode
+	cr-shortname
+	cr-settlement-disc-code
+	accountcode
+	na-type
+	na-name
+	na-company
+	na-street
+	postcode
+	ws-start-code = input alpha "Enter start account code:"
+	ws-end-code = input alpha "Enter end account code:"
+from
+	cre-master
+	name-and-address-master
+where
+	cre-accountcode = accountcode 
+	and na-type = 'C' 
+	and cre-accountcode between ws-start-code and ws-end-code 
+format is lst
+suppress accountcode
+suppress na-type
+suppress na-name
+suppress ws-start-code
+suppress ws-end-code
+display pic of cre-accountcode is x(6)

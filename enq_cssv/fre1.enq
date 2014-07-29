@@ -1,0 +1,11 @@
+select
+	cre-accountcode
+	cr-tr-branch-code
+	cr-tr-type
+	cr-tr-date
+	cr-tr-details
+	cr-tr-invoice-date
+	cr-tr-tax-code
+from
+	cre-trans
+format is lst

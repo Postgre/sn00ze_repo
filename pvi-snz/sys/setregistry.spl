@@ -1,0 +1,140 @@
+// 14may14	rmd 		upgrade for 710.3
+
+procedure main
+	local field
+		lf-refresh-login							type boolean
+		i											type numeric
+	//
+	//message concat("Current sf9 value:" get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf9"))
+	//message concat("Current sf1 value:" get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf1"))
+	//
+	report "Hotkey Registry Change"
+		spool-only
+
+		print
+			today()
+			tod()
+		print
+			"**************************"
+			"*Existing Registry Values*"
+			"**************************"
+
+		print
+			"SHIFT+"
+		print
+			"F1:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf1")
+		print
+			"F2:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf2")
+		print
+			"F3:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf3")
+		print
+			"F4:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf4")
+		print
+			"F5:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf5")
+		print
+			"F6:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf6")
+		print
+			"F7:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf7")
+		print
+			"F8:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf8")
+		print
+			"F9:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf9")
+		print
+			"F10:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf10")
+		print
+			"F11:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf11")
+		print
+			"F12:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf12")
+
+		print
+			"CTRL+"
+		print
+			"F1:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf1")
+		print
+			"F2:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf2")
+		print
+			"F3:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf3")
+		print
+			"F4:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf4")
+		print
+			"F5:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf5")
+		print
+			"F6:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf6")
+		print
+			"F7:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf7")
+		print
+			"F8:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf8")
+		print
+			"F9:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf9")
+		print
+			"F10:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf10")
+		print
+			"F11:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf11")
+		print
+			"F12:"
+			get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf12")
+
+		//clear existing registry settings
+
+		for i = 1 to 12
+			if delete-registry-value(strconcat("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf" str(i))) = 1
+			endif
+			if delete-registry-value(strconcat("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf" str(i))) = 1
+			endif
+		endfor
+		skip
+		print
+			"Existing Hotkeys Deleted, replaced with"
+
+	set lf-refresh-login = FALSE
+	if get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf2") <> "-38"
+		if set-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf2","-38") = 1
+			print "Export Function Set to Shift+F2" //get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_cf1")
+			set lf-refresh-login = TRUE
+		endif
+	endif
+	//
+	if get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf3") <> "-6"
+		if set-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf3","-6") = 1
+			print "F3 Hotkey Function Set to Shift+F3"
+			set lf-refresh-login = TRUE
+		endif
+	endif
+	//
+	if get-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf5") <> "-11"
+		if set-registry-value("HKEY_CURRENT_USER\Software\PRONTO\Settings\macro_sf5","-11") = 1
+			print "F5 Print Manager Function Set to Shift+F5"
+			set lf-refresh-login = TRUE
+		endif
+	endif
+	//
+	if lf-refresh-login
+		message "You can now export Datagrids using SHIFT + F2 and access the F3 menu using SHIFT + F3"
+		message "Log out and back in to receive updated Hotkeys"
+	endif
+	report finished
+
+endprocedure // main ----------------------------------------------------------

@@ -1,0 +1,73 @@
+select
+	stock-code
+	stock-group
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	sys-tbl-type
+	sys-tbl-code
+	sys-tbl-alpha-1
+from
+	stock-master
+	stock-aged-sales-history
+	system-table
+where
+	stock-group = sys-tbl-code
+	and sys-tbl-type = 'PG' 
+	and ash-years-ago = 0 
+	and ash-type = 'Q'
+order by ash-whse sys-tbl-alpha-1 
+format is rpt
+field total-ash-value like ash-value
+field sub-tot-ash-value like ash-value
+field sub-tot1-ash-value like ash-value
+field new-sys-tbl-alpha-1 pic 9
+report header
+	page
+	set total-ash-value[9] = 0
+header
+	print 
+		"Stock on Hand - Current Month -7" in col 11
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"stock-code" in col 1
+		"ash" in col 29
+		"ash-value" in col 72
+		"sys tbl" in col 42
+	print
+		"whse" in col 29
+		"alpha 1" in col 42
+	skip 1
+before sys-tbl-alpha-1
+	set sub-tot-ash-value[9] = 0
+	set new-sys-tbl-alpha-1 = 1
+before ash-whse
+	set sub-tot1-ash-value[9] = 0
+
+detail
+	set total-ash-value[9] += ash-value[9]
+	set sub-tot-ash-value[9] += ash-value[9]
+	set sub-tot1-ash-value[9] += ash-value[9]
+	set new-sys-tbl-alpha-1 = 0
+after sys-tbl-alpha-1
+	print ash-whse in col 29 no newline
+	print sys-tbl-alpha-1 in col 42 no newline
+	print sub-tot-ash-value[9] in col 72
+after ash-whse
+	print
+		"---------------" in col 72
+	print
+		ash-whse in col 57 
+		sub-tot1-ash-value[9] in col 72
+	skip
+report footer
+	print
+		"---------------" in col 45
+		"---------------" in col 72
+	print
+		total-ash-value[9] in col 72

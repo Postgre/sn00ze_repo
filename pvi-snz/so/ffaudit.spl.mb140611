@@ -1,0 +1,1097 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/ffaudit.spl
+//  Program Desc:	FF Auditt extract
+//  Requested By:	Chris Ward
+//  Request Date:	21sep12
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	02jun14	mb		{8}		upgrade to 710.3 - external file in EXT_FFAUDIT
+//	04feb13	rmd	{7}		increment FY by 1 for per 7 through 12, as it's being
+//						viewed as a calendar date by the stores
+//	22nov12	rmd	{6}		add fulfill 60-90, change >60 to >90
+//	20oct12	rmd	{5}		outstanding PO's
+//	17oct12	rmd	{3}		add mode call to pvi-snz/sys/globalwhseterrlist.spl
+//				{4}		values echoing across to fields expected to be zero
+//						and territory description not always correct
+//	11oct12	rmd	{2}
+//	03oct12	rmd			use sol trans to match 214, add outstanding-orders
+//	26sep12	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+version-number "140604.000" //"CUSTOM pvi-snz/so/ffaudit 140602" //{8}
+/*
+{2} notes
+Territory description
+Dataset description
+* add a calculated field after cash taken, cash/sales as a percentage
+* specify ex/inc gst to $ titles for clarity
+* create a screen to allow maintenance of datasets to include/exclude in the extract
+* sort dataset maint screen using same sort order as system-user-company
+*/
+
+/* current process
+Bayar runs YTD reports to determmine
+written sales
+cash taken (excludes PD?)
+
+Z-Cards deb/m12debexpl or $CUS/BP-zcard to get postdated
+curr + 30/60/90
+120+
+future (if Pronto not yet rolled)
+
+rmd/so/fulfil to get outstanding so count
+count of s/o less than 30 days
+value of s/o less than 30 days
+count of s/o 30 to 60 days
+value of s/o 30 to 60 days
+count of s/o greater than 60 days
+value of s/o greater than 60 days
+
+current periodsc
+Customer
+Supplier
+Inventory
+GL
+*/
+
+
+object tmp-ff-audit type memory
+	record
+		tfa-sys-consolidation-division	like sys-consolidation-division
+		tfa-div-desc					pic x(40)
+		tfa-territory					like territory
+		tfa-terr-desc					pic x(40)
+		tfa-written-sales-ex       		type numeric
+		tfa-cash-taken          		type numeric
+		tfa-cash-div-sales         		type numeric	//{2}
+		tfa-z-card-bal-1            	type numeric    //up to 90 days
+		tfa-z-card-bal-2            	type numeric    //over 90 days
+		tfa-z-card-bal-3            	type numeric    //future
+		tfa-outstanding-so-count-1  	type numeric	//less than 30 days
+		tfa-outstanding-so-value-1  	type numeric    //less than 30 days
+		tfa-outstanding-so-count-2  	type numeric    //30 - 60 days
+		tfa-outstanding-so-value-2  	type numeric    //30 - 60 days
+		tfa-outstanding-so-count-3  	type numeric    //60 - 90 days //more than 60 days	//{6}
+		tfa-outstanding-so-value-3  	type numeric    //60 - 90 days //more than 60 days  //{6}
+		tfa-outstanding-so-count-4  	type numeric    //more than 90 days                 //{6}
+		tfa-outstanding-so-value-4  	type numeric    //more than 90 days				    //{6}
+		tfa-outstanding-po-count	  	type numeric	//outstanding POs	//{5}
+		tfa-outstanding-po-value	  	type numeric    //outstanding POs   //{5}
+		tfa-per-yr-deb					pic x(6) // MMM-YY
+		tfa-per-yr-cre                  pic x(6) // MMM-YY
+		tfa-per-yr-stk                  pic x(6) // MMM-YY
+		tfa-per-yr-gl                   pic x(6) // MMM-YY
+		tfa-start-date					type date
+		tfa-end-date                    type date
+	endrecord
+	key is tfa-sys-consolidation-division tfa-territory
+
+object ism-ff-audit like tmp-ff-audit type memory //type isam {8}
+	key is tfa-sys-consolidation-division tfa-territory unique
+/* // < {8} convert for 710.3
+	file "/data/common/ism-ff-audit"
+*/ // > {8}
+
+// < {8}
+//#define EXT_FFAUDIT "/pro/data/mas/ext_ffaudit"		//{8} option 1 - use program name to name external file.
+//#define EXT_FFAUDIT "/pro/data/mas/ism_ff_audit"	//{8} option 2 - use original name to name external file.
+//#define EXT_FFAUDIT "ism_ff_audit"	//{8} option 2 - use original name to name external file.
+//object ext-ffaudit
+//	type external
+//	separator "|"
+//	like tmp-ff-audit
+//	file EXT_FFAUDIT
+//
+// instead of EXTERNAL approach, created COMMON custom table: snooze-ism-ff-audit
+#define SNZ_COMMON snooze-ism-ff-audit
+#define SNZ_COMMON_TXT "snooze-ism-ff-audit"
+// > {8}
+
+object comp-2-system-control like system-control
+
+object tmp-system-user like system-user type memory //{2} for user/company sort seq -user-user-only-spare-flag2-1 for tag
+
+mode md-build-all
+	prompt "Rebuild"
+	help "Rebuild FF Audit"
+	//when login-id() in {"robd"}
+
+mode md-global-audit
+	prompt "Global Audit"
+	help "Review Global Audit"
+	//when login-id() in {"robd"}
+
+mode md-maintain-datasets-for-inclusion
+	prompt "Maintain Dataset List"
+	help "Maintain Datasets for inclusion"
+
+mode md-tag
+	prompt "Incl/Excl"
+	help "Should this Dataset be included in the extract?"
+
+mode md-list-global-terr-whse //{3}
+	prompt "Global Terr/Whse list" //pvi-snz/sys/globalwhseterrlist.spl
+	help "Global Terr/Whse list"
+
+field
+	ws-start-date           type date
+	ws-end-date				type date
+	ws-break-1				type date
+	ws-break-2  			type date
+	ws-break-3  			type date
+	ws-break-4  			type date	//{6}
+	ws-max-datasets			type numeric
+	ws-confirm				type boolean
+
+procedure main
+	if get-param(1) != "-buildonly"
+		do get-start-date
+	else
+		set ws-start-date	= date-to-julian(get-param(2))
+	    set ws-end-date		= date-to-julian(get-param(3))
+	endif
+	get system-control first
+	open tmp-ff-audit truncate temporary
+	open ism-ff-audit
+		truncate temporary //{8}
+/* // < {8} convert for 710.3
+	on error
+		message "Cannot open ism-ff-audit, will create new instance"
+		open ism-ff-audit create permanent
+	endon
+*/ // > {8}
+// < {8}
+	open SNZ_COMMON
+	on error
+		message concat("Cannot open " SNZ_COMMON_TXT ", creating new instance..." )
+		open SNZ_COMMON create permanent
+		on error
+			message concat("Create error: " error-description(file-status()) ": on table " SNZ_COMMON_TXT )
+		endon //open create SNZ_COMMON
+		//--
+//zaz debug :
+//set sfa-sys-consolidation-division = "ZZZ"
+//set sfa-div-desc = "zaz: test insert record"
+//insert SNZ_COMMON
+		//--
+	endon //open SNZ_COMMON
+	do load-temp
+
+/* // < {8} convert for 710.3 (external file approach))
+	open ext-ffaudit
+	on error
+		message concat("Cannot open " EXT_FFAUDIT ", creating new instance..." )
+		//open ext-ffaudit create permanent
+		open ext-ffaudit truncate permanent
+		on error
+			message concat(error-description(file-status()) ":" EXT_FFAUDIT )
+		endon
+set tfa-div-desc = "test insert record"
+insert ext-ffaudit
+close ext-ffaudit
+message concat("zaz about to re-open " EXT_FFAUDIT )
+open ext-ffaudit
+	endon
+	do load-temp
+*/ // > {8}
+// > {8}
+	//get ism-ff-audit first
+	//on error
+	//	message "Creating ism-ff-audit"
+	//	open ism-ff-audit create permanent
+	//endon
+	//set ws-start-date = sys-period-start[1]
+	//want to run up until end of last business day.
+	//if ws-end-date = 0
+		//set ws-end-date = today() - 1 //if tod > 23:00 go with today()
+	//endif
+	set ws-break-1 = today() - 1
+	set ws-break-2 = today() - 31
+	set ws-break-3 = today() - 61
+	set ws-break-4 = today() - 91	//{5}
+	//message "ws-break-1: " ws-break-1
+	//message "ws-break-2: " ws-break-2
+	//message "ws-break-3: " ws-break-3
+	do get-written-sales
+	do get-cash-taken
+	do get-z-card
+	do outstanding-orders 	//03oct12
+	//do outstanding-po 		//{5}
+	do sync-with-master
+	if get-param(1) = "-buildonly"
+	else
+		//do dig-tfa
+		do dig-global-audit
+	endif
+	do unload-temp //{8}
+endprocedure // main ----------------------------------------------------------
+
+// < {8} store tmp-global-rep to permanent common file
+procedure load-temp
+//local lf-count type numeric
+//message "zaz b4 load-temp ext-ffaudit"
+	//--
+	//-- wipe data table first :
+	extract ism-ff-audit
+	detail
+		delete ism-ff-audit
+	endextract
+	//--
+	//-- restore memory object ism-ff-audit from custom common data table
+	extract SNZ_COMMON //ext-ffaudit
+	detail
+		set tfa-sys-consolidation-division	= sfa-sys-consolidation-division
+		set tfa-div-desc						= sfa-div-desc
+		set tfa-territory						= sfa-territory					
+		set tfa-terr-desc						= sfa-terr-desc					
+		set tfa-written-sales-ex			= sfa-written-sales-ex       		
+		set tfa-cash-taken					= sfa-cash-taken          		
+		set tfa-cash-div-sales				= sfa-cash-div-sales         		
+		set tfa-z-card-bal-1					= sfa-z-card-bal-1            	
+		set tfa-z-card-bal-2					= sfa-z-card-bal-2            	
+		set tfa-z-card-bal-3					= sfa-z-card-bal-3            	
+		set tfa-outstanding-so-count-1	= sfa-outstanding-so-count-1  	
+		set tfa-outstanding-so-value-1	= sfa-outstanding-so-value-1  	
+		set tfa-outstanding-so-count-2	= sfa-outstanding-so-count-2  	
+		set tfa-outstanding-so-value-2	= sfa-outstanding-so-value-2  	
+		set tfa-outstanding-so-count-3	= sfa-outstanding-so-count-3  	
+		set tfa-outstanding-so-value-3	= sfa-outstanding-so-value-3  	
+		set tfa-outstanding-so-count-4	= sfa-outstanding-so-count-4  	
+		set tfa-outstanding-so-value-4	= sfa-outstanding-so-value-4  	
+		set tfa-outstanding-po-count		= sfa-outstanding-po-count	  	
+		set tfa-outstanding-po-value		= sfa-outstanding-po-value	  	
+		set tfa-per-yr-deb					= sfa-per-yr-deb					
+		set tfa-per-yr-cre					= sfa-per-yr-cre                  
+		set tfa-per-yr-stk					= sfa-per-yr-stk                  
+		set tfa-per-yr-gl						= sfa-per-yr-gl                   
+		set tfa-start-date					= sfa-start-date					
+		set tfa-end-date						= sfa-end-date                    
+		insert ism-ff-audit
+//		set lf-count += 1
+	endextract
+//message "zaz b4 after: load-temp ext-ffaudit - count = " lf-count
+endprocedure // load-temp-global-rep  -----------------------------------------
+// > {8} 
+
+// < {8} store tmp-global-rep to permanent common file
+procedure unload-temp
+//local lf-count type numeric
+//message "zaz b4 unload-temp ext-ffaudit"
+	//--
+	//-- wipe custom common data table first :
+	extract SNZ_COMMON
+	detail
+		delete SNZ_COMMON
+	endextract //SNZ_COMMON
+	//--
+	//-- save memory object ism-ff-audit to custom common data table
+	extract ism-ff-audit
+	detail
+		set sfa-sys-consolidation-division	= tfa-sys-consolidation-division
+		set sfa-div-desc						= tfa-div-desc
+		set sfa-territory						= tfa-territory					
+		set sfa-terr-desc						= tfa-terr-desc					
+		set sfa-written-sales-ex			= tfa-written-sales-ex       		
+		set sfa-cash-taken					= tfa-cash-taken          		
+		set sfa-cash-div-sales				= tfa-cash-div-sales         		
+		set sfa-z-card-bal-1					= tfa-z-card-bal-1            	
+		set sfa-z-card-bal-2					= tfa-z-card-bal-2            	
+		set sfa-z-card-bal-3					= tfa-z-card-bal-3            	
+		set sfa-outstanding-so-count-1	= tfa-outstanding-so-count-1  	
+		set sfa-outstanding-so-value-1	= tfa-outstanding-so-value-1  	
+		set sfa-outstanding-so-count-2	= tfa-outstanding-so-count-2  	
+		set sfa-outstanding-so-value-2	= tfa-outstanding-so-value-2  	
+		set sfa-outstanding-so-count-3	= tfa-outstanding-so-count-3  	
+		set sfa-outstanding-so-value-3	= tfa-outstanding-so-value-3  	
+		set sfa-outstanding-so-count-4	= tfa-outstanding-so-count-4  	
+		set sfa-outstanding-so-value-4	= tfa-outstanding-so-value-4  	
+		set sfa-outstanding-po-count		= tfa-outstanding-po-count	  	
+		set sfa-outstanding-po-value		= tfa-outstanding-po-value	  	
+		set sfa-per-yr-deb					= tfa-per-yr-deb					
+		set sfa-per-yr-cre					= tfa-per-yr-cre                  
+		set sfa-per-yr-stk					= tfa-per-yr-stk                  
+		set sfa-per-yr-gl						= tfa-per-yr-gl                   
+		set sfa-start-date					= tfa-start-date					
+		set sfa-end-date						= tfa-end-date                    
+		insert SNZ_COMMON //ext-ffaudit
+//		set lf-count += 1
+	endextract //ism-ff-audit
+//message "zaz b4 after: unload-temp ext-ffaudit - count = " lf-count
+endprocedure // load-temp-global-rep  -----------------------------------------
+// > {8} 
+
+procedure get-start-date
+	get system-companies
+		on index sys-comp-code
+		key is "2"
+	on error
+		message "Can't find Company 2 entry"
+	else
+/* // < {8}
+		open comp-2-system-control
+			file is strconcat(sys-comp-path "/SYSCTRL.dat") // had to specify *.dat extension because there was no *.idx
+// < {8}
+			read-only
+		on error
+			message concat("err: open file: " strconcat(sys-comp-path "/SYSCTRL.dat") )
+			exit
+		endon //open comp-2-system-control
+// > {8} 
+*/ // < {8}
+		get comp-2-system-control first
+		//message sys-consolidation-division sys-period-start[1]
+		if today() > sys-next-yr-period-start[1]
+			set ws-start-date = sys-next-yr-period-start[1]
+		else
+			set ws-start-date = sys-period-start[1]
+		endif
+		//message "Start Date:" ws-start-date
+	endon
+endprocedure // get-start-date ------------------------------------------------
+
+procedure get-written-sales
+local field
+	 lf-value-extax			type numeric
+	 lf-average-cost		type numeric
+	//open orders pass
+	window @19,34 to @23,95
+		title is "Building Data"
+		colour white
+		no-hide
+	display bitmap concat(get-env("BMS") "/images/repedge.gif") @19,34
+	display concat(sys-consolidation-division ": Written Sales" ) @20,49 background left
+	display "S/O:" @21,49 background left
+	select *
+	from sales-order
+	where
+		//check with Bayar if the order date is to be filtered or
+		//does he normally take ALL orders
+		so-order-date between ws-start-date and ws-end-date and
+		so-order-type-code != 'Q'
+		and so-order-status not in {'99' '05' '15' '25' '35' '38' '45' '48' '55' '64' '65' '75' '91'}
+		and substring(so-cust-code,1,4) not in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"} // 17oct08
+	detail
+		display so-order-no @21,56 foreground prompts
+		//03oct12 use sol trans to calc order total
+		set lf-value-extax = 0
+		extract sales-order-line //-archive
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			get stock-master
+				on index stock-code
+				key is stock-code
+			on error
+				continue
+			endon
+			if sol-line-type in {"SN" "KN"}
+				set lf-value-extax 	+= (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set lf-average-cost += sol-item-cost * sol-ordered-qty // sol-line-cost
+			endif
+		endextract
+		initialise tmp-ff-audit //{4}
+		get tmp-ff-audit
+			on index tfa-sys-consolidation-division tfa-territory
+			key is sys-consolidation-division so-territory-code
+		on error
+			set tfa-sys-consolidation-division  = sys-consolidation-division
+			set tfa-territory                 	= so-territory-code
+			//set tfa-written-sales-ex 			= so-order-total-amount - so-order-total-tax - (so-order-total-charges / 1.1) //03oct12
+			set tfa-written-sales-ex 			= lf-value-extax //03oct12
+			if tfa-written-sales-ex <> 0 //{2}
+				set tfa-cash-div-sales = 100 * tfa-cash-taken / tfa-written-sales-ex
+			else
+				set tfa-cash-div-sales = 0
+			endif
+			//set tfa-sys-deb-per             	= sys-deb-per
+			//set tfa-sys-cre-per             	= sys-cre-per
+			//set tfa-sys-stk-per             	= sys-stk-per
+			//set tfa-sys-gl-per 				= sys-gl-per
+			//message "dbg so insert :" tfa-sys-consolidation-division "/" tfa-territory
+			do set-per-yr
+			insert tmp-ff-audit
+		else
+			//set tfa-written-sales-ex 			+= so-order-total-amount - so-order-total-tax - (so-order-total-charges / 1.1)
+			set tfa-written-sales-ex 			+= lf-value-extax //03oct12
+			if tfa-written-sales-ex <> 0 //{2}
+				set tfa-cash-div-sales = 100 * tfa-cash-taken / tfa-written-sales-ex
+			else
+				set tfa-cash-div-sales = 0
+			endif
+			update tmp-ff-audit
+		endon
+	endselect
+	//archive pass
+	select *
+	from sales-order-archive
+	where
+		so-order-date between ws-start-date and ws-end-date
+		and so-order-type-code != 'Q'
+		and so-order-status not in {'99' '05' '15' '25' '35' '38' '45' '48' '55' '64' '65' '75' '91'}
+		and substring(so-cust-code,1,4) not in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"} // 17oct08
+	detail
+		//03oct12 use sol trans to calc order total
+		set lf-value-extax = 0
+		extract sales-order-line-archive
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			get stock-master
+				on index stock-code
+				key is stock-code
+			on error
+				continue
+			endon
+			if sol-line-type in {"SN" "KN"}
+				set lf-value-extax 	+= (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set lf-average-cost += sol-item-cost * sol-ordered-qty // sol-line-cost
+			endif
+		endextract
+		initialise tmp-ff-audit //{4}
+		get tmp-ff-audit
+			on index tfa-sys-consolidation-division tfa-territory
+			key is sys-consolidation-division so-territory-code
+		on error
+			set tfa-sys-consolidation-division  = sys-consolidation-division
+			set tfa-territory                 	= so-territory-code
+			//set tfa-written-sales-ex 			= so-order-total-amount - so-order-total-tax - (so-order-total-charges / 1.1) //03oct12
+			set tfa-written-sales-ex 			= lf-value-extax //03oct12
+			if tfa-written-sales-ex <> 0 //{2}
+				set tfa-cash-div-sales = 100 * tfa-cash-taken / tfa-written-sales-ex
+			else
+				set tfa-cash-div-sales = 0
+			endif
+			//set tfa-sys-deb-per             	= sys-deb-per
+			//set tfa-sys-cre-per             	= sys-cre-per
+			//set tfa-sys-stk-per             	= sys-stk-per
+			//set tfa-sys-gl-per 				= sys-gl-per
+			if tfa-written-sales-ex <> 0 //{2}
+				//message "dbg soa insert :" tfa-sys-consolidation-division "/" tfa-territory
+				do set-per-yr
+				insert tmp-ff-audit
+			endif
+		else
+			//set tfa-written-sales-ex 			+= so-order-total-amount - so-order-total-tax - (so-order-total-charges / 1.1)
+			set tfa-written-sales-ex 			+= lf-value-extax //03oct12
+			if tfa-written-sales-ex <> 0 //{2}
+				set tfa-cash-div-sales = 100 * tfa-cash-taken / tfa-written-sales-ex
+			else
+				set tfa-cash-div-sales = 0
+			endif
+			update tmp-ff-audit
+		endon
+	end-select
+endprocedure // get-written-sales ---------------------------------------------
+
+procedure get-cash-taken
+local field
+	lf-cash			type numeric
+	window @19,34 to @23,95
+		title is "Building Data"
+		colour white
+		no-hide
+	display bitmap concat(get-env("BMS") "/images/repedge.gif") @19,34
+	display concat(sys-consolidation-division ": Cash Taken" ) @20,49 background left
+	display "Acct:" @21,49 background left
+	//display so-order-no @21,56 foreground prompts
+	extract deb-master
+		on index territory dr-sort-key accountcode
+		all
+		when territory != spaces
+	before territory
+		set lf-cash = 0
+		display concat(territory ":") @21,56 foreground prompts
+	detail
+		display concat(dr-sort-key ":" accountcode) @21,61 foreground prompts
+		//cash collected date stamp pass
+		extract deb-trans
+			on index accountcode //tr-sort-key //{8}
+			key is accountcode //spaces //{8}
+			next same accountcode
+			when dr-tr-date-stamp between ws-start-date and ws-end-date
+			and trans-type in {"CR" "CP"}
+		detail
+			if substring(accountcode,1,4) in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"}
+				continue
+			endif
+			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+				// this should be shown, don't want the CC test in the next section to drop it out.
+			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}  //13oct10
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, so this is the initial transaction and needs to be ignored
+					// when the finance company pay us for this trans (less their cut) another CR will appear
+					// and accountcode = finance company which will be used instead
+					continue
+				endif
+			endif
+			// 30sep08
+			if substring(br-acc-code,1,4) = "ZCSM"
+				//message substring(br-acc-code,1,4)
+				continue
+			endif
+			set lf-cash += -(tr-amount)
+		endextract
+		/* // < {8} 710.3 no longer has object table : deb-trans-archive
+		extract deb-trans-archive
+			on index accountcode trans-ref
+			key is accountcode spaces
+			next same accountcode
+			when dr-tr-date-stamp between ws-start-date and ws-end-date // start-trans-date and end-trans-date
+			and trans-type in {"CR" "CP"}
+		detail
+			if substring(accountcode,1,4) in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"}
+				continue
+			endif
+			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+				// this should be shown, don't want the CC test in the next seciont to drop it out.
+			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}	//13oct10
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, so this is the initial transaction and needs to be ignored
+					// when the finance company pay us for hthis trans (less their cut) another CR will appear
+					// and accountcode = finance company which will be used instead
+					continue
+				endif
+			endif
+			// 30sep08
+			if substring(br-acc-code,1,4) = "ZCSM"
+				//message substring(br-acc-code,1,4)
+				continue
+			endif
+			set lf-cash += -(tr-amount)
+		endextract
+		*/ // > {8} 
+		after territory
+			initialise tmp-ff-audit //{4}
+			get tmp-ff-audit
+				on index tfa-sys-consolidation-division tfa-territory
+				key is sys-consolidation-division territory
+			on error
+				initialise tmp-ff-audit
+				set tfa-sys-consolidation-division  = sys-consolidation-division
+				set tfa-territory                 	= territory
+				set tfa-cash-taken					= lf-cash
+				if tfa-written-sales-ex <> 0 //{2}
+					set tfa-cash-div-sales = 100 * tfa-cash-taken / tfa-written-sales-ex
+				else
+					set tfa-cash-div-sales = 0
+				endif
+				//set tfa-sys-deb-per             	= sys-deb-per
+				//set tfa-sys-cre-per             	= sys-cre-per
+				//set tfa-sys-stk-per             	= sys-stk-per
+				//set tfa-sys-gl-per 					= sys-gl-per
+				if tfa-cash-taken <> 0
+					//message "dbg cash taken :" tfa-sys-consolidation-division "/" tfa-territory
+					do set-per-yr
+					insert tmp-ff-audit
+				endif
+			else
+				//not accumulative, the territories should be handled in one group so lf-cash
+				//should contain the total cash taken for the territory
+				set tfa-cash-taken					= lf-cash
+				if tfa-written-sales-ex <> 0 //{2}
+					set tfa-cash-div-sales = 100 * tfa-cash-taken / tfa-written-sales-ex
+				else
+					set tfa-cash-div-sales = 0
+				endif
+				update tmp-ff-audit
+			endon
+	endextract
+endprocedure // get-cash-taken ------------------------------------------------
+
+screen dig-tfa
+	window @1,1 to @24,90
+		title concat("FF Audit Local extract")
+		primary tmp-ff-audit
+		datagrid occurs 20
+	allowed search md-global-audit//md-mode
+	review-from-start
+detail
+	display tfa-sys-consolidation-division	@1,010 title  "Div"
+	display tfa-territory					@1,020 title  "Terr"
+	display tfa-written-sales-ex       		@1,030 title  "Written Sales Ex" //{2}
+	display tfa-cash-taken          		@1,040 title  "Cash Inc" //{2}
+	display tfa-cash-div-sales				@1,042 title  "Cash/Sales" pic -----9.99% //{2}
+	display tfa-z-card-bal-1            	@1,050 title  "Z-Card < 90"
+	display tfa-z-card-bal-2            	@1,060 title  "Z-Card > 90"
+	display tfa-z-card-bal-3            	@1,070 title  "Z-Card Future"
+	display tfa-outstanding-so-count-1  	@1,080 title  "OSO < 30 Count" pic --------9
+	display tfa-outstanding-so-value-1  	@1,090 title  "OSO < 30 Value"
+	display tfa-outstanding-so-count-2  	@1,100 title  "OSO 30-60 Count" pic --------9
+	display tfa-outstanding-so-value-2  	@1,110 title  "OSO 30-60 Value"
+	display tfa-outstanding-so-count-3  	@1,120 title  "OSO > 60 Count" pic --------9
+	display tfa-outstanding-so-value-3  	@1,130 title  "OSO > 60 Value"
+	display tfa-per-yr-deb	             	@1,140 title  "Deb Per"
+	display tfa-per-yr-cre	             	@1,150 title  "Cre Per"
+	display tfa-per-yr-stk	             	@1,160 title  "Stk Per"
+	display tfa-per-yr-gl					@1,170 title  "GL Per"
+	display tfa-start-date                  @1,172 title  "Start Date"
+	display tfa-end-date  					@1,174 title  "End Date"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-global-audit
+			do dig-global-audit
+	endswitch
+endconfirm
+endscreen // dig-tfa ----------------------------------------------------------
+
+procedure build-all
+local field
+	i		type numeric
+	j		type numeric
+	do get-date-range entry once
+	if ws-confirm = TRUE
+		//clear existing values
+		open ism-ff-audit truncate permanent
+		do unload-temp //{8}
+		report "FF Global Audit"
+			spool-only
+			set i = 1
+			set j = ws-max-datasets//5 //100 //for testing
+			//do unload-temp //{8}
+			extract system-companies
+			detail
+				//message "i: " i "  j:" j
+				if i > j
+					break
+				endif
+				if sys-comp-spare2 = "Y"
+					print
+						today()
+						tod()
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"FF Audit called"
+					command "sh"
+						parameters
+							"-c"
+							concat("cd " strconcat(sys-comp-path) ";prospl pvi-snz/so/ffaudit -buildonly " julian-to-date(ws-start-date) " " julian-to-date(ws-end-date))
+					set i += 1
+				else
+					print
+						today()
+						tod()
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"FF Audit not called"
+				endif
+			endextract
+			//do load-temp //{8}
+		report finished
+	endif
+endprocedure // build-all -----------------------------------------------------
+
+screen get-date-range
+local field
+	lf-start-date		type date
+	lf-end-date         type date
+	window @1,1 to @6,32 title "Enter Date Range"
+	box @1,1 to @5,32 title SPACES
+	set lf-start-date   = ws-start-date
+	set lf-end-date   	= today() - 1 //ws-end-date
+	set ws-max-datasets = 1
+	accept lf-start-date @2,16 title "Start Date:"
+		default lf-start-date
+	accept lf-end-date @3,16 title "End Date:"
+		default lf-end-date
+	accept ws-max-datasets @4,16 pic zz9 title "Max Datasets:"
+		default ws-max-datasets
+confirm
+confirmed
+	set ws-start-date   = lf-start-date
+    set ws-end-date   	= lf-end-date
+    set ws-confirm		= TRUE
+notconfirmed
+	set ws-confirm		= FALSE
+endconfirm
+endscreen // get-date-range ---------------------------------------------------
+
+procedure set-per-yr
+//get system-control first
+	//<{7}
+	//set tfa-per-yr-deb 	= concat(substring(sys-mth-name[sys-dl-per],1,3) "-" substring(str(sys-dl-yr),3,4))
+	//set tfa-per-yr-cre 	= concat(substring(sys-mth-name[sys-cl-per],1,3) "-" substring(str(sys-cl-yr),3,4))
+	//set tfa-per-yr-stk 	= concat(substring(sys-mth-name[sys-stk-per],1,3) "-" substring(str(sys-stk-yr),3,4))
+	//set tfa-per-yr-gl  	= concat(substring(sys-mth-name[sys-gl-per],1,3) "-" substring(str(sys-gl-yr),3,4))
+	if sys-dl-per > 6
+		set tfa-per-yr-deb 	= concat(substring(sys-mth-name[sys-dl-per],1,3) "-" substring(str(sys-dl-yr + 1),3,4))
+	else
+		set tfa-per-yr-deb 	= concat(substring(sys-mth-name[sys-dl-per],1,3) "-" substring(str(sys-dl-yr),3,4))
+	endif
+	if sys-cl-per > 6
+		set tfa-per-yr-cre 	= concat(substring(sys-mth-name[sys-cl-per],1,3) "-" substring(str(sys-cl-yr + 1),3,4))
+	else
+		set tfa-per-yr-cre 	= concat(substring(sys-mth-name[sys-cl-per],1,3) "-" substring(str(sys-cl-yr),3,4))
+	endif
+	if sys-stk-per > 6
+		set tfa-per-yr-stk 	= concat(substring(sys-mth-name[sys-stk-per],1,3) "-" substring(str(sys-stk-yr + 1),3,4))
+	else
+		set tfa-per-yr-stk 	= concat(substring(sys-mth-name[sys-stk-per],1,3) "-" substring(str(sys-stk-yr),3,4))
+	endif
+	if sys-gl-per > 6
+		set tfa-per-yr-gl  	= concat(substring(sys-mth-name[sys-gl-per],1,3) "-" substring(str(sys-gl-yr + 1),3,4))
+	else
+		set tfa-per-yr-gl  	= concat(substring(sys-mth-name[sys-gl-per],1,3) "-" substring(str(sys-gl-yr),3,4))
+	endif
+	//>{7}
+	set tfa-start-date	= ws-start-date
+	set tfa-end-date  	= ws-end-date
+	//{2} Dataset and Territory descriptions
+	get system-companies
+		on index sys-comp-code
+		key is sys-consolidation-division
+	on error
+		set sys-comp-desc = "UNKNOWN"
+	endon
+	set tfa-div-desc					= sys-comp-desc //{2}
+	get system-table //{2}
+		on index sys-tbl-type sys-tbl-code
+		//key is "TC" so-territory-code	//{4}
+		key is "TC" tfa-territory       //{4}
+	on error
+		set sys-description = "UNKNOWN"
+	endon
+	set tfa-terr-desc 					= sys-description //{2}
+endprocedure // set-per-yr ----------------------------------------------------
+
+procedure get-z-card
+local field
+	lf-z-card-bal-1			type numeric
+	lf-z-card-bal-2			type numeric
+	lf-z-card-bal-3			type numeric
+	window @19,34 to @23,95
+		title is "Building Data"
+		colour white
+		no-hide
+	display bitmap concat(get-env("BMS") "/images/repedge.gif") @19,34
+	display concat(sys-consolidation-division ": Cash Taken") @20,49 background right
+	display "Acct:" @21,49
+	//display so-order-no @21,56 foreground prompts
+	extract deb-master
+		on index territory dr-sort-key accountcode
+		all
+		when territory != spaces
+		and dr-cust-type = "P" and substring(accountcode,1,4) <> "ZCSM"
+	before territory
+		set lf-z-card-bal-1 = 0
+	    set lf-z-card-bal-2 = 0
+	    set lf-z-card-bal-3 = 0
+	    display concat(territory ":" ) @21,56 foreground prompts
+	detail
+		display concat(dr-sort-key ":" accountcode) @21,61 foreground prompts
+		set lf-z-card-bal-1 += sum-array(aged-balance,1,3)
+	    set lf-z-card-bal-2 += sum-array(aged-balance,4,13)
+	    set lf-z-card-bal-3 += future-bal
+	after territory
+		initialise tmp-ff-audit //{4}
+		get tmp-ff-audit
+			on index tfa-sys-consolidation-division tfa-territory
+			key is sys-consolidation-division territory
+		on error
+			initialise tmp-ff-audit
+			set tfa-sys-consolidation-division  = sys-consolidation-division
+			set tfa-territory                 	= territory
+			set tfa-z-card-bal-1 				= lf-z-card-bal-1
+			set tfa-z-card-bal-2 				= lf-z-card-bal-2
+			set tfa-z-card-bal-3 				= lf-z-card-bal-3
+			if lf-z-card-bal-1 <> 0 or lf-z-card-bal-2 <> 0 or lf-z-card-bal-3 <> 0 //{2}
+				//message "dbg get-z-card insert: " tfa-sys-consolidation-division "/" tfa-territory
+				do set-per-yr
+				insert tmp-ff-audit
+			endif
+		else
+			//not accumulative, the territories should be handled in one group so lf-cash
+			//should contain the total cash taken for the territory
+			set tfa-z-card-bal-1 				= lf-z-card-bal-1
+			set tfa-z-card-bal-2 				= lf-z-card-bal-2
+			set tfa-z-card-bal-3 				= lf-z-card-bal-3
+			update tmp-ff-audit
+		endon
+	endextract
+endprocedure // get-z-card ---------------------------------------------------
+
+procedure outstanding-orders //03oct12
+	window @19,34 to @23,95
+		title is "Building Data"
+		colour white
+		no-hide
+	display bitmap concat(get-env("BMS") "/images/repedge.gif") @19,34
+	display concat(sys-consolidation-division ": Outstanding Orders" ) @20,49 background left
+	display "S/O:" @21,49 background left
+	//display so-order-no @21,56 foreground prompts
+	extract sales-order
+	detail
+		if so-order-status in {"02" "04" "10" "99"}
+			continue
+		endif
+		if so-order-type-code = 'Q'
+			continue
+		endif
+		display so-order-no @21,56 foreground prompts
+		initialise tmp-ff-audit //{4}
+		get tmp-ff-audit
+			on index tfa-sys-consolidation-division tfa-territory
+			key is sys-consolidation-division so-territory-code
+		on error
+			set tfa-sys-consolidation-division	= sys-consolidation-division
+			set tfa-territory                   = so-territory-code
+			if so-order-date between ws-break-2 and ws-break-1
+				set tfa-outstanding-so-count-1 = 1
+				set tfa-outstanding-so-value-1 = so-order-total-amount - so-order-total-tax
+			elseif so-order-date between ws-break-3 and ws-break-2
+				set tfa-outstanding-so-count-2 = 1
+			    set tfa-outstanding-so-value-2 = so-order-total-amount - so-order-total-tax
+			//elseif so-order-date < ws-break-3                                             	//{6}
+			//	set tfa-outstanding-so-count-3 = 1                                              //{6}
+			//    set tfa-outstanding-so-value-3 = so-order-total-amount - so-order-total-tax   //{6}
+			elseif so-order-date between ws-break-4 and ws-break-3                              //{6}
+				set tfa-outstanding-so-count-3 = 1                                              //{6}
+			    set tfa-outstanding-so-value-3 = so-order-total-amount - so-order-total-tax		//{6}
+			elseif so-order-date < ws-break-4                                                   //{6}
+				set tfa-outstanding-so-count-4 = 1                                              //{6}
+			    set tfa-outstanding-so-value-4 = so-order-total-amount - so-order-total-tax		//{6}
+			else
+				//
+			endif
+			//if tfa-outstanding-so-count-1 <> 0 or tfa-outstanding-so-count-2 <> 0 or tfa-outstanding-so-count-3 <> 0 //{2}                                    //{6}
+			if tfa-outstanding-so-count-1 <> 0 or tfa-outstanding-so-count-2 <> 0 or tfa-outstanding-so-count-3 <> 0 or tfa-outstanding-so-count-4 <> 0	//{2}	//{6}
+				//message "dbg outstanding-orders insert: " tfa-sys-consolidation-division "/" tfa-territory
+				do set-per-yr
+				insert tmp-ff-audit
+			endif
+		else
+			if so-order-date between ws-break-2 and ws-break-1
+				set tfa-outstanding-so-count-1 += 1
+				set tfa-outstanding-so-value-1 += so-order-total-amount - so-order-total-tax
+			elseif so-order-date between ws-break-3 and ws-break-2
+				set tfa-outstanding-so-count-2 += 1
+			    set tfa-outstanding-so-value-2 += so-order-total-amount - so-order-total-tax
+			//elseif so-order-date < ws-break-3                                             	//{6}
+			//	set tfa-outstanding-so-count-3 += 1                                             //{6}
+			//    set tfa-outstanding-so-value-3 += so-order-total-amount - so-order-total-tax  //{6}
+			elseif so-order-date between ws-break-4 and ws-break-3                              //{6}
+				set tfa-outstanding-so-count-3 += 1                                             //{6}
+			    set tfa-outstanding-so-value-3 += so-order-total-amount - so-order-total-tax    //{6}
+			elseif so-order-date < ws-break-4                                                   //{6}
+				set tfa-outstanding-so-count-4 += 1                                             //{6}
+			    set tfa-outstanding-so-value-4 += so-order-total-amount - so-order-total-tax    //{6}
+			else
+				//
+			endif
+			update tmp-ff-audit
+		endon
+	endextract
+endprocedure // outstanding-orders --------------------------------------------
+
+procedure sync-with-master
+	extract tmp-ff-audit
+	detail
+		push tmp-ff-audit
+		get ism-ff-audit lock
+			on index tfa-sys-consolidation-division tfa-territory
+			key is tfa-sys-consolidation-division tfa-territory
+		on error
+			pop tmp-ff-audit
+			insert ism-ff-audit
+		else
+			pop tmp-ff-audit
+			update ism-ff-audit
+		endon
+	endextract
+	//extract ism-ff-audit
+	//detail
+	//	if tfa-written-sales-ex = 0
+	//	and tfa-cash-taken
+	//	and tfa-z-card-bal-1           = 0
+	//	and tfa-z-card-bal-2           = 0
+	//	and tfa-z-card-bal-3           = 0
+	//	and tfa-outstanding-so-count-1 = 0
+	//	and tfa-outstanding-so-value-1 = 0
+	//	and tfa-outstanding-so-count-2 = 0
+	//	and tfa-outstanding-so-value-2 = 0
+	//	and tfa-outstanding-so-count-3 = 0
+	//	and tfa-outstanding-so-value-3 = 0
+	//		delete ism-ff-audit
+	//	endif
+	//endextract
+endprocedure // sync-with-master ----------------------------------------------
+
+screen dig-global-audit
+	window @1,1 to @24,130
+		title concat("Global Audit")
+		primary ism-ff-audit
+		datagrid occurs 20
+	allowed search md-maintain-datasets-for-inclusion md-list-global-terr-whse md-build-all //md-mode
+	review-from-start
+detail
+/* // < {8} compile error, line 784: ERROR  ORDER BY cannot specify a host field :
+
+ffaudit.spl, line 784: ERROR  ORDER BY cannot specify a host field - 'tfa-sys-consolidation-division'
+ffaudit.spl, line 784: ERROR  ORDER BY cannot specify a host field - 'tfa-territory'
+
+*/ // < {8} 
+	display tfa-sys-consolidation-division	@1,010 title  "Div"
+	display tfa-div-desc					@1,014 title  "Div Description"
+	display tfa-territory					@1,020 title  "Terr"
+	display tfa-terr-desc					@1,024 title  "Terr Description"
+	display tfa-written-sales-ex       		@1,030 title  "Written Sales Ex" //{2}
+	display tfa-cash-taken          		@1,040 title  "Cash Inc" //{2}
+	display tfa-cash-div-sales				@1,042 title  "Cash/Sales" pic -----9.99% //{2}
+	display tfa-z-card-bal-1            	@1,050 title  "Z-Card < 90"
+	display tfa-z-card-bal-2            	@1,060 title  "Z-Card > 90"
+	display tfa-z-card-bal-3            	@1,070 title  "Z-Card Future"
+	display tfa-outstanding-so-count-1  	@1,080 title  "OSO < 30 Count" pic --------9
+	display tfa-outstanding-so-value-1  	@1,090 title  "OSO < 30 Value"
+	display tfa-outstanding-so-count-2  	@1,100 title  "OSO 30-60 Count" pic --------9
+	display tfa-outstanding-so-value-2  	@1,110 title  "OSO 30-60 Value"
+	//display tfa-outstanding-so-count-3  	@1,120 title  "OSO > 60 Count" pic --------9	//{6}
+	//display tfa-outstanding-so-value-3  	@1,130 title  "OSO > 60 Value"                  //{6}
+	display tfa-outstanding-so-count-3  	@1,120 title  "OSO 60-90 Count" pic --------9   //{6}
+	display tfa-outstanding-so-value-3  	@1,130 title  "OSO 60-90 Value"                 //{6}
+	display tfa-outstanding-so-count-4  	@1,134 title  "OSO > 90 Count" pic --------9    //{6}
+	display tfa-outstanding-so-value-4  	@1,138 title  "OSO > 90 Value"                  //{6}
+	display tfa-per-yr-deb	             	@1,140 title  "Deb Per"
+	display tfa-per-yr-cre	             	@1,150 title  "Cre Per"
+	display tfa-per-yr-stk	             	@1,160 title  "Stk Per"
+	display tfa-per-yr-gl					@1,170 title  "GL Per"
+	display tfa-start-date                  @1,172 title  "Start Date"
+	display tfa-end-date  					@1,174 title  "End Date"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-maintain-datasets-for-inclusion
+			open tmp-system-user truncate temporary
+			//like system-user type memory //{2} for user/company sort seq -user-user-only-spare-flag2-1 for tag
+			extract system-user
+				on index user-id sys-comp-code
+				key is login-id() SPACES
+				next same user-id
+			detail
+				get system-companies
+					on index sys-comp-code
+				on error
+					continue
+				endon
+				set user-position 					= sys-comp-desc
+				set user-user-only-spare-flag2-1	= sys-comp-spare2
+				insert tmp-system-user
+			endextract
+			do maintain-datasets-for-inclusion
+		case md-list-global-terr-whse //{3}
+			do unload-temp //{8}
+			spl "pvi-snz/sys/globalwhseterrlist"
+			do load-temp //{8}
+		case md-build-all
+			if sys-consolidation-division = "MAS"
+				do build-all
+				do dig-global-audit
+				exit
+			else
+				message "Cannot run Build All in " sys-consolidation-division
+			endif
+	endswitch
+endconfirm
+endscreen // dig-global-audit -------------------------------------------------
+
+screen maintain-datasets-for-inclusion
+	window @1,1 to @24,50
+		title concat("Maintain Datasets for inclusion")
+		//primary system-companies
+		primary tmp-system-user
+			on index user-id user-menu-seq-no
+		datagrid occurs 20
+	allowed md-tag search //md-mode
+	review-from-start
+detail
+	display sys-comp-code									@1,010 title "Div"
+	//display sys-comp-desc       							@1,020 title "Name"
+	display user-position 				        			@1,020 title "Name"
+	//display concat(sys-comp-spare2 "        ")			@1,030 title "Include"
+	display concat(user-user-only-spare-flag2-1 "     ")    @1,030 title "Include"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-tag
+			get system-companies
+				on index sys-comp-code
+			on error
+				message "Cannot Find Company " sys-comp-code
+			else
+				if sys-comp-spare2 = SPACES
+					set sys-comp-spare2 = "Y"
+					set user-user-only-spare-flag2-1 = "Y"
+				else
+					set sys-comp-spare2 = SPACES
+					set user-user-only-spare-flag2-1 = SPACES
+				endif
+				update system-companies
+				update tmp-system-user
+				refresh review
+			endon
+	endswitch
+endconfirm
+endscreen // maintain-datasets-for-inclusion ----------------------------------
+
+
+
+/* $CUS/BP-zcard
+// BP aged Z-card report
+select
+	territory
+	accountcode
+//	balance
+//	open-bal
+	aged-balance
+	accountshort = substring (accountcode 1 4)
+	up_to_3per = aged-balance[1] + aged-balance[2] + aged-balance[3]
+	older_3_period = aged-balance[4] + aged-balance[5] + aged-balance[6] + aged-balance[7] + aged-balance[8]+ aged-balance[9]+ aged-balance[10]+ aged-balance[11]+ aged-balance[12]+ aged-balance[13]
+	future-bal
+from
+	deb-master
+where
+	dr-cust-type = "P" and accountshort <> "ZCSM"
+order by territory
+format is lst
+suppress aged-balance[1]
+suppress aged-balance[2]
+suppress aged-balance[3]
+suppress aged-balance[4]
+suppress aged-balance[5]
+suppress aged-balance[6]
+suppress aged-balance[7]
+suppress aged-balance[8]
+suppress aged-balance[9]
+suppress aged-balance[10]
+suppress aged-balance[11]
+suppress aged-balance[12]
+suppress aged-balance[13]
+suppress accountshort
+subtotal on future-bal
+	with breaks on territory
+subtotal on up_to_3per
+	with breaks on territory
+subtotal on older_3_period
+	with breaks on territory
+*/
+
+
+

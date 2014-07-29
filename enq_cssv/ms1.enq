@@ -1,0 +1,36 @@
+select
+	stock-code
+	stk-trans-type
+	stk-trans-whse
+	stk-trans-date
+	stk-trans-qty
+	stk-trans-value
+	stk-trans-cost
+	stk-description
+	stock-group
+	ws-start-date = input date "Enter Start Date"
+	ws-end-date = input date "Enter End Date"
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+from
+	stock-movements
+	stock-master
+	system-table
+where
+	stk-trans-date between ws-start-date and ws-end-date 
+	and (stk-trans-type = 'PO' or stk-trans-type = 'SO' ) 
+	and sys-tbl-type = 'PG' 
+	and stock-group = sys-tbl-code 
+order by stock-group stk-trans-date stk-trans-whse stk-trans-type stock-code 
+format is lst
+suppress ws-start-date
+suppress ws-end-date
+suppress sys-tbl-type
+suppress sys-tbl-code
+unique stk-trans-type
+unique stk-trans-whse
+unique stk-trans-date
+unique stock-group
+unique sys-description
+field order is stock-group sys-description stk-trans-date stk-trans-whse stk-trans-type stock-code stk-description stk-trans-qty stk-trans-cost stk-trans-value

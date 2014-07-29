@@ -1,0 +1,14 @@
+select
+	cre-accountcode
+	stock-code
+	prc-region-code
+from
+	cre-master
+	stock-price
+	stock-supplier
+where
+	stock-code between "SEA010" and "SEA050" 
+	and substring (cre-accountcode 4 5) = "-V" 
+	and prc-region-code != "V"
+format is lst
+unique record on stock-code

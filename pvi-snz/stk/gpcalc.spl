@@ -1,0 +1,527 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/stk/gpcalc.spl
+//  Program Desc:	GP Calculator
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+// All Rights Reserved
+// Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	09may14	rmd			upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+// gpcalc.spl
+// 12may11	rmd	option to use wac instead of supplier cost
+// 11may09	rmd	if only one supplier, populate accept with supplier code
+// 06may09	rmd	review sup-priority to determine which supplier cost if multiples exist
+// 19mar09	rmd disable price update if rrp inc exists, don't change other price values only rrp inc.
+//				add awareness for ex-tax items.
+// 10oct08	rmd routine to repair rrp inc tax prior to displaying to user
+// 01aug08	rmd	jump stright into stock-code entry
+// 26jul08	rmd use supplier-last-buy-price, not wac (if multiple supps exist will take last one found)
+//				refresh totals after modifying RRP without having to enter through cost or gp%
+// 08apr08	rmd	add tmp-avg-cost to enable projections based on a new cost
+
+version-number "20140509"
+
+mode md-exit
+	Prompt "E&xit"
+
+mode entry
+	Prompt "Calculate GP"
+mode md-select
+	Prompt "Select"
+	currency
+
+object tmp-stock
+type is memory
+	record
+		tmp-stock-code                   			like stock-code
+		tmp-whse-code                               like whse-code
+		tmp-stk-description                         like stk-description
+		tmp-whse-avg-cost                           like whse-avg-cost
+		tmp-prc-recommend-retail-inc-tax            like prc-recommend-retail-inc-tax
+		tmp-prc-sales-tax-code            			like prc-sales-tax-code
+	endrecord
+key is tmp-stock-code unique
+
+field
+	ws-stock-code							like stock-code
+	ws-whse-code							like whse-code
+	ws-cre-accountcode						like cre-accountcode
+	ws-gp-amt								type numeric
+	ws-gp-percent							type numeric
+	ws-rrp-ex-tax							like prc-recommend-retail-inc-tax
+	//tmp-prc-recommend-retail-inc-tax		like prc-recommend-retail-inc-tax
+	tmp-gp-percent							type numeric
+	calc-gp-percent							type numeric
+	calc-gp-amt								type numeric
+	ws-price-region							pic x(20)
+
+procedure main
+	set ws-price-region = uppercase(get-env("PRCREGION"))
+	get system-control first
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+	if user-position = "DC"
+		//set ws-dc-user = TRUE
+		// message "DC user"
+	endif
+	open tmp-stock truncate temporary
+	do gp-calc entry once
+endprocedure // main ----------------------------------------------------------
+
+screen gp-calc
+local field
+	lf-sup-priority					type numeric // like sup-priority
+	lf-comp-priority				type numeric // priority used for comparison i.e. if 0 or not intialised make it 10 so a 9 will win over a 10
+	lf-supplier-count				type numeric // 11may09
+	lf-cre-accountcode				like cre-accountcode
+	window @11,12 to @21,60 title is concat("GP Calculator")
+	primary tmp-stock
+	allowed entry md-exit
+	before
+		box @11,12 to @20,60 title "Calculate GP"
+	detail
+		accept ws-stock-code 	@12,24 title is "Stock Code"
+			uppercase
+			on help-key
+			    spl
+			    	//"rmd/stk/stklookup6"
+			    	"pvi-snz/stk/stklookup"
+			   // parameters
+			   // 	ws-stock-code
+			   	returning
+			    	ws-stock-code
+				reenter optional
+			endon
+			validation
+				set ws-cre-accountcode = SPACES
+				if ws-stock-code <> SPACES
+					get stock-master
+						on index stock-code
+						key is ws-stock-code
+					on error
+						message concat(strconcat(ws-stock-code) " is not a valid stock code")
+						reenter
+					endon
+				endif
+			endvalidation
+			// 11may09 test for single supplier
+			set lf-supplier-count = 0
+			extract stock-supplier
+			on index stock-code cre-accountcode
+			key is ws-stock-code SPACES
+			next same stock-code
+			detail
+				set lf-supplier-count += 1
+			endextract
+			if lf-supplier-count = 1
+				set ws-cre-accountcode = cre-accountcode
+			else
+				display "Multiple Suppliers" @12,44 background colour is red bold
+			endif
+			// 11may09 test for single supplier
+		accept ws-whse-code		@13,24 title is "Whse Code:"
+			uppercase
+			default user-store-id // "310"
+			validation
+				if ws-whse-code <> SPACES
+					get system-table
+						on index sys-tbl-type sys-tbl-code
+						key is 'WH' ws-whse-code
+					on error
+						message concat(strconcat(ws-whse-code) " is not a valid warehouse code")
+						reenter
+					endon
+				endif
+			endvalidation
+		accept ws-cre-accountcode @13,48 title is "Supplier:" pic x(7)
+			default ws-cre-accountcode // 11may09
+			uppercase
+			on help-key
+				do select-supplier
+				reenter optional
+			endon
+			validation
+				if ws-cre-accountcode = SPACES
+					//12may11 ------------------------------ start
+					//ws-cre-accountcode
+					//do select-supplier
+					//	returning lf-cre-accountcode
+					//set ws-cre-accountcode = lf-cre-accountcode
+					//refresh
+					//12may11 -------------------------------- end
+				//endif
+				//if ws-cre-accountcode <> SPACES
+				else
+					get stock-supplier
+						on index stock-code cre-accountcode
+						key is ws-stock-code ws-cre-accountcode
+					on error
+						message concat(strconcat(ws-cre-accountcode) " not a valid supplier for " strconcat(ws-stock-code))
+						reenter
+					endon
+				endif
+			endvalidation
+		//message ws-cre-accountcode
+			//ws-cre-accountcode
+		get stock-master
+		on index stock-code
+		key is ws-stock-code
+		on error
+		else
+		endon
+		// 10oct08
+		//get stock-price
+		//on index stock-code prc-region-code
+		//key is ws-stock-code SPACES
+		//on error
+		//	// "Unknown"
+		//else
+		//endon
+		get stock-price lock
+		on index stock-code prc-region-code
+		key is ws-stock-code SPACES
+		on error
+		else
+			//19mar09 remove price swithc reoutine
+			//if prc-wholesale-price = 0
+			//	set prc-wholesale-price = prc-recommend-retail
+			//endif
+			//if prc-recommend-retail = 0
+			//	set prc-recommend-retail = prc-wholesale-price
+			//endif
+			//19mar09 remove price break 3 and 4 clearing
+			//set prc-break-price[3] = 0
+			//set prc-break-price[4] = 0
+			//19mar09 if prc-recommend-retail-inc-tax already in place leave it be, only change if it's 0
+			if prc-recommend-retail-inc-tax = 0
+				if ws-price-region = "REGIONAL"
+					if prc-sales-tax-code = 0
+						set prc-recommend-retail-inc-tax = prc-wholesale-price
+					else
+						set prc-recommend-retail-inc-tax = prc-wholesale-price * 1.1 // prc-break-price[4]
+					endif
+				else
+					if prc-sales-tax-code = 0
+						set prc-recommend-retail-inc-tax = prc-recommend-retail
+					else
+						set prc-recommend-retail-inc-tax = prc-recommend-retail * 1.1 // prc-break-price[4]
+					endif
+				endif
+			endif
+			update stock-price
+		endon
+		// 10oct08
+		get stock-warehouse-detail
+		on index stock-code whse-code
+		key is ws-stock-code ws-whse-code
+		on error
+			// "Unknown"
+		else
+		endon
+		set tmp-stock-code                   			= stock-code
+		set tmp-whse-code                               = whse-code
+		set tmp-stk-description                         = stk-description
+		//set tmp-whse-avg-cost 						= whse-avg-cost // 26jul08
+		set tmp-prc-recommend-retail-inc-tax            = prc-recommend-retail-inc-tax
+		set tmp-prc-sales-tax-code            			= prc-sales-tax-code
+		//06may09 user has preselected a supplier
+		//// 26jul08
+		//set lf-sup-priority = 10
+		//set tmp-whse-avg-cost = 0
+		//extract stock-supplier lock
+		//on index
+		//stock-code cre-accountcode
+		//key is tmp-stock-code SPACES
+		//next same stock-code
+		//detail
+		//	// 06may09
+		//	// if sup-priority not defined, treat as a lower priority than 9
+		//	if sup-priority = 0
+		//		set lf-comp-priority = 10
+		//	else
+		//		set lf-comp-priority = sup-priority
+		//	endif
+		//
+		//	// 06may09
+		//	if lf-comp-priority < lf-sup-priority
+		//		// we want this compared to the last record
+		//		// if there are multiple stock supplier records of the same priority
+		//		// this will only pickup the first one..
+		//		set lf-sup-priority = sup-priority
+		//		set tmp-whse-avg-cost = sup-last-buy-price
+		//	endif
+		//	// how we used to grab supplier cost
+		//	//if sup-last-buy-price != 0
+		//	//	set tmp-whse-avg-cost = sup-last-buy-price
+		//	//endif
+		//	// 06may09
+		//endextract
+		get stock-supplier
+		on index stock-code cre-accountcode
+		key is ws-stock-code ws-cre-accountcode
+		on error
+			//message "No Stock Supplier"
+			initialise stock-supplier
+			leaving stock-code
+		else
+			set tmp-whse-avg-cost = sup-last-buy-price
+		endon
+		//12may11 if no supplier selected, use wac
+		if ws-cre-accountcode = SPACES // user intentionally wants internal costing
+			set tmp-whse-avg-cost = whse-avg-cost
+		endif
+		//if tmp-whse-avg-cost = 0
+		//	set tmp-whse-avg-cost = 0.01
+		//endif
+		if tmp-prc-recommend-retail-inc-tax = 0
+			//19mar09 look for rrp in other fields
+			//set tmp-prc-recommend-retail-inc-tax = 1
+
+		endif
+		//save stock-master
+		//save stock-price
+		//save stock-warehouse-detail
+		//19mar09 ex tax aware
+		if tmp-prc-sales-tax-code = 0
+			set ws-rrp-ex-tax					= tmp-prc-recommend-retail-inc-tax
+		else
+			set ws-rrp-ex-tax					= tmp-prc-recommend-retail-inc-tax / 1.1
+		endif
+		set ws-gp-amt	                        = ws-rrp-ex-tax - tmp-whse-avg-cost
+		set ws-gp-percent                       = 100 * (1 - tmp-whse-avg-cost / ws-rrp-ex-tax)
+
+		display tmp-stk-description				@14,24 background bold
+		display tmp-prc-recommend-retail-inc-tax @15,24 title is "RRP Inc:" 	 pic ---,--9.99
+			//readonly
+			background
+		display ws-rrp-ex-tax				 	@16,24 title is "RRP Ex:" 	 pic ---,--9.99
+			//readonly
+			background
+		//display whse-avg-cost					@17,24 title is "Whse Cost:" pic ---,--9.99 // 26jul08
+		display tmp-whse-avg-cost				@17,24 title is "Supplier Cost:" pic ---,--9.99
+			//readonly
+			background
+		display ws-gp-amt	                    @18,24 title is "Orig GP $:" pic ---,--9.99
+			//readonly
+			background
+		display ws-gp-percent                    @19,24 title is "Orig GP %:" pic ---,--9.99
+			//readonly
+			background
+		accept tmp-prc-recommend-retail-inc-tax @15,48 title is "New RRP Inc:" 	pic ---,--9.99
+			default tmp-prc-recommend-retail-inc-tax
+		if tmp-prc-recommend-retail-inc-tax > 0
+			set tmp-gp-percent  = 100 * (1 - tmp-whse-avg-cost / (tmp-prc-recommend-retail-inc-tax / 1.1))
+			set calc-gp-amt		= (tmp-prc-recommend-retail-inc-tax / 1.1) - tmp-whse-avg-cost
+			// 26jul08
+			if tmp-whse-avg-cost > 0
+				display calc-gp-amt                  	@18,48 title is "New GP $:" 	pic ---,--9.99
+				display tmp-gp-percent	                @19,48 title is "New GP %:"		pic ---,--9.99
+			endif
+		endif
+		accept tmp-whse-avg-cost				@17,48 title is "New Cost:"		pic ---,--9.99
+			default tmp-whse-avg-cost
+		if tmp-whse-avg-cost > 0
+			set tmp-gp-percent  = 100 * (1 - tmp-whse-avg-cost / (tmp-prc-recommend-retail-inc-tax / 1.1))
+			set calc-gp-amt		= (tmp-prc-recommend-retail-inc-tax / 1.1) - tmp-whse-avg-cost
+			set tmp-prc-recommend-retail-inc-tax = tmp-whse-avg-cost * (1 / ( 1 - ( tmp-gp-percent / 100 ))) * 1.1
+			display calc-gp-amt                  	@18,48 title is "New GP $:" 	pic ---,--9.99
+		endif
+		display calc-gp-amt                  	@18,48 title is "New GP $:" 	pic ---,--9.99
+			//readonly
+			background
+		accept tmp-gp-percent	                @19,48 title is "New GP %:"		pic ---,--9.99
+			default tmp-gp-percent
+		display calc-gp-amt                  	@18,48 title is "New GP $:" 	pic ---,--9.99
+			//readonly
+			background
+		if tmp-gp-percent > 0
+			//set tmp-prc-recommend-retail-inc-tax = whse-avg-cost * (1 / (100 / tmp-gp-percent) + 1) * 1.1
+			if tmp-whse-avg-cost = 0 // tmp-gp-percent = 100
+				set tmp-prc-recommend-retail-inc-tax = tmp-prc-recommend-retail-inc-tax
+				message "Cannot recalculate RRP from zero cost"
+			else
+				set tmp-prc-recommend-retail-inc-tax = tmp-whse-avg-cost * (1 / ( 1 - ( tmp-gp-percent / 100 ))) * 1.1
+			endif
+			set calc-gp-amt		= (tmp-prc-recommend-retail-inc-tax / 1.1) - tmp-whse-avg-cost
+			display calc-gp-amt                  	@18,48 title is "New GP $:" 	pic ---,--9.99
+				//readonly
+				background
+			reenter tmp-prc-recommend-retail-inc-tax optional
+			//reenter tmp-gp-percent optional
+		endif
+after
+	//want user to stay here until they press Exit
+	//back-to-detail
+	//update tmp-stock
+	//message "Exiting"
+	//restore stock-master
+	//restore stock-price
+	//restore stock-warehouse-detail
+	//exit
+confirm auto
+confirmed
+	if screen-mode() = md-exit
+		exit
+	endif
+endconfirm
+endscreen // gp-calc ----------------------------------------------------------
+
+screen select-supplier-2
+window @1,1 to @8,55 title is "Select Supplier"
+	primary stock-supplier
+	when
+		stock-code = ws-stock-code
+	datagrid occurs 6
+	allowed search md-select
+	review-from-start
+before
+	detail
+		display cre-accountcode         @1,02 title is "Supplier"
+		display sup-priority			@1,04 pic zzzzzzzz9 title is "Priority"
+		display sup-last-buy-price      @1,06 title is "Last Buy Cost"
+		display sup-last-buy-date       @1,08 title is "Last Buy Date"
+confirm
+	auto
+confirmed
+	if screen-mode() = md-select
+		set ws-cre-accountcode = cre-accountcode
+		exit
+	endif
+endconfirm
+endscreen // select-supplier --------------------------------------------------
+
+screen select-supplier
+	returning lr-cre-accountcode 			like cre-accountcode
+	//
+	window @1,1 to @8,55
+		title is "Select Supplier"
+	//
+	primary stock-supplier
+	when stock-code = ws-stock-code
+	datagrid occurs 6
+	allowed md-select search
+	review-from-start
+before
+detail
+	display cre-accountcode         @1,02 title is "Supplier"
+	display sup-priority			@1,04 pic zzzzzzzz9 title is "Priority"
+	display sup-last-buy-price      @1,06 title is "Last Buy Cost"
+	display sup-last-buy-date       @1,08 title is "Last Buy Date"
+confirm auto
+confirmed
+	if screen-mode() = md-select
+		set lr-cre-accountcode = cre-accountcode
+		exit
+	endif
+endconfirm
+endscreen // select-supplier --------------------------------------------------
+
+//screen gp-calc-2
+//	window @11,12 to @21,60 title is concat("GP Calculator")
+//
+//	select *
+//	from stock-master
+//	where stock-code = ws-stock-code
+//	allowed find correct
+//
+//	before
+//		box @11,12 to @20,60 title "Calculate GP"
+//
+//		accept ws-stock-code 	@12,24 title is "Stock Code"
+//			uppercase
+//			default "MOD1072"
+//		accept ws-whse-code		@13,24 title is "Whse Code:"
+//			uppercase
+//			default "310"
+//
+//	detail
+//
+//		get stock-price
+//		on index stock-code prc-region-code
+//		key is ws-stock-code SPACES
+//		on error
+//			// "Unknown"
+//		else
+//		endon
+//
+//		get stock-warehouse-detail
+//		on index stock-code whse-code
+//		key is ws-stock-code ws-whse-code
+//		on error
+//			// "Unknown"
+//		else
+//		endon
+//		if prc-recommend-retail-inc-tax = 0
+//			set prc-recommend-retail-inc-tax = 1
+//		endif
+//
+//
+//		save stock-master
+//		save stock-price
+//		save stock-warehouse-detail
+//
+//
+//		set ws-rrp-ex-tax						= prc-recommend-retail-inc-tax / 1.1
+//		set ws-gp-amt	                        = ws-rrp-ex-tax - whse-avg-cost
+//		set ws-gp-percent                       = 100 * (1 - whse-avg-cost / ws-rrp-ex-tax)
+//
+//		display stk-description					@14,24 background bold
+//		accept prc-recommend-retail-inc-tax 	@15,24 title is "RRP Inc:" 	 pic ---,--9.99
+//			readonly
+//		accept ws-rrp-ex-tax				 	@16,24 title is "RRP Ex:" 	 pic ---,--9.99
+//			readonly
+//		accept whse-avg-cost					@17,24 title is "Whse Cost:" pic ---,--9.99
+//			readonly
+//		accept ws-gp-amt	                    @18,24 title is "Orig GP $:" pic ---,--9.99
+//			readonly
+//		accept ws-gp-percent                    @19,24 title is "Orig GP %:" pic ---,--9.99
+//			readonly
+//
+//
+//		accept tmp-prc-recommend-retail-inc-tax @15,48 title is "New RRP Inc:" 	pic ---,--9.99
+//			default tmp-prc-recommend-retail-inc-tax
+//		if tmp-prc-recommend-retail-inc-tax > 0
+//			set tmp-gp-percent  = 100 * (1 - whse-avg-cost / (tmp-prc-recommend-retail-inc-tax / 1.1))
+//		endif
+//
+//
+//		accept calc-gp-amt                  	@18,48 title is "New GP $:" 	pic ---,--9.99
+//			readonly
+//
+//		accept tmp-gp-percent	                @19,48 title is "New GP %:"		pic ---,--9.99
+//			default tmp-gp-percent
+//
+//		if tmp-gp-percent > 0
+//			//set tmp-prc-recommend-retail-inc-tax = whse-avg-cost * (1 / (100 / tmp-gp-percent) + 1) * 1.1
+//			set tmp-prc-recommend-retail-inc-tax = whse-avg-cost * (1 / ( 1 - ( tmp-gp-percent / 100 ))) * 1.1
+//			reenter tmp-prc-recommend-retail-inc-tax optional
+//		endif
+//
+//after
+//	//want user to stay here until they press Exit
+//	//back-to-detail
+//	message "Exiting"
+//	restore stock-master
+//	restore stock-price
+//	restore stock-warehouse-detail
+//
+//	exit
+//
+//confirm //auto
+//confirmed
+//	if screen-mode() = md-exit
+//		exit
+//	endif
+//endconfirm
+//
+//
+//endscreen // gp-calc2 ---------------------------------------------------------
+// gpcalc.spl

@@ -1,0 +1,30 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/startupfixed
+//  Program Desc:	clear startup last used date
+//  Requested By:	Leigh Green
+//  Request Date:	03feb14
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03feb14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+procedure reset-startup-date
+	get system-control first
+	get system-user-startup lock
+	on index user-id sys-comp-code sus-seq-no
+	key is login-id() sys-consolidation-division 0
+	on error
+		message concat("Can't locate sus User:" strconcat(login-id()) " Dataset:" strconcat(sys-consolidation-division))
+	else
+		initialise system-user-startup
+		leaving user-id sys-comp-code sus-seq-no sus-module sus-function
+		update system-user-startup
+	endon
+	unlock system-user-startup
+endprocedure // reset-startup-date ----------------------------------------------

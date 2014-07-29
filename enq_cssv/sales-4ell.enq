@@ -1,0 +1,214 @@
+// select
+// stock-code
+// ash-type
+// ash-years-ago
+// ash-whse
+// ash-value
+// from
+// stock-aged-sales-history
+// where
+// ash-years-ago = 0 
+// and ash-type = "S" 
+// order by ash-whse 
+// format is lst
+// report width is 166
+// suppress stock-code
+// suppress ash-type
+// suppress ash-years-ago
+// unique record on ash-whse
+// field order is ash-whse ash-years-ago
+// total on ash-value[1]
+// total on ash-value[2]
+// total on ash-value[3]
+// total on ash-value[4]
+// total on ash-value[5]
+// total on ash-value[6]
+// total on ash-value[7]
+// total on ash-value[8]
+// total on ash-value[9]
+// total on ash-value[10]
+// total on ash-value[11]
+// total on ash-value[12]
+// subtotal on ash-value[1]
+// with breaks on ash-whse
+// subtotal on ash-value[2]
+// with breaks on ash-whse
+// subtotal on ash-value[3]
+// with breaks on ash-whse
+// subtotal on ash-value[4]
+// with breaks on ash-whse
+// subtotal on ash-value[5]
+// with breaks on ash-whse
+// subtotal on ash-value[6]
+// with breaks on ash-whse
+// subtotal on ash-value[7]
+// with breaks on ash-whse
+// subtotal on ash-value[8]
+// with breaks on ash-whse
+// subtotal on ash-value[9]
+// with breaks on ash-whse
+// subtotal on ash-value[10]
+// with breaks on ash-whse
+// subtotal on ash-value[11]
+// with breaks on ash-whse
+// subtotal on ash-value[12]
+// with breaks on ash-whse
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	sys-stk-per
+	sys-mth-name
+	sys-period-start
+from
+	stock-aged-sales-history
+	system-control
+where
+       
+	ash-years-ago = 0 
+	and ash-type = "S" 
+order by ash-whse 
+format is rpt
+report width 300
+field total-ash-value like ash-value
+field sub-tot-ash-value like ash-value
+field i   pic 99
+field c   pic 99
+report header
+	page
+	set total-ash-value[1] = 0
+	set total-ash-value[2] = 0
+	set total-ash-value[3] = 0
+	set total-ash-value[4] = 0
+	
+
+
+
+set total-ash-value[5] = 0
+	set total-ash-value[6] = 0
+	set total-ash-value[7] = 0
+	set total-ash-value[8] = 0
+	set total-ash-value[9] = 0
+	set total-ash-value[10] = 0
+	set total-ash-value[11] = 0
+	set total-ash-value[12] = 0
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"ash" in col 2
+		sys-mth-name[sys-stk-per]in col 13
+	        set c = 13
+        	set i = sys-mth-name[sys-stk-per]
+             for i = 1 to 12
+        print
+             
+               MONTH_NAME (ADD-MONTH(sys-period-start[sys-stk-per],(i * -1),1)) 
+              
+               in col (c + 12) no newline
+                set c = (c + 12 )
+           endfor
+		skip 1
+
+              
+//             "ash-value" in col 37
+//		"ash-value" in col 49
+//		"ash-value" in col 61
+//		"ash-value" in col 73
+//		"ash-value" in col 85
+//		"ash-value" in col 97
+//		"ash-value" in col 109
+//		"ash-value" in col 121
+//		"ash-value" in col 133
+//		"ash-value" in col 145
+//		"ash-value" in col 157
+	print
+		"whse" in col 2
+	skip 1
+before ash-whse
+	set sub-tot-ash-value[1] = 0
+	set sub-tot-ash-value[2] = 0
+	set sub-tot-ash-value[3] = 0
+	set sub-tot-ash-value[4] = 0
+	set sub-tot-ash-value[5] = 0
+	set sub-tot-ash-value[6] = 0
+	set sub-tot-ash-value[7] = 0
+	set sub-tot-ash-value[8] = 0
+	set sub-tot-ash-value[9] = 0
+	set sub-tot-ash-value[10] = 0
+	set sub-tot-ash-value[11] = 0
+	set sub-tot-ash-value[12] = 0
+
+detail
+	set total-ash-value[1] += ash-value[1]
+	set sub-tot-ash-value[1] += ash-value[1]
+	set total-ash-value[2] += ash-value[2]
+	set sub-tot-ash-value[2] += ash-value[2]
+	set total-ash-value[3] += ash-value[3]
+	set sub-tot-ash-value[3] += ash-value[3]
+	set total-ash-value[4] += ash-value[4]
+	set sub-tot-ash-value[4] += ash-value[4]
+	set total-ash-value[5] += ash-value[5]
+	set sub-tot-ash-value[5] += ash-value[5]
+	set total-ash-value[6] += ash-value[6]
+	set sub-tot-ash-value[6] += ash-value[6]
+	set total-ash-value[7] += ash-value[7]
+	set sub-tot-ash-value[7] += ash-value[7]
+	set total-ash-value[8] += ash-value[8]
+	set sub-tot-ash-value[8] += ash-value[8]
+	set total-ash-value[9] += ash-value[9]
+	set sub-tot-ash-value[9] += ash-value[9]
+	set total-ash-value[10] += ash-value[10]
+	set sub-tot-ash-value[10] += ash-value[10]
+	set total-ash-value[11] += ash-value[11]
+	set sub-tot-ash-value[11] += ash-value[11]
+	set total-ash-value[12] += ash-value[12]
+	set sub-tot-ash-value[12] += ash-value[12]
+after ash-whse
+	print
+		ash-whse in col 2
+		sub-tot-ash-value[1] in col 13
+		sub-tot-ash-value[2] in col 25
+		sub-tot-ash-value[3] in col 37
+		sub-tot-ash-value[4] in col 49
+		sub-tot-ash-value[5] in col 61
+		sub-tot-ash-value[6] in col 73
+		sub-tot-ash-value[7] in col 85
+		sub-tot-ash-value[8] in col 97
+		sub-tot-ash-value[9] in col 109
+		sub-tot-ash-value[10] in col 121
+		sub-tot-ash-value[11] in col 133
+		sub-tot-ash-value[12] in col 145
+		ash-value[13] in col 157
+report footer
+	print
+		"----------" in col 13
+		"----------" in col 25
+		"----------" in col 37
+		"----------" in col 49
+		"----------" in col 61
+		"----------" in col 73
+		"----------" in col 85
+		"----------" in col 97
+		"----------" in col 109
+		"----------" in col 121
+		"----------" in col 133
+		"----------" in col 145
+	print
+		total-ash-value[1] in col 13
+		total-ash-value[2] in col 25
+		total-ash-value[3] in col 37
+		total-ash-value[4] in col 49
+		total-ash-value[5] in col 61
+		total-ash-value[6] in col 73
+		total-ash-value[7] in col 85
+		total-ash-value[8] in col 97
+		total-ash-value[9] in col 109
+		total-ash-value[10] in col 121
+		total-ash-value[11] in col 133
+		total-ash-value[12] in col 145

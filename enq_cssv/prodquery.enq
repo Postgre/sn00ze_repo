@@ -1,0 +1,47 @@
+select
+	so-territory-code
+	today () - 1
+	stock-code
+	stk-description
+	stk-sort-analysis-code
+	stock-group
+	ws-item-cost = (sol-item-cost ) * (sol-ordered-qty ) 
+	ws-sum-qty = sum (sol-ordered-qty) 
+	ws-sum-price = sum (sol-line-amount) 
+	ws-sum-cost = sum (ws-item-cost) 
+	ash-value
+	ws-ytd-sales = sum-array (ash-value 1 sys-stk-per) 
+	ws-mtd-sales = ash-value[1] 
+	ws-state = 'VIC' 
+	ws-region = 'VM' 
+	sys-description
+	sol-ordered-qty
+	sol-line-amount
+	sol-item-cost
+	so-order-date
+	so-order-no
+	so-bo-suffix
+	sys-tbl-type
+	sys-tbl-code
+from
+	sales-order-line
+	sales-order
+	system-control
+	stock-aged-sales-history
+	system-table
+	stock-master
+where
+	//so-order-date between today () - 7 and today () - 1
+	//and 
+	sol-ordered-qty != 0 and 
+	so-order-type-code != 'Q' and
+	so-order-type-code != 'P' and 
+	so-order-status not in {'05' '12' '15' '21' '25' '26' '32' '35' '38' '42' '45' '48' '55' '64' '65' '72' '75' '82' '86' '91'}
+	and sys-tbl-type = 'SX' 
+	and ash-type = 'O' 
+	and ash-years-ago = 1999 
+	and ash-whse = so-territory-code 
+	and sys-tbl-code = stk-sort-analysis-code 
+order by stock-code 
+group by stock-code
+format is lotus

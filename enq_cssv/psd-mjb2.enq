@@ -1,0 +1,6 @@
+update deb-trans
+set
+	dr-tr-invoice-date = sub-string (tr-details 1 6)
+where
+	trans-type = "JE"
+	and tr-amount < 0

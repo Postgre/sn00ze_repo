@@ -1,0 +1,62 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/getsetrep.spl
+//  Program Desc:	Get/Set Rep code using registry so rep is bound to PC
+//  Requested By:	Leigh Green
+//  Request Date:	22apr11
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03apr14	rmd			upgrade for 710
+//	22apr11	rmd			written
+///////////////////////////////////////////////////////////////////////////////
+
+procedure main
+local field
+	lf-rep-code			like rep-code
+	lf-hive				pic x(300)
+returning
+	lr-rep-code			like rep-code
+	set lf-hive = "HKEY_CURRENT_USER\Software\PRONTO\Settings\"
+	if get-param(1) = SPACES
+		do get-set-rep entry-once
+	elseif get-param(1) = "-get"
+		//message "dbg get"
+		set lr-rep-code = get-registry-value(strconcat(lf-hive "current_rep"))
+	else
+		set lf-rep-code = get-param(1)
+		if set-registry-value(strconcat(lf-hive "current_rep"),lf-rep-code)
+		else
+		endif
+	endif
+endprocedure // main ----------------------------------------------------------
+
+screen get-set-rep
+local field
+	lf-rep-code			like rep-code
+	lf-value-set		type boolean
+	lf-hive				pic x(300)
+window @1,1 to @5,35 title "Enter Rep Code"
+box @1,1 to @4,35 title SPACES
+	set lf-value-set = TRUE
+	set lf-hive = "HKEY_CURRENT_USER\Software\PRONTO\Settings\"
+	//
+	set lf-rep-code = get-registry-value(strconcat(lf-hive "current_rep"))
+		accept lf-rep-code @2,20 title "Rep Code:"
+			default lf-rep-code
+			uppercase
+			validation
+			endvalidation
+confirm
+confirmed
+	if set-registry-value(strconcat(lf-hive "current_rep"),lf-rep-code)
+		//message "OK"
+	else
+		//message "Not OK"
+	endif
+endconfirm
+endscreen // get-set-rep ------------------------------------------------------

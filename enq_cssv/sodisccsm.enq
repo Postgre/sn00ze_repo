@@ -1,0 +1,237 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-date
+	so-actual-delivery-date
+	so-territory-code
+	so-rep-code
+	stock-code
+	sol-ordered-qty
+	sol-line-amount
+	ws-sell-extax = sol-line-amount / 1.1 
+	stock-group
+	prc-recommend-retail
+	ws-total-retail = prc-recommend-retail * sol-ordered-qty 
+	ws-start-date = input
+		date
+		prompt is "Enter Start Delivery Date:"
+	ws-end-date = input
+		date
+		prompt is "Enter   End Delivery Date:"
+	ws-summary = input
+		string
+		uppercase
+		prompt is "Summary Only"
+	rep-code
+	rep-description
+	company-name
+	sol-line-cost
+from
+	sales-order-archive
+	sales-order-line-archive
+	stock-master
+	stock-price
+	rep-master
+	system-control
+where
+	sol-line-type = 'SN' 
+	and so-order-status = '90' 
+	and so-actual-delivery-date between ws-start-date and ws-end-date 
+	and prc-recommend-retail > 0 
+	and so-rep-code = rep-code 
+order by so-territory-code so-rep-code 
+format is rpt
+field sub-tot-sol-line-cost like sol-line-cost
+field sub-tot-ws-sell-extax like ws-sell-extax
+field sub-tot-ws-total-retail like ws-total-retail
+field sub-tot1-sol-line-cost like sol-line-cost
+field sub-tot1-ws-sell-extax like ws-sell-extax
+field sub-tot1-ws-total-retail like ws-total-retail
+field total-sol-line-cost like sol-line-cost
+field total-ws-sell-extax like ws-sell-extax
+field total-ws-total-retail like ws-total-retail
+report header
+	set total-sol-line-cost = 0
+	set total-ws-sell-extax = 0
+	set total-ws-total-retail = 0
+	page
+header
+	print 
+		company-name in col 1
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	print "Sales Order Discount Report For" in col 50
+	print "Delivered Sales" in col 56
+	skip
+	if ws-summary = "N"
+	print
+		"Order" in col 1
+		"Cust." in col 15
+		"Order" in col 28
+		"Actual" in col 40
+		"Stock" in col 60
+		"S/O Amt" in col 77
+		"Total Retail" in col 91
+		"Discount" in col 106
+		"Disc." in col 117
+	print
+		"No." in col 1
+		"Suf." in col 9
+		"Code" in col 15
+		"Date" in col 28
+		"Del. Date" in col 38
+		"Terr" in col 49
+		"Rep" in col 54
+		"Code" in col 60
+		"(Excl. GST)" in col 75
+		"(Excl. GST)" in col 92
+		"$" in col 109
+		"%" in col 118
+	elseif ws-summary = "Y"
+	print
+		"S/O Amt" in col 53
+		"Total Retail" in col 63
+		"Discount" in col 82
+		"Disc." in col 93
+	print
+		"(Excl. GST)" in col 51
+		"(Excl. GST)" in col 64
+		"$" in col 85
+		"%" in col 95
+	endif
+	print
+		"---------------------------------------------------------------------------------------------------------------------------------" in col 1	skip 1
+before so-territory-code 
+	set sub-tot-sol-line-cost = 0
+	set sub-tot-ws-sell-extax = 0
+	set sub-tot-ws-total-retail = 0
+
+before so-rep-code
+	set sub-tot1-sol-line-cost = 0
+	set sub-tot1-ws-sell-extax = 0
+	set sub-tot1-ws-total-retail = 0
+
+detail
+	if ws-summary = "N"
+	print
+		so-order-no in col 1
+		so-bo-suffix in col 10
+		so-cust-code in col 14
+		so-order-date in col 25
+		so-actual-delivery-date in col 37
+		so-territory-code in col 49
+		so-rep-code in col 54
+		stock-code in col 58 pic x(12)
+		ws-sell-extax in col 73 pic z,zzz,zz9.99-
+		ws-total-retail in col 87 pic z,zzz,zz9.99-
+		ws-total-retail - ws-sell-extax in col 101 pic z,zzz,zz9.99-
+		((ws-total-retail - ws-sell-extax) / ws-total-retail) * 100 in col 115 pic zz9.99-
+	endif
+	set sub-tot-sol-line-cost += sol-line-cost
+	set sub-tot-ws-sell-extax += ws-sell-extax
+	set sub-tot-ws-total-retail += ws-total-retail
+	set sub-tot1-sol-line-cost += sol-line-cost
+	set sub-tot1-ws-sell-extax += ws-sell-extax
+	set sub-tot1-ws-total-retail += ws-total-retail
+	set total-sol-line-cost += sol-line-cost
+	set total-ws-sell-extax += ws-sell-extax
+	set total-ws-total-retail += ws-total-retail
+after so-rep-code
+	if ws-summary = "N"
+	print
+		"-------------" in col 73
+		"-------------" in col 87
+		"-------------" in col 101
+		"---------" in col 115
+	print
+		"Total for Rep:" in col 25 bold
+		rep-description in col 40 bold
+		sub-tot1-ws-sell-extax in col 73 pic z,zzz,zz9.99-
+		sub-tot1-ws-total-retail in col 87 pic z,zzz,zz9.99-
+		sub-tot1-ws-total-retail - sub-tot1-ws-sell-extax in col 101 pic z,zzz,zz9.99-
+		((sub-tot1-ws-total-retail - sub-tot1-ws-sell-extax) / sub-tot1-ws-total-retail) * 100 in col 115 pic zz9.99-
+	skip
+	elseif ws-summary = "Y"
+	print
+		"Total for Rep:" in col 2 bold
+		rep-description in col 17 bold
+		sub-tot1-ws-sell-extax in col 48 pic z,zzz,zz9.99-
+		sub-tot1-ws-total-retail in col 62 pic z,zzz,zz9.99-
+		sub-tot1-ws-total-retail - sub-tot1-ws-sell-extax in col 76 pic z,zzz,zz9.99-
+		((sub-tot1-ws-total-retail - sub-tot1-ws-sell-extax) / sub-tot1-ws-total-retail) * 100 in col 90 pic zz9.99-
+		sub-tot1-sol-line-cost in col 98 pic z,zzz,zz9.99-
+	endif
+after so-territory-code 
+	if ws-summary = "N"
+	print
+		"-------------" in col 73
+		"-------------" in col 87
+		"-------------" in col 101
+		"--------" in col 115
+	print
+		"Total for Territory:" in col 46 bold
+		so-territory-code in col 67 bold
+		sub-tot-ws-sell-extax in col 73 pic z,zzz,zz9.99- bold
+		sub-tot-ws-total-retail in col 87 pic z,zzz,zz9.99- bold
+		sub-tot-ws-total-retail - sub-tot-ws-sell-extax in col 101 pic z,zzz,zz9.99- bold
+		((sub-tot-ws-total-retail - sub-tot-ws-sell-extax) / sub-tot-ws-total-retail) * 100 in col 115 pic zz9.99- bold
+	skip
+	elseif ws-summary = "Y"
+	print
+		"-------------" in col 48
+		"-------------" in col 62
+		"-------------" in col 76
+		"--------" in col 90
+		"-------------" in col 98
+	print
+		"Total for Territory:" in col 17 bold
+		so-territory-code in col 39 bold
+		sub-tot-ws-sell-extax in col 48 pic z,zzz,zz9.99- bold
+		sub-tot-ws-total-retail in col 62 pic z,zzz,zz9.99- bold
+		sub-tot-ws-total-retail - sub-tot-ws-sell-extax in col 76 pic z,zzz,zz9.99- bold
+		((sub-tot-ws-total-retail - sub-tot-ws-sell-extax) / sub-tot-ws-total-retail) * 100 in col 90 pic zz9.99- bold
+		sub-tot-sol-line-cost in col 98 pic z,zzz,zz9.99-
+	skip
+	endif
+report footer
+	if ws-summary = "N"
+	print
+		"-------------" in col 73
+		"-------------" in col 87
+		"-------------" in col 101
+		"--------" in col 115
+	print
+		"TOTAL:" in col 65 bold
+		total-ws-sell-extax in col 73 pic z,zzz,zz9.99- bold
+		total-ws-total-retail in col 87 pic z,zzz,zz9.99- bold
+		total-ws-total-retail - total-ws-sell-extax in col 101 pic z,zzz,zz9.99- bold
+		((total-ws-total-retail - total-ws-sell-extax) / total-ws-total-retail) * 100 in col 115 pic zz9.99- bold
+
+	elseif ws-summary = "Y"
+	print
+		"-------------" in col 48
+		"-------------" in col 62
+		"-------------" in col 76
+		"---------" in col 90
+		"-------------" in col 98
+	print
+		"TOTAL:" in col 20 bold
+		total-ws-sell-extax in col 48 pic z,zzz,zz9.99- bold
+		total-ws-total-retail in col 62 pic z,zzz,zz9.99- bold
+		total-ws-total-retail - total-ws-sell-extax in col 76 pic z,zzz,zz9.99- bold
+		((total-ws-total-retail - total-ws-sell-extax) / total-ws-total-retail) * 100 in col 90 pic zz9.99- bold
+		total-sol-line-cost in col 98 pic z,zzz,zz9.99-
+	endif
+	skip
+	print "Report Name           :" in col 17
+		"xxxxxxxxxxxxx.enq" in col 41
+	skip
+	print "Start Delivery Date   :" in col 17
+		ws-start-date in col 41
+	print "End   Delivery Date   :" in col 17
+		ws-end-date in col 41
+	print "Summary Only          :" in col 17
+		ws-summary in col 41 pic x(2)

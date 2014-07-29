@@ -1,0 +1,4 @@
+delete from stock-warehouse-detail
+where
+	whse-code = '820'
+	and stock-code between 'DYO0527' and 'ZZZZZZZZZZ'

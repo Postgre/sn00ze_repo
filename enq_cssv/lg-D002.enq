@@ -1,0 +1,13 @@
+// query Territory for Debtors
+select
+	accountcode
+	warehouse
+	territory
+	balance
+	future-bal
+from
+	deb-master
+where territory = input alpha prompt "Territory"
+
+order by balance,future-bal
+format is lst

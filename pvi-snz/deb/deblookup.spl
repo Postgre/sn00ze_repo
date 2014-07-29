@@ -1,0 +1,482 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/deb/deblookup
+//  Program Desc:	Customer lookup
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	21feb14	rmd			upgraded to 710
+///////////////////////////////////////////////////////////////////////////////
+
+// deblookup.spl
+
+// 05jun09	rc	added the keyboard shotcut
+// 30sep08	rmd add correct function to maintain deb-master record
+// 11feb08	rmd	option to search for entire string when multiple words submitted
+//				param2 -multiadvanced for normal version otherwise test against shortname
+// 11feb08	rmd	add confirmation pop-up showing accountcode and shortname prior to creating S/O
+// 20dec07	rmd added multi keyword search
+// 14dec07	rmd	accountcodes not included in keyword table
+//				run a deb-master search and append to tmp
+
+
+mode md-select
+	prompt "Select"
+	help "Select this Account"
+	currency
+
+mode md-enquiry
+	prompt "Enquiry"
+	help "Enquire on this Account"
+	currency
+
+// 30sep08
+mode md-correct
+	prompt "Correct"
+	help "Correct/Maintain details for this Account"
+	currency
+
+//mode md-new
+//	prompt "New Account"
+//	help "Add New Customer Account"
+
+//mode  md-kw-search
+//	prompt "Keyword Search"
+
+mode md-search-again
+	prompt "Search &Again"
+
+mode md-create-new
+	//prompt "Create New Acct"						//rc 05jun09
+	prompt "Create &New Acct"						//rc 05jun09
+	help "Add New Customer Account"
+
+object tmp-search-results
+type is memory
+	record
+		//tsr-sort-level					type numeric
+		tsr-accountcode                 like accountcode
+		tsr-na-type                     like na-type
+		tsr-na-name                     like na-name
+		tsr-na-company                  like na-company
+		tsr-na-suburb                   like na-suburb
+		tsr-na-street                   like na-street
+	endrecord
+	//key is tsr-sort-level tsr-accountcode
+	key is tsr-accountcode
+
+field
+	ws-search-string					pic x(16)
+	ws-counter							type numeric
+	ws-results							type numeric
+	ws-accountcode						like accountcode
+	ws-selection-verified				type boolean
+
+screen main
+	window @1,1 to @23,90 title is "Search for Customer Account"
+	primary tmp-search-results
+	datagrid occurs 14
+	allowed md-select md-enquiry md-correct md-create-new md-search-again search
+	review-from-start
+returning
+	lr-accountcode						like accountcode
+before
+	set ws-counter = 0
+	display "Keyword:" @2,4
+	// display "Search String:" @3,3
+	// display "Last Name:" @3,4
+	if get-param(1) = "-all"
+		do build-dataset-all
+		set lr-accountcode = ws-accountcode
+		exit
+	elseif strlen(get-param(1)) > 0
+		set ws-search-string = get-param(1)
+
+		if strlen(ws-search-string) > 0
+			if pattern(strconcat(ws-search-string)," ")
+				// message "Found a space"
+				//message strlen(ws-search-string)
+				set ws-search-string = strconcat(ws-search-string)
+				//message strlen(ws-stock-key-word)
+				// do build-data-set-desc
+				// 11feb08
+				if get-param(2) = "-multiadvanced"
+					do build-dataset-multi
+				else // -multibasic
+					do build-dataset-multibasic
+				endif
+			else
+				do build-dataset
+			endif
+		//	if ws-record-count > 0
+		//		do display-kw-grid
+		//		exit
+		//	else
+		//		display concat("'" strconcat(ws-search-string) "' not found") @9,13 background
+		//	endif
+		endif
+		// do build-dataset
+	else
+		accept ws-search-string @2,13
+			uppercase
+		display "Processing Query" @2,40 colour blue bold background
+		//do build-dataset
+	endif
+	if ws-results = 999
+		// message "999"
+		do no-match-found
+		set lr-accountcode = ws-accountcode
+		exit
+	endif
+	if ws-counter = 0
+		// break
+		do main
+		exit
+	endif
+	clear @2,40 to @2,63
+detail
+	//accept ws-accountcode @2,18
+	//	uppercase
+	display tsr-accountcode @4,2 title is "Account Code"
+	display tsr-na-name @4,4 title is "Name"
+	display tsr-na-company @4,6 title is  "Address 1" // "Street" // "Company"
+	display tsr-na-street @4,8 title is   "Address 2" // "Suburb"  // "Street"
+	display tsr-na-suburb @4,10 title is  "Address 3" // "Suburb"  // "Suburb"
+	// display tsr-sort-level @4,12 title is "Rank" pic z     // "Rank"
+confirm
+	auto
+confirmed
+	if screen-mode() = md-select
+		set ws-selection-verified = FALSE
+		set lr-accountcode = tsr-accountcode
+		do
+			verify-selection
+		parameter
+			tsr-accountcode
+		if ws-selection-verified
+			exit
+		endif
+	elseif screen-mode() = md-enquiry
+		spl
+			"deb/m10mast"
+		parameters
+			"-ec"
+			tsr-accountcode
+	// 30sep08
+	elseif screen-mode() = md-correct
+		spl
+			"deb/m10mast"
+		parameters
+			"-m"
+			tsr-accountcode
+	// elseif screen-mode() = md-new
+	elseif screen-mode() = md-create-new // md-search-again
+		//spl
+		//	"rmd/deb/autoacct2"
+		//parameter
+		//	"-new"
+		//exit
+		set lr-accountcode = "ADDNEW"
+		//message "d5 addnew"
+		exit
+	//elseif screen-mode() = md-kw-search
+	elseif screen-mode() = md-search-again
+		set lr-accountcode = "SEARCH"
+		exit
+		// do main
+	endif
+endconfirm
+endscreen // main -------------------------------------------------------------
+
+procedure verify-selection
+window @5,5 to @10,35 title is "Verify Selection"
+parameter
+	lf-accountcode					like accountcode
+local field
+	lf-accept						pic x
+box @5,5 to @9,35 title is "Account Details"
+	get deb-master
+	on index accountcode
+	key is lf-accountcode
+	on error
+	else
+		display accountcode @6,15 title is "Account:" background
+		display shortname   @7,15 title is "Name:" background
+		accept lf-accept	@8,15 title is "Accept:"
+			uppercase
+			allowed "Y" "N"
+			default "Y"
+		if lf-accept = "Y"
+			set ws-selection-verified = TRUE
+			exit
+		endif
+	endon
+endprocedure // verify-selection ----------------------------------------------
+
+screen no-match-found
+	window @1,1 to @3,30 title is "No Match Found"
+	allowed md-search-again md-create-new
+before
+	//display "No Match Found." @2,5 background bold
+detail
+	display "No Match Found." @1,10 background bold
+confirm
+	auto
+confirmed
+	if screen-mode() = md-search-again
+		// return an empty result to calling prog
+		set ws-accountcode = "SEARCH"
+		exit
+	elseif screen-mode() = md-create-new
+		// return ADDNEW to calling prog
+		set ws-accountcode = "ADDNEW"
+		exit
+	endif
+endconfirm
+endscreen // no-match-found ---------------------------------------------------
+
+procedure build-dataset
+local field
+	lf-accountcode					like accountcode
+	//lf-counter						type numeric
+	open tmp-search-results truncate temporary
+	// 14Dec07 run an initial pass on deb-master finding kw as accountcode
+	get deb-master
+	on index accountcode
+	key is ws-search-string
+	on error
+	else
+		set lf-accountcode = accountcode
+		get name-and-address-master
+		on index accountcode na-type
+		key is lf-accountcode "C"
+		on error
+		else
+			set tsr-accountcode             = accountcode
+			set tsr-na-type                 = na-type
+			set tsr-na-name                 = na-name
+			set tsr-na-company              = na-company
+			set tsr-na-suburb               = na-suburb
+			set tsr-na-street               = na-street
+			insert tmp-search-results
+			set ws-counter += 1
+		endon
+	endon
+	extract deb-key-words
+	on index deb-key-word accountcode
+	key is ws-search-string SPACES
+	next same deb-key-word
+	detail
+		set lf-accountcode = accountcode
+		get name-and-address-master
+		on index accountcode na-type
+		key is lf-accountcode "C"
+		on error
+		else
+			set tsr-accountcode             = accountcode
+			set tsr-na-type                 = na-type
+			set tsr-na-name                 = na-name
+			set tsr-na-company              = na-company
+			set tsr-na-suburb               = na-suburb
+			set tsr-na-street               = na-street
+			insert tmp-search-results
+			set ws-counter += 1
+		endon
+	endextract
+	if ws-counter = 0
+		// set ws-counter = 999
+		set ws-results = 999
+		exit
+	endif
+endprocedure // build-dataset -------------------------------------------------
+
+procedure build-dataset-multi
+local field
+	lf-accountcode					like accountcode
+	lf-word-count					type numeric
+	lf-str-to-split					pic x(50)
+	lf-str							pic x(51) occurs 4
+//	lf-str-2						pic x(51)
+//	lf-str-3						pic x(51)
+//	lf-str-4						pic x(51)
+	i								type numeric
+	p								type numeric
+	l								type numeric
+	//lf-counter						type numeric
+	set lf-str-to-split = ws-search-string
+	set p = 0
+	set l = strlen(lf-str-to-split)
+	set lf-word-count = 0
+	//message concat(str(l) ":" lf-str-to-split)
+	// pass 1
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[1] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	// pass 2
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[2] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	// pass 3
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[3] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	// pass 4
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str[4] = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+		set lf-word-count += 1
+	endif
+	//message concat("1:" lf-str-1 "2:" lf-str-2)
+	//message concat("3:" lf-str-3 "4:" lf-str-4)
+	open tmp-search-results truncate temporary
+	for i = 1 to lf-word-count
+		extract deb-key-words
+		on index deb-key-word accountcode
+		key is lf-str[i] SPACES
+		next same deb-key-word
+		detail
+			set lf-accountcode = accountcode
+			get name-and-address-master
+			on index accountcode na-type
+			key is lf-accountcode "C"
+			on error
+			else
+				set tsr-accountcode             = accountcode
+				set tsr-na-type                 = na-type
+				set tsr-na-name                 = na-name
+				set tsr-na-company              = na-company
+				set tsr-na-suburb               = na-suburb
+				set tsr-na-street               = na-street
+				insert tmp-search-results
+				set ws-counter += 1
+			endon
+		endextract
+	endfor
+	if ws-counter = 0
+		// set ws-counter = 999
+		set ws-results = 999
+		exit
+	endif
+endprocedure // build-dataset-multi -------------------------------------------
+
+procedure build-dataset-multibasic
+local field
+	lf-accountcode					like accountcode
+	//lf-counter						type numeric
+	open tmp-search-results truncate temporary
+	extract deb-master
+	when shortname = ws-search-string
+	detail
+		set lf-accountcode = accountcode
+		get name-and-address-master
+		on index accountcode na-type
+		key is lf-accountcode "C"
+		on error
+		else
+			set tsr-accountcode             = accountcode
+			set tsr-na-type                 = na-type
+			set tsr-na-name                 = na-name
+			set tsr-na-company              = na-company
+			set tsr-na-suburb               = na-suburb
+			set tsr-na-street               = na-street
+			insert tmp-search-results
+			set ws-counter += 1
+		endon
+	endextract
+	if ws-counter = 0
+		// set ws-counter = 999
+		set ws-results = 999
+		exit
+	endif
+endprocedure // build-dataset-multibasic --------------------------------------
+
+screen build-dataset-all
+	window @1,1 to @23,90 title is "All Customer Accounts"
+	primary deb-master
+	datagrid occurs 14
+	allowed md-select md-enquiry md-create-new md-search-again search
+	review-from-start
+before
+//	set ws-counter = 0
+//	display "Keyword:" @2,4
+//	// display "Search String:" @3,3
+//	// display "Last Name:" @3,4
+//
+//	if get-param(1) = "-all"
+//		do build-dataset-all
+//	elseif strlen(get-param(1)) > 0
+//		set ws-search-string = get-param(1)
+//		do build-dataset
+//	else
+//		accept ws-search-string @2,13
+//			uppercase
+//		display "Processing Query" @2,40 colour blue bold background
+//		do build-dataset
+//	endif
+//	if ws-results = 999
+//		// message "999"
+//		do no-match-found
+//		set lr-accountcode = ws-accountcode
+//		exit
+//	endif
+//	if ws-counter = 0
+//		// break
+//		do main
+//		exit
+//
+//	endif
+//	clear @2,40 to @2,63
+detail
+	//accept ws-accountcode @2,18
+	//	uppercase
+	display accountcode @4,2 title is "Account Code"
+	display shortname @4,4 title is "Name"
+	// display tsr-na-company @4,6 title is  "Address 1" // "Street" // "Company"
+	// display tsr-na-street @4,8 title is   "Address 2" // "Suburb"  // "Street"
+	// display tsr-na-suburb @4,10 title is  "Address 3" // "Suburb"  // "Suburb"
+	// display tsr-sort-level @4,12 title is "Rank" pic z     // "Rank"
+confirm
+	auto
+confirmed
+	if screen-mode() = md-select
+		set ws-accountcode = tsr-accountcode
+		exit
+	elseif screen-mode() = md-enquiry
+		spl "deb/m10mast"
+			parameters
+				"-ec"
+				accountcode
+	// elseif screen-mode() = md-new
+	elseif screen-mode() = md-create-new // md-search-again
+		//spl
+		//	"rmd/deb/autoacct2"
+		//parameter
+		//	"-new"
+		//exit
+		set ws-accountcode = "ADDNEW"
+		exit
+	//elseif screen-mode() = md-kw-search
+	elseif screen-mode() = md-search-again
+		set ws-accountcode = "SEARCH"
+		exit
+		// do main
+	endif
+endconfirm
+endscreen // main -------------------------------------------------------------
+// deblookup.spl

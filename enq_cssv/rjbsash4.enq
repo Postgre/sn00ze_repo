@@ -1,0 +1,55 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-value
+	ws-ytd-sales = sum-array (ash-value 1 12) 
+	stock-group
+	ws-supp-code = substring (stock-code 1 3) 
+	company-name
+from
+	stock-aged-sales-history
+	stock-master
+	system-control
+where
+	ash-type = 'S' 
+	and ash-years-ago = 0 
+	and stock-group = "IS" 
+format is rpt
+field total-ws-ytd-sales like ws-ytd-sales
+field sub-tot-ws-ytd-sales like ws-ytd-sales
+report header
+	page
+	set total-ws-ytd-sales = 0
+header
+	print company-name in col 1
+		"rjbsash4" in col 70
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip
+	print "TOTAL SALES FOR INNER SPRINGS" in col 21
+	print "FOR ALL SUPPLIERS" in col 26
+	print "BETWEEN" in col 18  
+		"01-JUL-1994" in col 26 bold 
+		"AND" in col 38
+		"31-MAY-1995" in col 42 bold 
+	skip 2
+	print
+		"ws-ytd-sales" in col 37
+		"cre" in col 16
+	print
+		"accountcode" in col 13
+	skip 1
+before ws-supp-code
+	set sub-tot-ws-ytd-sales = 0
+
+detail
+	set total-ws-ytd-sales += ws-ytd-sales
+	set sub-tot-ws-ytd-sales += ws-ytd-sales
+after ws-supp-code
+report footer
+	print
+		"TOTAL" in col 15 bold
+		total-ws-ytd-sales in col 37 pic -zzz,zzz,zz9.99 bold

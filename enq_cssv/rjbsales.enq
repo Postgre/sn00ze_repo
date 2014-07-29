@@ -1,0 +1,51 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-value
+	ws-ash-value = sum-array (ash-value 1 12) 
+	ash-qty
+	ws-ash-qty = sum-array (ash-qty 1 12) 
+	stk-description
+	stk-desc-line-2
+	stk-desc-line-3
+	stock-group
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = 'O' 
+	and ash-years-ago = 0 
+	and stock-group = 'IS' 
+format is lst
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ash-qty[1]
+suppress ash-qty[2]
+suppress ash-qty[3]
+suppress ash-qty[4]
+suppress ash-qty[5]
+suppress ash-qty[6]
+suppress ash-qty[7]
+suppress ash-qty[8]
+suppress ash-qty[9]
+suppress ash-qty[10]
+suppress ash-qty[11]
+suppress ash-qty[12]
+suppress ash-qty[13]
+suppress stk-description
+suppress stk-desc-line-2
+suppress stk-desc-line-3
+total on ws-ash-value
+total on ws-ash-qty

@@ -1,0 +1,14 @@
+select
+	gl-accountcode
+	gl-trans-type
+	gl-trans-date
+	gl-reference
+	gl-details
+	gl-batch-ref
+	gl-amount
+from
+	gl-trans
+where
+	((gl-accountcode = "3M3051230" ) and 
+	(gl-trans-type != "BF" ) ) 
+format is excel

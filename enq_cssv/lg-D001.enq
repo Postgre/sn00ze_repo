@@ -1,0 +1,8 @@
+// debtors Territory Change
+update deb-master
+set
+
+        dr-user-only-alpha4-1 = input alpha prompt "Set backtrack value (same Value)"
+        territory = input alpha prompt "Change Default Territory to (New Value)"
+where
+        territory = input alpha prompt "From Territory"

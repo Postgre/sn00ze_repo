@@ -1,0 +1,3 @@
+delete from stock-aged-sales-history
+where
+	ash-whse != "313" 

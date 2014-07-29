@@ -1,0 +1,6 @@
+// GL codes replaced
+update gl-trans
+set
+	gl-accountcode = "6M6601455"
+where
+	gl-accountcode = "Z8STAX"

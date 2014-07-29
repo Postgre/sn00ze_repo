@@ -1,0 +1,5 @@
+update stock-aged-sales-history
+set
+	ash-whse = '313' 
+where
+	ash-whse <> '313' 

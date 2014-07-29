@@ -1,0 +1,3 @@
+update stock-price
+set
+	prc-region-code = " "

@@ -1,0 +1,194 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/po/getexpdate.spl
+//  Program Desc:	Get expected delivery date
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	28mar14	rmd			upgraded for 710
+///////////////////////////////////////////////////////////////////////////////
+// 
+// 04may10	rmd m5relquote copies SO notes across to PO, need to hide the
+//				price audit entries (set to memo DM)
+// 14oct08	rmd	allow days greater than 99, allow actual date entry in po-line-date-expected
+//				showing default calculated from days or weeks entered
+// 17jul08	rmd	write the po line exp date to purchase-order.po-arrival-date
+//				option to enter expected date in days
+// 17jan08	rmd	rmd/po/printsopo now called by m5relquote.process-so-after-link
+//				it calls cashnobo3 that has to lock sales-order to write the 
+//				new account if a cash account had any b/o lines
+//				and now this prog is called prior to each po print run
+
+
+field
+	ws-days-or-weeks				pic x // D or W
+
+procedure main
+	window @9,10 to @15,34 title is "Expected Lead Time"
+
+local field
+	lf-lead-time-in-weeks						type numeric
+	lf-accept									pic x
+	lf-cre-accountcode                          like cre-accountcode
+	lf-stock-code                               like stock-code
+	lf-lead-time-in-days						type numeric
+	box @10,10 to @15,34 title "Expected Lead Time:"
+	if strlen(get-param(1)) = 0
+		exit
+	endif
+	// check for cash account with b/o items
+	//message "Calling cashnobo3"
+	//spl
+	//	"rmd/so/cashnobo3"
+	//parameters
+	//	num(get-param(4))
+	//	get-param(5)
+	//rmd04may10 ----------------------------------------- start
+	do hide-price-audit-po-note
+		parameters
+			num(get-param(1))
+			get-param(2)
+	//rmd04may10 ------------------------------------------- end
+	// display days or weeks?
+	if get-env("EXPDATEMODE") = "days"
+		set ws-days-or-weeks = "D"
+	else
+		set ws-days-or-weeks = "W"
+	endif
+	get purchase-order-line lock
+	on index po-order-no po-backorder-flag po-l-seq
+	key is num(get-param(1)) get-param(2) num(get-param(3))
+	on error
+		message concat("PO:" get-param(1) "SUFF:" get-param(2) "POL" get-param(3) " not found")
+	else
+		// determine last lead time and set the default
+		get purchase-order
+		on error
+		else
+		endon
+		get stock-supplier
+		on error
+			set lf-lead-time-in-weeks = 4
+			set lf-lead-time-in-days  = 28
+		else
+			if fraction(sup-actual-lead-time / 7) = 0
+				set lf-lead-time-in-weeks = sup-actual-lead-time / 7
+			else
+				set lf-lead-time-in-weeks = 1 + integer(sup-actual-lead-time / 7)
+			endif
+			set lf-lead-time-in-days  = sup-actual-lead-time
+		endon
+		// display "Expected Lead Time:" @11,11 background bold
+		display stock-code @11,13 background bold
+		//if ws-days-or-weeks = "W"
+		//	accept lf-lead-time-in-weeks @12,20 pic z9 title is "Weeks:"//
+		//		default lf-lead-time-in-weeks
+		//		help "Enter the expected lead time from the supplier (in weeks)"	
+		//		set po-line-date-expected = today() + (lf-lead-time-in-weeks * 7)
+		//elseif ws-days-or-weeks = "D"
+		//	accept lf-lead-time-in-days @12,20 pic z9 title is "Days:"//
+		//		default lf-lead-time-in-days
+		//		help "Enter the expected lead time from the supplier (in days)"	
+		//		set po-line-date-expected = today() + lf-lead-time-in-days	
+		//endif
+		if ws-days-or-weeks = "W"
+			display "Weeks:" @12,13 background
+		elseif ws-days-or-weeks = "D"
+			display "Days:" @12,14 background
+		endif
+		accept lf-lead-time-in-weeks @12,20 pic z9 //title is "Weeks:"//
+			default lf-lead-time-in-weeks
+			help "Enter the expected lead time from the supplier (in weeks)"
+			when ws-days-or-weeks = "W"
+			optional
+		accept lf-lead-time-in-days @12,20 pic zz9 //title is "Days:"//
+			default lf-lead-time-in-days
+			help "Enter the expected lead time from the supplier (in days)"	
+			when ws-days-or-weeks = "D"
+			optional
+		if ws-days-or-weeks = "W"
+			set po-line-date-expected = today() + (lf-lead-time-in-weeks * 7)
+		else
+			set po-line-date-expected = today() + lf-lead-time-in-days	
+		endif
+		//display po-line-date-expected @13,20 title is "Exp Arrival:"
+		accept po-line-date-expected @13,20 title is "Exp Arrival:"
+			default po-line-date-expected
+		set lf-lead-time-in-days = po-line-date-expected - today()
+		set lf-lead-time-in-weeks = (po-line-date-expected - today()) / 7
+		//message str(lf-lead-time-in-weeks)
+		if fraction(lf-lead-time-in-weeks) > 0
+			set lf-lead-time-in-weeks = integer(lf-lead-time-in-weeks) + 1
+		endif
+		//message str(lf-lead-time-in-weeks)
+		if ws-days-or-weeks = "W"
+			display lf-lead-time-in-weeks @12,20 pic z9
+		else
+			display lf-lead-time-in-days @12,20 pic zz9
+		endif	
+		accept lf-accept @14,20 title is "Accept?"
+			uppercase
+			help concat("Accept the arrival date from the supplier?")
+			allowed "Y" "N"
+			default "Y"
+		if lf-accept = "Y"
+			update purchase-order-line
+			// 17jul08
+			get purchase-order lock
+			set po-arrival-date = po-line-date-expected
+			update purchase-order
+		else
+			if ws-days-or-weeks = "W"
+				reenter lf-lead-time-in-weeks
+			else
+				reenter lf-lead-time-in-days
+			endif
+		endif
+	endon
+/*
+	// print po
+	spl
+		"rmd/po/printpo"
+	parameters
+		num(get-param(1))	// po-order-no
+		get-param(2)		// po-backorder-flag
+		num(get-param(4)) 	// so-order-no
+		get-param(5)		// so-bo-suffix
+*/
+/*
+	spl
+		"rmd/po/printsopo"
+	parameters
+		num(get-param(4)) 	// so-order-no
+		get-param(5)		// so-bo-suffix
+*/
+endprocedure // main ----------------------------------------------------------
+
+//rmd04may10
+procedure hide-price-audit-po-note
+parameters
+	lp-po-order-no          like po-order-no      
+	lp-po-backorder-flag 	like po-backorder-flag
+	extract purchase-order-line
+		on index po-order-no po-backorder-flag po-l-seq
+		key is lp-po-order-no lp-po-backorder-flag 0
+		next same po-order-no po-backorder-flag
+	detail
+		if po-line-type = "DM"
+			continue
+		endif
+		if pattern(stock-code,":") > 0
+			set po-line-type = "DM"
+			update purchase-order-line
+		endif		
+	endextract		
+endprocedure // hide-price-audit-po-note --------------------------------------
+
+
+// getexpdate.spl

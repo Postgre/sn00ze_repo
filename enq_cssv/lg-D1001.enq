@@ -1,0 +1,8 @@
+// list  All territories
+select
+	accountcode
+	warehouse
+	territory
+from
+	deb-master
+format is lst

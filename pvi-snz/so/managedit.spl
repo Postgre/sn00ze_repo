@@ -1,0 +1,182 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/managedit.spl
+//  Program Desc:	Builds note lines when certain stock-codes are detected
+//  Requested By:	Leigh Green
+//  Request Date:	24jul12
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	14may14	rmd			upgrade for 710.3
+//	24jul12	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+object tmp-items type memory
+	record
+		tmp-sys-tbl-code    like sys-tbl-code
+		tmp-sys-description	like sys-description
+	endrecord
+	key is tmp-sys-tbl-code
+
+mode md-notes
+	prompt "Notes"
+	help "Enter notes for this item"
+
+field
+	ws-so-order-no      like so-order-no
+	ws-so-bo-suffix 	like so-bo-suffix
+	ws-sol-line-seq		like sol-line-seq
+	ws-stock-code       like stock-code
+
+procedure main
+local field
+	i			type numeric
+	if get-param(1) = SPACES
+		open tmp-items truncate temporary
+		extract system-table
+			on index sys-tbl-type sys-tbl-code
+			key is "XM" SPACES
+			next same sys-tbl-type
+		detail
+			set tmp-sys-tbl-code    = sys-tbl-code
+			set tmp-sys-description	= sys-description
+			insert tmp-items
+		endextract
+		do manage-items
+	else
+		set ws-so-order-no 	= num(get-param(1))
+		set ws-so-bo-suffix	= get-param(2)
+		set ws-sol-line-seq	= num(get-param(3))
+		set ws-stock-code  	= get-param(4)
+	    do insert-notes
+	endif
+endprocedure // main ----------------------------------------------------------
+
+procedure insert-notes
+local field
+	i			type numeric
+	get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "XM" ws-stock-code
+	on error
+		exit
+	endon
+	//option to clear out old note lines here if required
+	extract sales-order-line
+		//on index sol-line-type stock-code so-order-no so-bo-suffix
+		//key is "DN" ws-stock-code ws-so-order-no ws-so-bo-suffix
+		//next same sol-line-type stock-code so-order-no so-bo-suffix
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is ws-so-order-no ws-so-bo-suffix ws-sol-line-seq
+		next same so-order-no so-bo-suffix
+		finish when sol-line-seq > ws-sol-line-seq + 0.99
+	detail
+		if sol-user-only-alpha4-1 = "MNIT"
+			delete sales-order-line
+		endif
+	endextract
+	set i = 1
+    extract stock-notes
+    	on index stock-code stock-note-type stock-note-sequence
+    	key is ws-stock-code sys-tbl-type 0
+    	next same stock-code stock-note-type
+    detail
+    	//message stock-code stock-note-type stock-note-sequence
+    	push stock-notes
+    	initialise sales-order-line
+    	set so-order-no             = ws-so-order-no
+    	set so-bo-suffix            = ws-so-bo-suffix
+    	set stock-code  			= SPACES //ws-stock-code
+    	set sol-line-seq			= ws-sol-line-seq + (i / 100)
+    	set sol-user-only-alpha4-1 	= "MNIT" //managed it code
+    	set sol-line-type 			= "DN"
+    	set sol-print-line			= "Y"
+    	set sol-line-description 	= stock-note
+    	insert sales-order-line
+       	on error
+    	endon
+    	pop stock-notes
+    	set i += 1
+    endextract
+endprocedure // insert-notes --------------------------------------------------
+
+screen manage-items
+	window @1,1 to @24,44
+		title concat("Managed IT Items")
+		primary tmp-items
+		datagrid occurs 20
+	allowed search md-notes
+	review-from-start
+detail
+	display tmp-sys-tbl-code    @1,010 title "Code"
+	display tmp-sys-description	@1,020 title "Description"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-notes
+			do maint-notes
+				parameters
+					tmp-sys-tbl-code
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+screen maint-notes
+parameters
+	lp-sys-tbl-code			like sys-tbl-code
+	window @1,1 to @24,44
+		title concat(strconcat(lp-sys-tbl-code) ": Notes")
+		primary stock-notes
+			when stock-code = lp-sys-tbl-code
+			and stock-note-type = sys-tbl-type
+		datagrid occurs 20
+	allowed entry correct search
+	review-from-start
+detail
+	accept stock-note-sequence @1,010 title "Seq"
+		validation
+			if screen-mode() = entry
+				set stock-code = lp-sys-tbl-code
+				set stock-note-type = sys-tbl-type
+			endif
+		endvalidation
+	accept stock-note         	@1,020 title "Note"
+confirm
+	auto
+confirmed
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+
+/*
+123456789012345678901234567890
+* Windows Licences
+- based on 4 PCs per site
+* Exchange Licences
+- based on 2 email addresses
+* SignIQ licence and Maint
+- unlimited per site
+* Pronto Licence access
+- based on 3 concurrent logins
+per site - 1 x Level 3 login,
+and 2 x  level 1 logins
+Sophos Anti-virus Licence and
+Maint based on 4 PCs per site
+Private IP Internet Connection
+- Use and Maintenance
+Co-Location services Email/
+pronto/dashboard/Internet Data
+Email Spam/anti-virus scanning
+PSTN Lines owned and managed
+by Snooze if installed for
+ADSL2+ (several recent stores)
+$33.95 p/m some stores only
+Secure VPN Access to Snooze
+network for Franchisees
+& Staff if applicable
+*/

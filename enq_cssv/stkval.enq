@@ -1,0 +1,13 @@
+select
+	stock-code
+	whse-code
+	whse-avg-cost
+	ws-total = whse-avg-cost * whse-opening-balance
+	whse-opening-balance
+from
+	stock-warehouse-detail
+where
+	whse-code = "830"  
+	and whse-opening-balance != 0 
+format is lst
+total on ws-total

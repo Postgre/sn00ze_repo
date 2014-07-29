@@ -1,0 +1,12 @@
+// check for 0.00 average cost for stock with on hand values
+select
+	stock-code
+	whse-code
+	whse-qty-on-hand
+	whse-avg-cost
+from
+	stock-warehouse-detail
+where
+	( ( whse-qty-on-hand > 0  ) AND
+	( whse-avg-cost <= 0  ) )
+format is lst

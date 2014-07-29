@@ -1,0 +1,13 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	ws-count = count ()
+	so-order-date
+from
+	sales-order
+where
+	so-order-date between 1/12/94 and 31/12/94
+	and
+	so-cust-code = 'CASH'
+format is lst

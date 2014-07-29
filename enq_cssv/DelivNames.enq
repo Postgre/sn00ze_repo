@@ -1,0 +1,52 @@
+select
+	accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	so-order-date
+	so-cust-code
+	so-delivery-date
+	so-order-status
+	ws-so-delivery-date-start = input date "Enter starting date"
+	so-order-no
+from
+	sales-order
+	name-and-address-master
+where
+	na-type = 'C' 
+	and 
+	accountcode = so-cust-code 
+	and 
+	so-order-status = '90' 
+	and 
+	accountcode != 'CASH' 
+	and 
+	so-actual-delivery-date >= ws-so-delivery-date-start 
+order by accountcode 
+format is lst
+label width is 40 repeating 3
+report width is 132
+label line 1 is "     " na-name 
+label line 2 is "     " na-company 
+label line 3 is "     " na-street 
+label line 4 is "     " postcode 
+label line 5 is " " 
+label line 6 is " " 
+label line 7 is " " 
+label line 8 is " " 
+suppress accountcode
+suppress so-order-date
+suppress so-cust-code
+suppress so-delivery-date
+suppress so-order-status
+suppress ws-so-delivery-date-start
+suppress so-order-no
+unique record on na-name
+field order is na-name na-company na-street postcode so-order-no
+field title of na-name is "Name"
+field title of na-company is "Street Address"
+field title of na-street is "City"
+field title of na-suburb is "State"

@@ -1,0 +1,25 @@
+select
+	accountcode
+	trans-type
+	trans-date
+	trans-ref
+	da-invoice-no
+	da-invoice-date
+	da-invoice-amount
+	da-payment-detail
+	start-date = input date "Start Date"
+	end-date = input date "End Date"
+	tr-amount
+	total-receipts = tr-amount + da-invoice-amount 
+from
+	deb-trans
+	deb-trans-archive
+where
+	(trans-date between start-date and end-date 
+	or da-invoice-date between start-date and end-date ) 
+	and trans-type in { "CR" "CP" } 
+	and accountcode not in { "ZAMEX" "ZCCARD" "ZDINERS" } 
+format is lst
+suppress start-date
+suppress end-date
+total on total-receipts

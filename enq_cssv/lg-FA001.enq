@@ -1,0 +1,16 @@
+// fixed Asset grid list
+select
+	asset-no
+	asset-status
+	asset-desc
+	asset-group
+	asset-branch-code
+	asset-depreciation-method
+	asset-depreciation-tax
+	asset-depreciation-code
+	asset-book-depreciation
+	asset-tax-depreciation
+from
+	asset-register
+where asset-status = "30"
+format is lst

@@ -1,0 +1,9 @@
+// upd-sales.enq
+//  to reset the current month stock movements array to 0
+update	stock-aged-sales-history
+	set 
+		ash-value[1] = 0
+		ash-cost[1] = 0
+		ash-qty[1] = 0
+where
+	ash-years-ago = 0 and ash-type = 'S'

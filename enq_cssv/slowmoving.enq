@@ -1,0 +1,150 @@
+select
+	stock-code
+	whse-code
+	whse-qty-on-hand
+	whse-stock-last-sale
+	ws-date = today () 
+	ws-days-no-sale = ws-date - whse-stock-last-sale 
+	stock-group
+	stk-description
+	stk-desc-line-2
+	whse-avg-cost
+	ws-total-cost = whse-qty-on-hand * whse-avg-cost 
+	ws-start-days = input numeric "Enter minimum number of days since last sale      :"
+	ws-start-warehouse = input string "Enter start warehouse code   (space for all)      :"
+	ws-end-warehouse = input string "Enter end warehouse code     (999   for all)      :"
+	ws-start-prod-group = input string "Enter start product group    (space for all)      :"
+	ws-end-prod-group = input string "Enter end product group      (ZZZZ  for all)      :"
+	whse-avg-monthly-demand
+	company-name
+	ws-start-stock-code = input alpha "Enter start stock code       (space for all)      :"
+	ws-end-stock-code = input alpha "Enter   end stock code       (ZZZ9999 for all)    :"
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+from
+	stock-warehouse-detail
+	stock-master
+	system-control
+	system-table
+where
+	whse-qty-on-hand > 0 
+	and stock-group between ws-start-prod-group and ws-end-prod-group 
+	and ws-days-no-sale >= ws-start-days 
+	and stock-code between ws-start-stock-code and ws-end-stock-code 
+	and sys-tbl-type = 'PG' 
+	and stock-group = sys-tbl-code 
+order by whse-code stock-group ws-days-no-sale descending 
+format is rpt
+field total-ws-total-cost like ws-total-cost
+field sub-tot-ws-total-costpg like ws-total-cost
+field sub-tot-ws-total-costwh like ws-total-cost
+report header
+	page
+	set total-ws-total-cost = 0
+header
+	print 
+		company-name in col 1
+		"Slow Moving Products Report" in col 54
+		today() in col 101
+		"Page No." in col 116
+		pageno() in col 124
+	skip 1
+	skip 1
+	print 
+		"Total" in col 90
+		"Last" in col 103
+		"Days" in col 114
+		"Avg" in col 126
+	print
+		"Stock" in col 10
+		"Item Avg" in col 65
+		"Qty on" in col 77
+		" Average" in col 88
+		"Sale" in col 103
+		"Since Last" in col 111
+		"Mnth" in col 125
+	print
+		"Code" in col 10
+		"Description" in col 25
+		"Cost" in col 67
+		"Hand" in col 78
+		"Cost" in col 90
+		"Date" in col 103
+		"Sale" in col 114
+		"Demand" in col 124
+	print "=================================================================================================================================" in col 1
+before whse-code
+	set sub-tot-ws-total-costwh = 0
+	skip
+	print
+		"Warehouse Code:" in col 1 bold  
+		whse-code in col 18 pic is x(5) bold underlined
+before stock-group
+	set sub-tot-ws-total-costpg = 0
+	skip
+	print
+		"Product Group:" in col 7 bold 
+		stock-group in col 22 pic is x(4)
+		sys-description in col 27
+	skip
+detail
+	print stock-code in col 2 pic is x(12) no newline
+	print stk-description in col 16 no newline
+	print stk-desc-line-2 in col 47 pic x(13) no newline
+	print whse-avg-cost in col 63 pic is -zz,zz9.99 no newline
+	print whse-qty-on-hand in col 76 pic is -zzzz9 no newline
+	print ws-total-cost in col 85 pic is -zzz,zz9.99 no newline
+		if whse-stock-last-sale = 0
+			print 'No Sales' in col 100 no newline
+			print '---' in col 115 no newline
+		elseif whse-stock-last-sale != 0
+			print whse-stock-last-sale in col 99 no newline
+			print ws-date - whse-stock-last-sale in col 111 pic -zzzzz9 no newline
+		endif
+		print whse-avg-monthly-demand in col 123 pic -zzz9.9
+	set total-ws-total-cost += ws-total-cost
+	set sub-tot-ws-total-costpg += ws-total-cost
+	set sub-tot-ws-total-costwh += ws-total-cost
+after stock-group
+	print
+		"-----------" in col 85
+	print
+		"Total Cost for Product Group:" in col 46 bold 
+		stock-group in col 76 bold underlined
+		sub-tot-ws-total-costpg in col 85 pic is -zzz,zz9.99
+	skip
+after whse-code
+	print
+		"-----------" in col 85
+	print
+		"Total Cost for Warehouse Code:" in col 45 bold 
+		whse-code in col 76 bold pic x(5) underlined
+		sub-tot-ws-total-costwh in col 85 pic is -zzz,zz9.99
+	skip
+report footer
+	print
+		"-----------" in col 85
+	print
+		"Totol Cost:" in col 71 bold 
+		total-ws-total-cost in col 85 pic is -zzz,zz9.99
+	skip 7
+	print "Program Name              :" in col 14
+		"slowmoving.enq" in col 43
+	skip 
+	print "No. Days Sinse Last Sale  :" in col 14
+		ws-start-days in col 43
+	print "Start Warehouse Code      :" in col 14
+		ws-start-warehouse in col 43 pic x(5)
+	print "End Warehouse Code        :" in col 14
+		ws-end-warehouse in col 43 pic x(5)
+	print "Start Product Group       :" in col 14
+		ws-start-prod-group in col 43 pic x(4)
+	print "End Product Group         :" in col 14
+		ws-end-prod-group in col 43 pic x(4)
+	print "Start Stock Code " in col 14
+		":" in col 40
+		ws-start-stock-code in col 43 pic x(12)
+	print "End Stock Code" in col 14
+		":" in col 40
+		ws-end-stock-code in col 43 pic x(12)

@@ -1,0 +1,109 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ash-qty
+	stock-group
+	stk-description
+	stk-desc-line-2
+	stk-pack-desc
+	ws-whse = input
+		string
+		prompt is "Enter Store Number:"
+	ws-group = input
+		string
+		uppercase
+		prompt is "Enter Product Group"
+	ws-year = input
+		numeric
+		prompt is "Enter Year (2003=Jul '03 - Jun'04):"
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = "O" 
+	and ash-whse = ws-whse 
+	and stock-group = ws-group 
+	and ash-years-ago = ws-year 
+	and stock-code != "ZRNDBENEFIT" 
+order by stk-pack-desc 
+format is rpt
+field total-ash-value like ash-value
+field sub-tot-ash-value like ash-value
+field total-ash-cost like ash-cost
+field sub-tot-ash-cost like ash-cost
+field total-ash-qty like ash-qty
+field sub-tot-ash-qty like ash-qty
+report header
+	page
+	set total-ash-value[5] = 0
+	set total-ash-cost[5] = 0
+	set total-ash-qty[5] = 0
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"stk" in col 1
+		"stock-code" in col 6
+		"stk-description" in col 23
+		"ash" in col 85
+		" ash" in col 90
+		"ash" in col 96
+		"ash-value" in col 101
+		"ash-cost" in col 117
+	print
+		"pack" in col 1
+		"type" in col 85
+		"years" in col 90
+		"whse" in col 96
+	print
+		"desc" in col 1
+		" ago" in col 90
+	skip 1
+before stk-pack-desc
+	set sub-tot-ash-value[5] = 0
+	set sub-tot-ash-cost[5] = 0
+	set sub-tot-ash-qty[5] = 0
+
+detail
+	if ash-qty[5] != 0 or ash-cost[5] != 0 or ash-value[5] != 0
+	print
+		stk-pack-desc in col 1
+		stock-code in col 6
+		stk-description in col 23
+		stk-desc-line-2 in col 54 pic x(10)
+		ash-qty[5] in col 66
+		ash-cost[5] in col 101
+		ash-value[5] in col 82
+	endif
+	set total-ash-value[5] += ash-value[5]
+	set sub-tot-ash-value[5] += ash-value[5]
+	set total-ash-cost[5] += ash-cost[5]
+	set sub-tot-ash-cost[5] += ash-cost[5]
+	set total-ash-qty[5] += ash-qty[5]
+	set sub-tot-ash-qty[5] += ash-qty[5]
+after stk-pack-desc
+	print
+		"---------------" in col 82
+		"---------------" in col 101
+		"---------------" in col 66
+	print
+		sub-tot-ash-value[5] in col 82
+		sub-tot-ash-cost[5] in col 101
+		sub-tot-ash-qty[5] in col 66
+	skip
+report footer
+	print
+		"---------------" in col 82
+		"---------------" in col 101
+		"---------------" in col 66
+	print
+		total-ash-value[5] in col 82
+		total-ash-cost[5] in col 101
+		total-ash-qty[5] in col 66

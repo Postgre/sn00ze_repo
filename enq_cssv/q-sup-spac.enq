@@ -1,0 +1,10 @@
+select
+	stock-code
+	cre-accountcode
+	sup-stock-code
+	sup-stk-description
+from
+	stock-supplier
+where
+	cre-accountcode = spaces
+format is lst

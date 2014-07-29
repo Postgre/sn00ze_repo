@@ -1,0 +1,38 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/pos/ackclsdrwr
+//  Program Desc:	CLose Drawer acknowledgement
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03apr14	rmd	{1}		upgrade to 710
+///////////////////////////////////////////////////////////////////////////////
+// ackclsdrwr.spl
+// 30mar09	rmd	written
+
+procedure main
+	window @5,10 to @9,35 title "Confirm Close"
+local field
+	lf-accept			pic x
+	box @5,10 to @8,35
+	display "Are you sure you want to" @6,14 background
+	accept lf-accept @7,32 title "close the Cash Drawer ?"
+		uppercase
+		default "N"
+		allowed "Y" "N"
+	if lf-accept = "N"
+		exit
+	else
+		spl
+			"pos/p50eos"
+		parameters
+			"-close-rec"
+		exit
+	endif
+// ackclsdrwr.spl

@@ -1,0 +1,28 @@
+// customer name and Mobile phone details
+select
+	na-name
+	na-fax-no
+	na-company
+	na-street
+	na-suburb
+	na-country
+	last-sale
+	accountcode
+from
+	name-and-address-master
+	deb-master
+where
+	((accountcode != input alpha prompt is "What is your store number?" ) and 
+	(last-sale >= input date prompt is "Enter 'since last sale' date" ) and 
+	(na-type = 'C' ) ) 
+format is lst
+report width is 220
+unique accountcode
+field title of na-name is "Customer Name"
+field title of na-fax-no is "Mobile No"
+field title of na-company is "Address 1"
+field title of na-street is "Address 2"
+field title of na-suburb is "Postcode"
+field title of na-country is "Suburb"
+field title of last-sale is "Last Sale"
+field title of accountcode is "Account code"

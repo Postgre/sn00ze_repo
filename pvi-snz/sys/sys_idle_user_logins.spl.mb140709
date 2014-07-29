@@ -1,0 +1,1130 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/sys_idle_user_logins.spl //ZUSR.
+//  Program Desc:	List of idle user login sessions of x hours or more.
+//  Requested By:	Chris Ward
+//  Request Date:	02jul14
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	02jul14	mb	{0}	first create program
+//---------------------------------------------------------------------------//
+//
+// $ prowho -s | wc -l > pronto_licenses_in_use
+//---------------------------------------------------------------------------//
+
+version-number "140702.000" //{0}
+
+//object tmp-deb-trans like deb-trans type memory
+//<
+object comp-2-system-control like system-control
+
+/* //<
+*/ //>
+//<
+//#define ism-ff-sysidle snooze-ism-ff-sysidle
+//>
+#define ip_len 55
+object ism-ff-sysidle
+/* //<
+	file "/data/common/ism-ff-sysidle"
+	type isam
+*/ //>
+	type memory
+record
+	ifs-x-string	pic x(160)
+	ifs-x-login		pic x(8)
+	ifs-x-tty		pic x(12)
+	ifs-x-date		pic x(10)
+	ifs-x-time		pic x(5)
+	ifs-x-idle		pic x(5)
+	ifs-b-tag		type boolean
+	ifs-x-ip			pic x(ip_len)
+/* //<
+	ifm-c-code				pic x(20)
+	ifm-d-start-date		type date
+	ifm-d-end-date			type date
+	ifm-n-max-datasets	type numeric //like ws-max-idle-hours
+	ifm-n-threshold		type numeric //like ws-amount-threshold
+*/ //>
+endrecord //object ism-ff-sysidle
+key is ifs-x-string
+key is ifs-x-tty
+key is ifs-x-idle ifs-x-login
+
+#define XEXT_FILE "sys_idle_txt"
+
+object ff-ext-sys-idle
+	like ism-ff-sysidle
+	file XEXT_FILE
+	type external
+
+#define XEXT_FILE2 "sys_pronto_used_licenses_txt"
+object ff-ext-sys-license
+	file XEXT_FILE2
+	type external
+record
+	fes-n-used-licenses type numeric
+endrecord //object ism-ff-sysidle
+
+
+object tmp-ff-sysidle like ism-ff-sysidle type memory
+key is ifs-x-idle ifs-x-login
+/*
+key is ifs-x-login
+*/
+//<
+#define ism-ff-mem snooze-ism-ff-mem
+//>
+/*
+object ism-ff-mem
+	file "/data/common/ism-ff-mem"
+	type isam
+record
+	ifm-c-code				pic x(20)
+	ifm-d-start-date		type date
+	ifm-d-end-date			type date
+	ifm-n-max-datasets	type numeric //like ws-max-idle-hours
+	ifm-n-threshold		type numeric //like ws-amount-threshold
+endrecord //object ism-ff-mem
+key is ifm-c-code
+*/
+//<
+#define X_KEY "sysidle"
+/*
+#define X_LOAD_REBUILD \
+	open ism-ff-mem \
+	on error \
+		message "Cannot open ism-ff-mem, will create new instance" \
+		open ism-ff-mem create permanent \
+	endon \
+	get ism-ff-mem \
+		on index ifm-c-code \
+		key X_KEY \
+	on error \
+	else \
+		set ws-start-date		= ifm-d-start-date \
+		set ws-end-date		= ifm-d-end-date \
+		set ws-max-idle-hours	= ifm-n-max-datasets \
+		set ws-amount-threshold = ifm-n-threshold \
+	endon \
+//-- end-define X_LOAD_REBUILD
+*/
+//>
+//<
+//#define ism-ff-sysidle snooze-ism-ff-sysidle
+//>
+/* //<
+object ism-ff-sysidle
+	file "/data/common/ism-sysidle"
+	//like tmp-deb-trans type isam
+	//key is cso-div cso-territory-code cso-so-order-no unique
+	type isam
+record
+	ism-sys-con like sys-consolidation-division
+	accountcode
+	//710 o-tr-sort-key
+	br-acc-code
+	trans-type
+	trans-date
+	trans-ref
+	tr-details
+	batch-ref
+	tr-amount
+	terms-disc-amt
+	dr-tr-whse-code
+	dr-tr-order-no
+	dr-tr-bo-suffix
+	dr-tr-job-code
+	rep-code1
+	dr-tr-territory
+	tr-cost
+	sundry-charges
+	dr-tr-provincial-tax-amount
+	tax-e-amt
+	non-t-amt
+	tax-amt
+	dr-tr-sales-tax-claim
+	dr-tr-terms-disc
+	dr-tr-os-amount
+	dr-tr-curr-code
+	dr-tr-date-stamp
+	dr-tr-time-stamp
+	dr-tr-uid
+	dr-tr-invoice-status
+	dr-tr-invoice-date
+	dr-tr-invoice-source
+	dr-tr-due-date
+	dr-tr-trans-no
+	dr-tr-reported-date
+	dr-tr-spare-1
+	dr-tr-user-only-date1
+	dr-tr-user-only-alpha4-1
+	dr-tr-user-only-alpha4-2
+	dr-tr-user-only-num1
+	dr-tr-user-only-num2
+	dr-tr-ageing-date
+	dr-tr-tax-code
+	dr-tr-analysis-code
+	//710 dr-tr-document-type
+	//710 dr-tr-document-no
+	//710 dr-tr-document-suffix
+	//710 dr-tr-document-seq
+	//710 dr-tr-financial-year
+	//710 dr-tr-financial-period
+	//710 dr-tr-record-status
+endrecord //object ism-ff-sysidle
+key is ism-sys-con dr-tr-territory trans-date
+*/ //>
+
+
+field ws-ds-count	type numeric
+		ws-confirm	type boolean
+//>
+
+
+field
+	ws-start-date		type date
+	ws-end-date         type date
+	ws-max-idle-hours		type numeric //
+	ws-amount-threshold 	type numeric //
+
+/*
+mode md-so-enq
+	prompt "SO Enq"
+	help "Enquire on this order"
+*/
+
+procedure main
+	get system-control first
+//<
+	set ws-ds-count = 0
+	if get-param(1) != "-buildonly"
+		//-- restore last entered criteria :
+		//X_LOAD_REBUILD
+		//--
+		open ism-ff-sysidle
+			//truncate permanent
+		on error
+			//message "Cannot open ism-ff-sysidle, will create new instance"
+			open ism-ff-sysidle truncate temporary
+			//open ism-ff-sysidle create permanent
+		endon //open ism-ff-sysidle
+		/*
+		set ws-start-date	= date2julian("01.nov.2013")
+		set ws-end-date	= date2julian("30.nov.2013")
+		set ws-amount-threshold = 6000
+		set ws-max-idle-hours = 3 //5 //100 //for testing
+		//
+		do get-user-input entry-once
+		*/
+		do get-user-input entry-once
+		set ws-confirm = true
+	else
+		//-- -buildonly call :
+		set ws-start-date	= date-to-julian(get-param(2))
+		set ws-end-date	= date-to-julian(get-param(3))
+		set ws-amount-threshold = num(get-param(4))
+		set ws-ds-count	= num(get-param(5))
+		set ws-confirm		= true
+	endif //get-param(1) != "-buildonly"
+
+	if ws-confirm
+/* //<
+		do build-dataset
+		do display-in-grid
+	endif
+*/ //>
+		if get-param(1) = "-buildonly"
+			do build-dataset
+			//-- do display-in-grid
+		else
+			//X_LOAD_REBUILD //-- restore last entered criteria
+
+			do build-dataset
+			do display-in-grid
+		endif
+	else
+		//X_LOAD_REBUILD //-- restore last entered criteria
+		do display-in-grid
+	endif //ws-confirm
+//>
+endprocedure // main ----------------------------------------------------------
+
+screen get-user-input
+	window @1,1 to @6,50 title "Set Criteria"
+	box @1,1 to @5,50 title SPACES
+	//
+	//-- testing default criteria :
+	set ws-start-date	= date2julian("01.nov.2013")
+	set ws-end-date	= date2julian("30.nov.2013")
+	set ws-amount-threshold = 6000
+	set ws-max-idle-hours = 2 //9 hours or over
+	//--
+	//-- restore last entered criteria :
+	//X_LOAD_REBUILD
+	//
+	/*
+	accept ws-start-date    @2,12 title "Start Date"
+		default ws-start-date
+	accept ws-end-date  	@3,12 title "End Date"
+		default ws-end-date
+	*/
+//<
+	accept ws-max-idle-hours	@3,25 pic 9 title "Hours (or over) idle time"
+		default ws-max-idle-hours
+//>
+confirm
+	auto
+confirmed
+/*
+	do build-dataset
+	do display-in-grid
+*/
+	set ws-confirm = true
+notconfirmed
+	set ws-confirm = false
+endconfirm
+endscreen // get-user-input ---------------------------------------------------
+
+//<
+#define DISPLAY_DATASET_COUNT \
+	if ifs-x-login = spaces \
+		display "Thinking... " @21,56 foreground prompts \
+	else \
+		display ifs-x-login @21,56 foreground prompts \
+	endif \
+	display concat("Building idle Logins" ) @21,68 foreground prompts
+	//display concat("Building " str(ws-ds-count) "/" str(ws-max-idle-hours) " datasets" ) @21,68 foreground prompts
+//end-define DISPLAY_DATASET_COUNT
+field ws-rec-count type numeric
+#define DISPLAY_IF_MOD_COUNT \
+	set ws-rec-count += 1 \
+	/* if (100 % ws-rec-count = zero) */ \
+		/* display accountcode @21,56 foreground prompts */ \
+		DISPLAY_DATASET_COUNT \
+	/* endif */ \
+//end-define DISPLAY_IF_MOD_COUNT \
+//>
+#define STR_HRS zstr(ws-max-idle-hours,2,0)
+#define PROG_TITLE "System idle user Login sessions  "
+
+field ws-licenses	type numeric
+field xstr			pic x(400)
+
+#define STRPAT(ASTR,BPATTERN) pattern(ASTR,BPATTERN)
+
+procedure build-dataset
+	window @19,34 to @23,95
+		title is "Building Data"
+		//title concat(PROG_TITLE " for over " str(ws-max-idle-hours) " hours" )
+		colour white
+		no-hide
+	display bitmap concat(get-env("BMS") "/images/repedge.gif") @19,34
+	display concat(PROG_TITLE) @20,49 background left
+	//display concat(sys-consolidation-division ": Finance Sales" ) @20,49 background left
+	display "User :" @21,49 background left
+	open tmp-ff-sysidle truncate temporary
+	//open ism-ff-sysidle
+	if get-param(1) != "-buildonly"
+		open ism-ff-sysidle
+			//truncate permanent
+		on error
+			//message "Cannot open ism-ff-sysidle, will create new instance"
+			open ism-ff-sysidle create permanent
+		endon //open ism-ff-sysidle
+	endif //get-param(1) != "-buildonly"
+//<
+	display accountcode @21,56 foreground prompts
+	//set ws-max-idle-hours = num(get-param(6))
+	DISPLAY_DATASET_COUNT
+//>
+
+//-- build no. of pronto licenses in use here :
+// $ prowho -s | wc -l > pronto_licenses_in_use
+//#define XEXT_FILE2 "sys_pronto_used_licenses_txt"
+	//-- exclude "psd" "pronto" & "root" from this count of licenses used :
+	/*
+	set xstr = concat('prowho -s | grep -v "root"|grep -v "pronto"|grep -v "psd"| wc -l > ' XEXT_FILE2 )
+	*/
+	//-- include "psd" "pronto" & "root" in the count of licenses used :
+	set xstr = concat('prowho -s | wc -l > ' XEXT_FILE2 )
+	command "sh" parameters "-c" xstr
+
+	set ws-licenses = zero
+	extract ff-ext-sys-license
+		if ws-licenses = zero
+			set ws-licenses = fes-n-used-licenses
+		endif
+	endextract //ff-ext-sys-license
+	//-- remove header line from the count :
+	set ws-licenses -= 1
+
+
+//-- build list of idle login sessions here :
+//--
+//	set xstr = concat("`who -u | awk 'substr($5,length($5)-4,length($5)-3) >   "09"    && $1 != "psd" && $1 != "root" && $1 != "pronto" { print \"pkill -KILL -t \" $2}'` > sys_idle_txt")
+//set ws-max-idle-hours = 1 //zaz zzz
+/*
+	set xstr = concat("`who -u | awk 'substr($5,length($5)-4,length($5)-3) > " '"' STR_HRS '"' ' { print "pkill -KILL -t " $2}' "'` | >> " XEXT_FILE)
+	set xstr = concat('echo "`who '   "-u | awk '{ print "    '\"pkill -KILL -t \" $2}'    "'` " '"'    " >> " XEXT_FILE)
+*/
+	//--
+	//-- do NOT exclude "psd" and "pronto" from this list :
+	set xstr = concat("who -u > " XEXT_FILE)
+//message concat("zaz a: hrs:" STR_HRS)
+//message concat("zaz b:" xstr)
+	command "sh" parameters "-c" xstr
+//message concat("zaz c: hrs:" STR_HRS)
+
+	//-- load up table from external flat file 
+	//open ff-ext-sys-idle
+	//	on error message concat("unable to open file: " XEXT_FILE) endon
+	extract ff-ext-sys-idle all
+		set ifs-b-tag			= false
+		set ifs-x-login		= substring(ifs-x-string,1,8)
+		set ifs-x-tty			= substring(ifs-x-string,10,21)
+		set ifs-x-date			= substring(ifs-x-string,23,32)
+		set ifs-x-time			= substring(ifs-x-string,34,38)
+		set ifs-x-idle			= substring(ifs-x-string,40,44)
+		/*
+		set ifs-x-ip			= substring(ifs-x-string,46 + 13,46 + 13 + ip_len)
+		*/
+		set ifs-x-ip			= substring(ifs-x-string, STRPAT(ifs-x-string,"(") + 1, STRPAT(ifs-x-string,")") - 1)
+		if pattern(ifs-x-idle,".")
+			set ifs-x-idle = "00:00"
+		endif
+		if pattern(ifs-x-idle," old ")
+			set ifs-x-idle = "99:99"
+		endif
+//message concat(" >" ifs-x-idle "< ")
+		if num(substring(ifs-x-idle,1,2)) > (ws-max-idle-hours - 1)
+//message concat("zaz: hrs = " substring(ifs-x-idle,1,2) )
+			insert tmp-ff-sysidle
+		endif
+		DISPLAY_IF_MOD_COUNT
+	endextract //ff-ext-sys-idle
+
+//zzz zaz
+
+/*
+	set ws-rec-count = zero
+	select * from deb-trans
+		where trans-type in {"PD" "JE" "CR"} and
+		substring(tr-details 1 3) in {"BC#" "BE#" "CE#" "GE#"} and
+		br-acc-code = " " and
+		trans-date between ws-start-date and ws-end-date
+	detail
+		set dr-tr-spare-1 = "O"
+		insert tmp-ff-sysidle
+		set ism-sys-con = sys-consolidation-division
+		insert ism-ff-sysidle
+//<
+*/
+		/*
+		display accountcode @21,56 foreground prompts
+		DISPLAY_DATASET_COUNT
+		*/
+		/*
+		DISPLAY_IF_MOD_COUNT
+		*/
+//>
+/*
+	endselect
+*/
+/* //< -- no deb-trans-archive table exists in +710
+	select * from deb-trans-archive
+		where trans-type in {"PD" "JE" "CR"} and
+		substring(tr-details 1 3) in {"BC#" "BE#" "CE#" "GE#"} and
+		br-acc-code = " " and
+		trans-date between ws-start-date and ws-end-date
+	detail
+		set dr-tr-spare-1 = "A"
+		insert tmp-ff-sysidle
+		set ism-sys-con = sys-consolidation-division
+		insert ism-ff-sysidle
+//<
+		display accountcode @21,56 foreground prompts
+		DISPLAY_DATASET_COUNT
+		DISPLAY_IF_MOD_COUNT
+//>
+	endselect
+*/ //>
+endprocedure // build-dataset -------------------------------------------------
+
+//<
+object tmp-system-user like system-user type memory // for user/company sort seq -user-user-only-spare-flag2-1 for tag
+
+mode md-tag
+	prompt "Incl/Excl"
+	help "Should this Dataset be included in the extract?"
+
+mode md-kill
+	prompt "Kill Tagged"
+	help "Kill tagged lines"
+	icon is transaction-icon
+	//when ws-tag-count > zero
+
+mode md-maintain-datasets-for-inclusion
+	prompt "Maintain Dataset List"
+	help "Maintain Datasets for inclusion"
+	icon is admin-icon
+	//icon is admin-folder-icon
+
+mode md-build-all
+	prompt "Rebuild"
+	help "Rebuild Finance Sales"
+	icon is transaction-icon
+	//icon is admin-folder-icon
+	//when login-id() in {"robd"}
+
+//>
+
+#define ACCEPT_NEVER_ACCEPTED \
+	showvalue \
+	when false
+//end-define ACCEPT_NEVER_ACCEPTED
+//	when screenmode() = find
+//	and screenmode() <> find
+
+//ACCEPT_READ_ONLY_TITLE_HELP(tfa-terr-desc,1,024,"Terr Description","Territory Description")
+#define ACCEPT_READ_ONLY_TITLE_HELP(AFLD,BROW,CCOL,DTITLE,EHELP) \
+	accept AFLD  @ BROW, CCOL \
+		title DTITLE \
+		help EHELP \
+		read-only
+//end-define ACCEPT_READ_ONLY_TITLE_HELP(AFLD,BROW,CCOL,DTITLE,EHELP)
+
+/*
+#define cso-div ism-sys-con
+object tmp-sys-con like ism-ff-sysidle type memory
+key is cso-div
+*/
+
+//DISPLAY_FLD(ifs-x-login,009,"User")
+field ws-tag-count type numeric
+#define DISPLAY_FLD(AFLD,BCOL,CTITLE) \
+	display AFLD @1,BCOL title CTITLE
+#define COLOUR_HIGHLIGHT colour is yellow on black
+#define PRIMARY_TABLE tmp-ff-sysidle
+
+//710 and above only -- not in Pronto 660 :
+#define IF_MSG_BOX(ATITLE,BPROMPT) \
+	if 1 = 0 //don't run this code block -- unable to kill sessions from logged in Pronto user.
+#define ENDIF_MSG_BOX endif
+/*
+//IF_MSG_BOX("Confirm Kill","Go ahead and Kill these processes?")
+#define IF_MSG_BOX(ATITLE,BPROMPT) \
+	message-box BPROMPT \
+	title ATITLE \
+	message-buttons MSG_BOX_YES_NO \
+	default MSG_BOX_NO \
+	icon MSG_BOX_STOP \
+	if message-status = MSG_BOX_YES
+#define ENDIF_MSG_BOX endif
+*/
+
+screen display-in-grid
+	local field lf-idle-hrs type numeric
+	window @1,1 to @24,90
+		//
+		title concat(PROG_TITLE " idle for " str(ws-max-idle-hours) " hours (or more)  -  " str(ws-licenses) " Pronto licenses are currently in use" )
+		//
+		//title concat(PROG_TITLE " for over " str(ws-max-idle-hours) " hours" )
+		//title concat("Finance Sales - " julian2date(ws-start-date) " to " julian2date(ws-end-date) " for " str(ws-max-idle-hours) " datasets" )
+	/* //<
+		title concat("Finance Sales")
+		primary tmp-ff-sysidle
+	*/ //>
+		//primary ism-ff-sysidle //
+		primary PRIMARY_TABLE //tmp-ff-sysidle //
+			on index ifs-x-idle ifs-x-login
+		/*
+			on index ifs-x-login
+		*/
+		datagrid occurs 20
+		//key is ism-sys-con dr-tr-territory trans-date
+	/* //<
+	allowed md-so-enq search //md-mode
+	*/ //>
+//<
+	/*
+	allowed md-tag md-kill search
+	*/
+	allowed search md-tag md-kill 
+	//allowed	//search md-so-enq //md-mode
+				//md-maintain-datasets-for-inclusion //md-list-global-terr-whse md-build-all //md-mode
+				//md-build-all
+	/*
+	ffaudit.spl : allowed search md-maintain-datasets-for-inclusion md-list-global-terr-whse md-build-all //md-mode
+	*/
+//>
+	review-from-start
+before
+	set ws-tag-count = zero
+	//-- build on-help F2 list for sys-con "search"
+/*
+	open tmp-sys-con
+		truncate temporary
+	extract ism-ff-sysidle
+	detail
+		get tmp-sys-con
+			on index	cso-div
+			key is	cso-div
+		on error
+			insert tmp-sys-con
+		endon //get tmp-sys-con
+	endextract //consolidated-sales-order ism-ff-po
+*/
+detail
+/*
+	Note: this doesn't follow style rules but the following need to be accepts that
+	are _never_ accepted. This is due to the index on primary table.
+	-- Even as a 'display', the following are still 'asked' for, during find mode...
+
+	//primary ism-ff-sysidle
+	//key is ism-sys-con dr-tr-territory trans-date
+	//
+	display ism-sys-con			@1,009 title "Div"
+*/
+	//display ism-sys-con			@1,009 title "Div"
+	if ifs-b-tag
+		display "Y" @1,005 title "tag"
+		DISPLAY_FLD(ifs-x-idle,		005,"idle")		COLOUR_HIGHLIGHT
+		DISPLAY_FLD(ifs-x-login,	009,"User")		COLOUR_HIGHLIGHT
+		DISPLAY_FLD(ifs-x-tty,		020,"tty")		COLOUR_HIGHLIGHT
+		/*
+		DISPLAY_FLD(ifs-x-idle,		050,"idle")		COLOUR_HIGHLIGHT
+		*/
+	else
+		display " " @1,005 title "tag"
+	/*
+	*/
+		DISPLAY_FLD(ifs-x-idle,		005,"idle")
+		DISPLAY_FLD(ifs-x-login,	009,"User")
+		DISPLAY_FLD(ifs-x-tty,		020,"tty")
+		/*
+		DISPLAY_FLD(ifs-x-idle,		050,"idle")
+		*/
+	/*
+	endif
+	*/
+	endif //if ifs-b-tag
+	//SPLAY_FLD(ifs-x-login,	009,"User")
+	DISPLAY_FLD(ifs-x-date,		030,"Login")
+	DISPLAY_FLD(ifs-x-time,		040,"Time")
+	//splay ifs-x-login	@1,009 title "User"
+	//splay ifs-x-tty		@1,020 title "tty"
+	//splay ifs-x-date	@1,030 title "Login"
+	//splay ifs-x-time	@1,040 title "Time"
+	//splay ifs-x-idle	@1,050 title "idle"
+	/*
+	*/
+	display ifs-x-ip		@1,059 title "ip address"
+	/*
+	display ifs-x-string	@1,060 title "_   output line unformatted"
+	*/
+
+/*
+	accept ism-sys-con			@1,009 title "Div"
+		show-value
+		default cso-div
+		help "F2 = List of Stores                           Store Code / Dataset Coy Code"
+	//-- note : a failed LOOKUP will ( SHOULD ) invoke the F2 HELP-SCREEN section
+	lookup tmp-sys-con
+		on index	cso-div
+		key is	cso-div
+	//-- F2 on-help HELP-SCREEN section :
+	help-screen
+		primary tmp-sys-con @1,02
+		occurs 15
+		showing	cso-div "Store"
+		using		cso-div
+	//
+	//display dr-tr-territory	@1,010 title "Territory"
+	accept dr-tr-territory		@1,010 title "Territory"
+		help "Territory Code"
+		ACCEPT_NEVER_ACCEPTED
+	//
+	//display accountcode		@1,020 title "Acct"
+	//ACCEPT_READ_ONLY_TITLE_HELP(AFLD,BROW,CCOL,DTITLE,EHELP)
+	ACCEPT_READ_ONLY_TITLE_HELP(accountcode,		1, 20, "Acct", "Account Code")
+	ACCEPT_READ_ONLY_TITLE_HELP(dr-tr-order-no,	1, 24, "S/O", "S/O No.")
+	ACCEPT_READ_ONLY_TITLE_HELP(dr-tr-bo-suffix,	1, 26, "Suff", "S/O Suffix")
+	ACCEPT_READ_ONLY_TITLE_HELP(tr-details,		1, 30, "Details", "TR Details")
+	ACCEPT_READ_ONLY_TITLE_HELP(trans-type,		1, 40, "Type", "TR Type")
+	//display trans-date			@1,050 title "Date"
+	accept trans-date				@1,050 title "Date"
+		help "TR Date"
+		ACCEPT_NEVER_ACCEPTED
+	//
+	ACCEPT_READ_ONLY_TITLE_HELP(tr-amount,			1, 60, "Amount", "TR Amount")
+	ACCEPT_READ_ONLY_TITLE_HELP(dr-tr-spare-1,	1, 70, "Open/Arc", "Open/Archive")
+*/
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+	case md-kill
+		//-- kill tagged lines :
+		if ws-tag-count < 1
+			message "No tagged lines found to Kill."
+		else
+			IF_MSG_BOX("Confirm Kill","Go ahead and Kill these processes?")
+				/*
+				set xstr = "pkill -KILL -t"
+				*/
+				set xstr = ""
+				extract PRIMARY_TABLE all
+					if ifs-b-tag = true
+						//DISPLAY_FLD(ifs-x-idle,		005,"idle")
+						//message concat("zaz: idle = " str(num( substring(ifs-x-idle,1,2) )) )
+						set lf-idle-hrs = num( substring(ifs-x-idle,1,2) )
+						if lf-idle-hrs > 1
+//set ifs-x-ip			= substring(ifs-x-string, STRPAT(ifs-x-string,"(") + 1, STRPAT(ifs-x-string,")") - 1)
+							set xstr = concat(strconcat(xstr) " " strconcat(ifs-x-tty))
+							delete PRIMARY_TABLE
+						else
+							message concat("Kill ignored for '" strconcat(ifs-x-tty) "'. Only idle for " str(lf-idle-hrs) " hour.")
+						endif // if lf-idle-hrs < 1
+					endif
+				endextract //PRIMARY_TABLE
+				set xstr = concat("pkill -KILL -t " strconcat(xstr))
+				set xstr = concat("su pronto -c '" strconcat(xstr) "'")
+message concat("zaz: " xstr)
+//zzz zaz
+				command "sh" parameters "-c" xstr
+			ENDIF_MSG_BOX
+		endif //if ws-tag-count < 1
+	//--
+	case md-tag
+		set ifs-b-tag = (not ifs-b-tag)
+		if ifs-b-tag
+			set ws-tag-count += 1
+		else
+			set ws-tag-count -= 1
+		endif
+		update PRIMARY_TABLE
+		refresh review
+/*
+		case md-so-enq
+//<
+			get system-companies
+				on index sys-comp-code
+				key ism-sys-con			//like sys-consolidation-division
+				//key cso-div
+			on error
+				message concat("No find sys-comp-code : sys-comp-code of " ism-sys-con)
+				//message concat("No find sys-comp-code : sys-comp-code of " cso-div)
+			else
+*/
+
+/*
+set xstr = concat("cd " strconcat(sys-comp-path) ";prospl so/m5ordenq -e " str(cso-so-order-no) " " cso-so-invoice-no)
+message concat("zaz: xstr=" xstr)
+				command "sh"
+					parameters
+						"-c"
+						xstr
+message concat("zaz: so/m5ordenq call ..." )
+*/
+//message concat("zaz : home cd = " strconcat(sys-comp-path))
+//>
+/*
+			spl "so/m5ordenq"
+				home sys-comp-path //
+				parameters
+					"-e"
+					dr-tr-order-no
+					dr-tr-bo-suffix
+					dr-tr-order-no
+//<
+			endon //get system-companies
+*/
+/*
+		case md-build-all
+			if sys-consolidation-division = "MAS"
+				//set ws-start-date	= date2julian("01.nov.2013")
+				//set ws-end-date	= date2julian("30.nov.2013")
+				//set ws-amount-threshold = 500
+				do build-all
+				//do dig-global-audit
+				//-- do display-in-grid
+				//do dig-disc-reconcile
+				X_LOAD_REBUILD //-- restore last entered criteria
+				do display-in-grid
+				exit
+			else
+				message "Cannot run Build All in " sys-consolidation-division
+			endif
+*/
+/*
+		case md-maintain-datasets-for-inclusion
+			open tmp-system-user truncate temporary
+			//like system-user type memory // for user/company sort seq -user-user-only-spare-flag2-1 for tag
+			extract system-user
+				on index user-id sys-comp-code
+				key is login-id() SPACES
+				next same user-id
+			detail
+				get system-companies
+					on index sys-comp-code
+				on error
+					continue
+				endon
+				set user-position 					= sys-comp-desc
+				set user-user-only-spare-flag2-1	= sys-comp-spare2
+				insert tmp-system-user
+			endextract
+			do maintain-datasets-for-inclusion
+//>
+*/
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+//<
+/*
+#define X_SAVE_REBUILD \
+	open ism-ff-mem \
+	on error \
+		message "Cannot open ism-ff-mem, will create new instance" \
+		open ism-ff-mem create permanent \
+	endon \
+	get ism-ff-mem \
+		on index ifm-c-code \
+		key X_KEY \
+	on error \
+		set ifm-c-code			= X_KEY \
+		insert ism-ff-mem \
+		get ism-ff-mem \
+			on index ifm-c-code \
+		key X_KEY \
+	endon \
+	set ifm-d-start-date		= ws-start-date \
+	set ifm-d-end-date		= ws-end-date \
+	set ifm-n-max-datasets	= ws-max-idle-hours \
+	set ifm-n-threshold		= ws-amount-threshold \
+	update ism-ff-mem
+//-- end-define X_SAVE_REBUILD
+*/
+
+procedure build-all
+local field
+	i		type numeric
+	j		type numeric
+	/*
+	do get-date-range entry once
+	*/
+	set ws-start-date	= date2julian("01.nov.2013")
+	set ws-end-date	= date2julian("30.nov.2013")
+	set ws-amount-threshold = 6000
+	set ws-max-idle-hours = 3 //5 //100 //for testing
+	do get-user-input entry-once
+	//
+//message ws-confirm //zaz
+	if ws-confirm = TRUE
+		//clear existing values
+		open ism-ff-sysidle truncate permanent
+//		do unload-temp
+		//-- 
+		//-- save REBUILD criteria first :
+		//-- ------------------------------
+		//X_SAVE_REBUILD
+		//-- 
+		//set ws-max-idle-hours = 5 //5 //100 //for testing
+		//report "Finance Sales (deb/bpfsff)"
+	/*
+		report concat(PROG_TITLE " (sys/sys_idle_user_logins)")
+			spool-only
+			set i = 1
+			set j = ws-max-idle-hours //5 //100 //for testing
+			extract system-companies
+			detail
+				//message "i: " i "  j:" j
+				if i > j
+					break
+				endif
+				if sys-comp-spare2 = "Y"
+					print
+						today()
+						tod()
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"bpfsff called"
+set xstr = concat("cd " strconcat(sys-comp-path) ";prospl pvi-snz/deb/bpfsff -buildonly " julian-to-date(ws-start-date) " " julian-to-date(ws-end-date) " " str(ws-amount-threshold) " " str(i) " " str(ws-max-idle-hours) )
+//message strconcat("zaz: xstr = " xstr)
+					command "sh"
+						parameters
+							"-c"
+							xstr
+					set i += 1
+				else
+					print
+						today()
+						tod()
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"bpfsff not called"
+				endif
+			endextract
+			//do load-temp //{8}
+		report finished
+	*/
+	endif
+endprocedure // build-all -----------------------------------------------------
+
+screen maintain-datasets-for-inclusion
+	window @1,1 to @24,50
+		title concat("Maintain Datasets for inclusion")
+		//primary system-companies
+		primary tmp-system-user
+			on index user-id user-menu-seq-no
+		datagrid occurs 20
+	allowed md-tag search //md-mode
+	review-from-start
+detail
+	display sys-comp-code									@1,010 title "Div"
+	//display sys-comp-desc       							@1,020 title "Name"
+	display user-position 				        			@1,020 title "Name"
+	//display concat(sys-comp-spare2 "        ")			@1,030 title "Include"
+	display concat(user-user-only-spare-flag2-1 "     ")    @1,030 title "Include"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-tag
+			get system-companies
+				on index sys-comp-code
+			on error
+				message "Cannot Find Company " sys-comp-code
+			else
+				if sys-comp-spare2 = SPACES
+					set sys-comp-spare2 = "Y"
+					set user-user-only-spare-flag2-1 = "Y"
+				else
+					set sys-comp-spare2 = SPACES
+					set user-user-only-spare-flag2-1 = SPACES
+				endif
+				update system-companies
+				update tmp-system-user
+				refresh review
+			endon
+	endswitch
+endconfirm
+endscreen // maintain-datasets-for-inclusion ----------------------------------
+//>
+
+
+/*
+// BP finance sales report by finance provider - archived
+select
+	accountcode
+	br-acc-code
+	trans-type
+	trans-date
+	tr-details
+	tr-amount
+	dr-tr-territory
+	tr-details-short = substring (tr-details 1 3)
+	start-date = input date "what is the start date?"
+	end-date = input date "what is the end date?"
+from
+	outer deb-master
+	deb-trans
+    deb-trans-archive
+where
+     br-acc-code = " " AND
+	(tr-details-short = "BC#" or tr-details-short = "BE#" or tr-details-short = "CE#" or tr-details-short = "GE#") AND
+//	tr-amount > 0 AND
+	(trans-type = "PD" or trans-type = "JE" or trans-type = "CR") AND
+	(trans-date between start-date and end-date)
+
+order by dr-tr-territory, tr-details-short
+
+format is rpt
+field total-tr-amount like tr-amount
+field sub-tot-tr-amount like tr-amount
+field sub-finco-tr-amount like tr-amount
+field subsub-no-fin-trans like tr-amount
+field sub-no-fin-trans like tr-amount
+field no-fin-trans like tr-amount
+
+report header
+	page
+	set total-tr-amount = 0
+	set no-fin-trans = 0
+header
+	print
+		"Finance sales report by finance provider - archived" in col 1
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	print
+		"from" in col 5
+		start-date in col 10
+		"to " in col 22
+		end-date in col 25
+	skip 1
+	print
+		"territory" in col 7
+		"tr-details" in col 22
+		"trans-type" in col 41
+		"trans-date" in col 59
+		"tr-amount" in col 83
+	skip 1
+before dr-tr-territory
+	set sub-tot-tr-amount = 0
+	set sub-no-fin-trans = 0
+before tr-details-short
+	set sub-finco-tr-amount = 0
+	set subsub-no-fin-trans = 0
+skip 1
+detail
+	set total-tr-amount += tr-amount
+	set sub-tot-tr-amount += tr-amount
+	set sub-finco-tr-amount += tr-amount
+	set subsub-no-fin-trans += 1
+	set sub-no-fin-trans += 1
+	set no-fin-trans += 1
+// START PRINTING LINE DETAILS HERE
+	print
+		dr-tr-territory in col 7
+		accountcode in col 12
+		tr-details in col 22
+		trans-type in col 41
+		trans-date in col 59
+		tr-amount in col 77
+// END PRINTING LINE DETAILS HERE
+after tr-details-short
+		print "Subtotal for" in col 53 no newline
+		print tr-details in col 66 no newline
+		print "in " in col 70 no newline
+		print dr-tr-territory in col 73 no newline
+		print sub-finco-tr-amount in col 77 no newline
+		print subsub-no-fin-trans in col 97
+after dr-tr-territory
+		print "-----------------" in col 77
+		print "SUBTOTAL FOR" in col 56 no newline
+		print dr-tr-territory in col 69 no newline
+		print sub-tot-tr-amount in col 77 no newline
+		print sub-no-fin-trans in col 97
+skip 1
+report footer
+	print
+		"-----------------" in col 77
+	print
+		total-tr-amount in col 77 no newline
+		print no-fin-trans in col 97
+*/
+
+
+
+/*
+// BP finance sales report by finance provider - current
+select
+	accountcode
+	br-acc-code
+	trans-type
+	trans-date
+	tr-details
+	tr-amount
+	dr-tr-territory
+	tr-details-short = substring (tr-details 1 3)
+	start-date = input date "what is the start date?"
+	end-date = input date "what is the end date?"
+from
+    deb-trans
+where
+	br-acc-code LIKE " " AND
+	(tr-details-short = "BC#" or tr-details-short = "BE#" or tr-details-short = "CE#" or tr-details-short = "GE#") AND
+//	tr-amount > 0 AND
+	(trans-type = "PD" or trans-type = "JE" or trans-type = "CR") AND
+	(trans-date between start-date and end-date)
+
+order by dr-tr-territory, tr-details-short
+
+format is rpt
+
+field total-tr-amount like tr-amount
+field sub-tot-tr-amount like tr-amount
+field sub-finco-tr-amount like tr-amount
+field subsub-no-fin-trans like tr-amount
+field sub-no-fin-trans like tr-amount
+field no-fin-trans like tr-amount
+
+report header
+	page
+	set total-tr-amount = 0
+	set no-fin-trans = 0
+header
+	print
+		"Finance sales report by finance provider - current" in col 1
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	print
+		"from" in col 5
+		start-date in col 10
+		"to " in col 22
+		end-date in col 25
+	skip 1
+	print
+		"territory" in col 7
+		"tr-details" in col 22
+		"trans-type" in col 41
+		"trans-date" in col 59
+		"tr-amount" in col 83
+	skip 1
+before dr-tr-territory
+	set sub-tot-tr-amount = 0
+	set sub-no-fin-trans = 0
+before tr-details-short
+	set sub-finco-tr-amount = 0
+	set subsub-no-fin-trans = 0
+skip 1
+detail
+	set total-tr-amount += tr-amount
+	set no-fin-trans += 1
+// START PRINTING LINE DETAILS HERE
+	print
+		dr-tr-territory in col 7
+		accountcode in col 12
+		tr-details in col 22
+		trans-type in col 41
+		trans-date in col 59
+		tr-amount in col 77
+// END PRINTING LINE DETAILS HERE
+	set sub-finco-tr-amount += tr-amount
+	set subsub-no-fin-trans += 1
+after tr-details-short
+		print "Subtotal for" in col 53 no newline
+		print tr-details in col 66 no newline
+		print "in " in col 70 no newline
+		print dr-tr-territory in col 73 no newline
+		print sub-finco-tr-amount in col 77 no newline
+		print subsub-no-fin-trans in col 97
+	set sub-tot-tr-amount += tr-amount
+	set sub-no-fin-trans += 1
+after dr-tr-territory
+		print "-----------------" in col 77
+		print "SUBTOTAL FOR" in col 56 no newline
+		print dr-tr-territory in col 69 no newline
+		print sub-tot-tr-amount in col 77 no newline
+		print sub-no-fin-trans in col 97
+skip 1
+report footer
+	print
+		"-----------------" in col 77
+	print
+		total-tr-amount in col 77 no newline
+		print no-fin-trans in col 97
+
+*/

@@ -1,0 +1,9 @@
+select
+	so-order-no
+	stock-code
+	sol-line-cost
+from
+	sales-order-line
+where
+	sol-line-cost = 0
+format is lst

@@ -1,0 +1,13 @@
+select
+	stock-master.stock-code
+	stock-master.stk-description
+	stock-master.stk-user-group
+	stock-supplier.cre-accountcode
+	stock-supplier.sup-stock-code
+from
+	stock-master
+	stock-supplier
+where
+	stock-master.stock-code != stock-supplier.sup-stock-code
+format is lst
+field order is stock-code sup-stock-code stk-description sup-stk-description stk-user-group[2]

@@ -1,0 +1,93 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ash-qty
+	ws-ash-value = sum-array (ash-value 1 12) 
+	ws-ash-cost = sum-array (ash-cost 1 12) 
+	ws-ash-qty = sum-array (ash-qty 1 12) 
+	stk-description
+	stk-desc-line-2
+	ws-cre = sub-string (stock-code 1 3) 
+	ws-name = input string "Enter required name (eg: %MADISON%):"
+	ws-sup = input string "Enter required supplier code (eg: SOP):"
+	ws-years-ago = input number "Enter years ago (0 = current):"
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = 'O' 
+	and ash-years-ago = ws-years-ago 
+	and (stk-description like ws-name or stk-desc-line-2 like ws-name ) 
+	and ws-sup = ws-cre 
+order by stock-code 
+format is rpt
+field total-ws-ash-value like ws-ash-value
+field sub-tot-ws-ash-value like ws-ash-value
+field total-ws-ash-cost like ws-ash-cost
+field sub-tot-ws-ash-cost like ws-ash-cost
+field total-ws-ash-qty like ws-ash-qty
+field sub-tot-ws-ash-qty like ws-ash-qty
+report header
+	page
+	set total-ws-ash-value = 0
+	set total-ws-ash-cost = 0
+	set total-ws-ash-qty = 0
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"Stock Code" in col 2
+		"Description" in col 20
+		"Total Sales" in col 76
+		"Total Cost" in col 96
+		"Total Qty" in col 115
+	skip
+	skip
+	skip 1
+before stock-code
+	set sub-tot-ws-ash-value = 0
+	set sub-tot-ws-ash-cost = 0
+	set sub-tot-ws-ash-qty = 0
+
+detail
+	print
+		stock-code in col 1
+		stk-description in col 19
+		stk-desc-line-2 in col 50 pic x(20) no newline
+	set total-ws-ash-value += ws-ash-value
+	set sub-tot-ws-ash-value += ws-ash-value
+	set total-ws-ash-cost += ws-ash-cost
+	set sub-tot-ws-ash-cost += ws-ash-cost
+	set total-ws-ash-qty += ws-ash-qty
+	set sub-tot-ws-ash-qty += ws-ash-qty
+after stock-code
+	print
+		sub-tot-ws-ash-value in col 73
+		sub-tot-ws-ash-cost in col 92
+		sub-tot-ws-ash-qty in col 111
+	skip
+report footer
+	print
+		"-----------------" in col 73
+		"-----------------" in col 92
+		"-----------------" in col 111
+	print
+		"TOTAL" in col 60 bold 
+		total-ws-ash-value in col 73 bold 
+		total-ws-ash-cost in col 92 bold 
+		total-ws-ash-qty in col 111 bold 
+	skip 3
+	print "Program      :  drewmadisn.enq" in col 6
+	print "Product Name :" in col 6
+		ws-name in col 22 pic x(20)
+	print "Supplier     :" in col 6
+		ws-sup in col 22 pic x(5)
+	print "Years Age    :" in col 6
+		ws-years-ago in col 22

@@ -1,0 +1,21 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	whse-code
+	whse-qty-on-hand
+	sup-shipping-method-code
+	cre-accountcode
+	new-stock-code = sub-string (stock-code 1,3)
+	new-cre-code = sub-string (cre-accountcode 1,3)
+from
+	stock-master
+	stock-warehouse-detail
+	stock-supplier
+where
+	whse-qty-on-hand > 0 
+	and sup-shipping-method-code != "A"
+	and new-stock-code = new-cre-code
+order by whse-code stock-group stock-code 
+format is lst
+field order is whse-code stock-group stock-code

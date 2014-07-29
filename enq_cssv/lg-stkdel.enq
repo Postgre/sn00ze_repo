@@ -1,0 +1,5 @@
+// delete Stock records for Non-existant Warehouse
+delete from stock-warehouse-detail
+where
+	whse-code = "125"
+

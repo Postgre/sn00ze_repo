@@ -1,0 +1,5 @@
+// debtors - Remove a Debtors transaction history
+delete from deb-trans
+where
+	( accountcode LIKE INPUT ALPHA 
+	prompt is "Debtor to Remove transaction History from"   )

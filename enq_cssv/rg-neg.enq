@@ -1,0 +1,19 @@
+// show stock items for all warehouses with negative stock
+select
+	stock-code
+	whse-code
+	whse-qty-on-hand
+	whse-avg-cost
+	calc1 = (whse-qty-on-hand * whse-avg-cost ) 
+from
+	stock-warehouse-detail
+where
+	(whse-qty-on-hand < 0 ) 
+order by whse-code 
+format is lst
+field title of stock-code is "Stock code"
+field title of whse-code is "Warehouse"
+field title of whse-qty-on-hand is "Qty on Hand"
+field title of whse-avg-cost is "Average Cost"
+field title of calc1 is "Value"
+total on calc1

@@ -1,0 +1,18 @@
+select 
+	accountcode
+	na-name
+	dr-date-created
+	ws-creation-date-start = input date "Enter starting date:"
+	ws-creation-date-finish = input date "Enter finishing date:"
+	ws-count = count ()
+from
+	deb-master
+	name-and-address-master
+where
+	dr-date-created between ws-creation-date-start and ws-creation-date-finish
+order by accountcode
+group by accountcode
+format is lst
+suppress ws-creation-date-start
+suppress ws-creation-date-finish
+total on ws-count

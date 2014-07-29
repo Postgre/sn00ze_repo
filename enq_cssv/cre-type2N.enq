@@ -1,0 +1,5 @@
+update cre-master
+set
+	cr-type = 'N'
+where
+	cr-type = 'T'

@@ -1,0 +1,11 @@
+// stock enquiry for Non existant Warehouses
+select
+	stock-code
+	whse-code
+	whse-qty-on-hand
+from
+	stock-warehouse-detail
+where
+	whse-code LIKE "125"
+format is lst
+

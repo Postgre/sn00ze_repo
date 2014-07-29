@@ -1,0 +1,96 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/solview
+// solview.sp
+//  Program Desc:
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reservedl
+// 07feb. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	04apr14	rmd			upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+
+// 07feb08	rmd	screen to display sales order line details
+//				replicating m5copyso.show-line-items
+
+field
+	ws-so-order-no							like so-order-no
+
+object tmp-sales-order-line
+	type is memory
+	record
+		tmp-so-order-no						like so-order-no
+		tmp-so-bo-suffix					like so-bo-suffix
+		tmp-sol-line-seq					like sol-line-seq
+		tmp-stock-code                      like stock-code
+		tmp-stk-description                 like stk-description
+		tmp-sol-ordered-qty                 like sol-ordered-qty
+		tmp-sol-shipped-qty                 like sol-shipped-qty
+		tmp-sol-backorder-qty               like sol-backorder-qty
+		tmp-sol-stk-unit-desc				like sol-stk-unit-desc
+	endrecord
+	key is tmp-so-order-no tmp-so-bo-suffix tmp-sol-line-seq unique
+
+procedure main
+	parameters
+		lp-so-order-no						like so-order-no
+		lp-so-bo-suffix                     like so-bo-suffix
+	set ws-so-order-no = lp-so-order-no
+	open tmp-sales-order-line truncate temporary
+	extract sales-order-line
+	on index so-order-no so-bo-suffix sol-line-seq
+	key is lp-so-order-no lp-so-bo-suffix 0
+	next same so-order-no so-bo-suffix
+	detail
+		if sol-line-type in {"SN" "KN"}
+			get stock-master
+			on error
+				initialise stock-master
+			else
+			endon
+			set tmp-so-order-no						= so-order-no
+			set tmp-so-bo-suffix					= so-bo-suffix
+
+			set tmp-sol-line-seq					= sol-line-seq
+			set tmp-stock-code                      = stock-code
+			set tmp-stk-description                 = stk-description
+			set tmp-sol-ordered-qty                 = sol-ordered-qty
+			set tmp-sol-stk-unit-desc				= sol-stk-unit-desc
+			set tmp-sol-shipped-qty                 = sol-shipped-qty
+			set tmp-sol-backorder-qty               = sol-backorder-qty
+
+			insert tmp-sales-order-line
+		endif
+	endextract
+	do display-in-grid
+endprocedure // main ----------------------------------------------------------
+
+screen display-in-grid
+	window @1,1 to @20,110 title is concat("Sales Order Lines for Order: " str(ws-so-order-no))
+	primary tmp-sales-order-line
+	datagrid occurs 18
+	//review-from-start
+	//review-from-current
+	//REVIEW-BOTTOM-TO-TOP
+	review-from-start
+	allowed search
+	detail
+		display tmp-sol-line-seq	     @1,2 // title is ""
+		display tmp-stock-code           @1,4 // title is ""
+		display tmp-stk-description      @1,6 // title is ""
+		display tmp-sol-ordered-qty      @1,8 // title is ""
+		display tmp-sol-stk-unit-desc    @1,10 // title is ""
+		display tmp-sol-shipped-qty      @1,12 // title is ""
+		display tmp-sol-backorder-qty	 @1,14 // title is ""
+confirm
+	auto
+confirmed
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+// solview.spl

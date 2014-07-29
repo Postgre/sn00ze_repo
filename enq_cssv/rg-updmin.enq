@@ -1,0 +1,5 @@
+// update Min/max to 0
+update stock-warehouse-detail
+set
+	whse-min-stock = 0
+	whse-max-stock = 0

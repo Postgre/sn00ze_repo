@@ -1,0 +1,137 @@
+select
+	stock-code
+	stk-description
+	stk-trans-type
+	stk-trans-whse
+	stk-trans-date
+	stk-trans-qty
+	stk-trans-cost
+	ws-start-whse = input
+		string
+		prompt is "Enter Start Warehouse:"
+	ws-end-whse = input
+		string
+		prompt is "Enter   End Warehouse:"
+	ws-start-date = input
+		date
+		prompt is "Enter Start Date     :"
+	ws-end-date = input
+		date
+		prompt is "Enter End   Date     :"
+	company-name
+from
+	stock-master
+	stock-movements
+	system-control
+where
+	stk-trans-type = "PO" 
+	and stk-trans-whse between ws-start-whse and ws-end-whse 
+	and stk-trans-date between ws-start-date and ws-end-date 
+order by stk-trans-whse stock-code 
+format is rpt
+field new-stock-code pic 9
+field new-stk-description pic 9
+field new-stk-trans-whse pic 9
+field total-stk-trans-qty like stk-trans-qty
+field sub-tot-stk-trans-qty like stk-trans-qty
+field sub-tot1-stk-trans-qty like stk-trans-qty
+field total-stk-trans-cost like stk-trans-cost
+field sub-tot-stk-trans-cost like stk-trans-cost
+field sub-tot1-stk-trans-cost like stk-trans-cost
+report header
+	page
+	set total-stk-trans-qty = 0
+	set total-stk-trans-cost = 0
+header
+	print 
+		company-name in col 1
+		"GOODS RECEIVED REPORT" in col 56
+		today() in col 101
+		"Pageno." in col 115
+		pageno() in col 123
+	skip 1
+	print
+		" stk" in col 5
+		"stock-code" in col 16
+		"stk-description" in col 38
+		"stk trans" in col 74
+		"stk-trans-qty" in col 91
+		"stk-trans-cost" in col 111
+	print
+		"trans" in col 5
+		"  date" in col 74
+	print
+		"whse" in col 5
+	print "=================================================================================================================================" in col 1
+before stock-code
+	set new-stock-code = 1
+	set sub-tot-stk-trans-qty = 0
+	set sub-tot-stk-trans-cost = 0
+before stk-description
+	set new-stk-description = 1
+before stk-trans-whse
+	set new-stk-trans-whse = 1
+	set sub-tot1-stk-trans-qty = 0
+	set sub-tot1-stk-trans-cost = 0
+
+detail
+	if (new-stk-trans-whse)
+		print stk-trans-whse in col 5 no newline
+	endif
+	if (new-stock-code)
+		print stock-code in col 16 no newline
+		print stk-description in col 38 no newline
+	endif
+	print stk-trans-date in col 74 no newline
+	print stk-trans-qty in col 91 no newline
+	print stk-trans-cost in col 111 no newline
+	skip
+	set new-stock-code = 0
+	set new-stk-description = 0
+	set new-stk-trans-whse = 0
+	set total-stk-trans-qty += stk-trans-qty
+	set sub-tot-stk-trans-qty += stk-trans-qty
+	set sub-tot1-stk-trans-qty += stk-trans-qty
+	set total-stk-trans-cost += stk-trans-cost
+	set sub-tot-stk-trans-cost += stk-trans-cost
+	set sub-tot1-stk-trans-cost += stk-trans-cost
+after stock-code
+	print
+		"--------------" in col 91
+		"---------------" in col 111
+	print
+		"TOTAL FOR" in col 64 bold 
+		stock-code in col 74 bold 
+		sub-tot-stk-trans-qty in col 91 bold 
+		sub-tot-stk-trans-cost in col 111 bold 
+	skip
+after stk-description
+after stk-trans-whse
+	print
+		"--------------" in col 91
+		"---------------" in col 111
+	print
+		"TOTAL FOR WHSE" in col 67 bold 
+		stk-trans-whse in col 82 bold 
+		sub-tot1-stk-trans-qty in col 91 bold 
+		sub-tot1-stk-trans-cost in col 111 bold 
+	skip 2
+report footer
+	print
+		"--------------" in col 91
+		"---------------" in col 111
+	print
+		"TOTAL" in col 80 bold 
+		total-stk-trans-qty in col 91 bold 
+		total-stk-trans-cost in col 111 bold 
+	skip 3
+	print "Program Name   : goodsrcvd.enq" in col 10
+	skip
+	print "Start Warehouse:" in col 10
+		ws-start-whse in col 27 pic x(3)
+	print "End   Warehouse:" in col 10
+		ws-end-whse in col 27 pic x(3)
+	print "Start Date     :" in col 10
+		ws-start-date in col 27
+	print "End   Date     :" in col 10
+		ws-end-date in col 27

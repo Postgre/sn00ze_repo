@@ -1,0 +1,45 @@
+select
+	so-whse-code
+	postcode
+	so-order-no
+	ws-socount = count () 
+	ws-sum = sum (sol-line-amount) 
+	so-cust-code
+	ws-count = count () 
+	accountcode
+	so-bo-suffix
+	ws-start-date = input date "Enter starting date:"
+	ws-end-date = input date "Enter ending date:"
+	so-order-date
+	
+from
+	name-and-address-master
+	sales-order
+	deb-master
+	sales-order-line
+where
+	(accountcode = so-cust-code ) 
+	and 
+	(so-order-date between ws-start-date and ws-end-date ) 
+group by so-whse-code postcode
+format is lst
+suppress so-order-no
+suppress so-cust-code
+suppress ws-count
+suppress accountcode
+suppress so-bo-suffix
+suppress ws-start-date
+suppress ws-end-date
+suppress so-order-date
+unique so-whse-code
+unique so-order-no
+field order is so-whse-code postcode ws-sum ws-avg
+field title of so-whse-code is "Whse"
+field title of postcode is "Post Code"
+field title of ws-socount is "Number of Transactions"
+field title of ws-sum is "Total Sales"
+field title of ws-count is "Number of Sales"
+field title of ws-avgsale is "Average $ per sale"
+display pic of postcode is xxxxx
+display pic of ws-sum is zzzzz9.99
+total on ws-sum

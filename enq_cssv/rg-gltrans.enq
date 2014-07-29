@@ -1,0 +1,11 @@
+// gl Trans archive totals
+select
+	gl-accountcode
+	gl-trans-type
+	gl-amount
+from
+	gl-trans-archive
+where
+	( gl-trans-type != "BF"  )
+format is lst
+total on gl-amount

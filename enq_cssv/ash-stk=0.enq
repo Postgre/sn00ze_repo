@@ -1,0 +1,10 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+from
+	stock-aged-sales-history
+where
+	stock-code = 'AAA001'
+format is lst

@@ -1,0 +1,8 @@
+select
+	bom-parent-code
+	bom-seq-no
+	comp-code
+	bom-quantity
+from
+	bill-of-materials-detail
+format is external

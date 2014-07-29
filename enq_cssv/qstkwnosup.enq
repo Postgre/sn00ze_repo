@@ -1,0 +1,14 @@
+// Query to find all stock codes where the suppliers are only -V and -Q
+// Author: Rick Snyder
+select
+	vic.stock-code
+	vic.cre-accountcode
+	nsw.stock-code
+	nsw.cre-accountcode
+from
+	vic = stock-supplier
+	nsw = stock-supplier
+where
+	substring (vic.cre-accountcode,4,5) = '-V' 
+	AND (nsw.stock-code = vic.stock-code)
+	AND (substring (nsw.cre-accountcode,4,5) = '-N')

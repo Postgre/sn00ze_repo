@@ -1,0 +1,9 @@
+// supplierw with a certain discount
+select
+	cre-accountcode
+	cr-volume-disc-code
+from
+	cre-master
+where
+	( cr-volume-disc-code = INPUT ALPHA prompt is "Enter discount code"   )
+format is lst

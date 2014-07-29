@@ -1,0 +1,84 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/soreconsol
+//  Program Desc:	Reconsolidation routine for sales orders
+//  Requested By:	
+//  Request Date:	
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03apr14	rmd	{1}		upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+// soreconsol.spl
+// 18mar07		rmd	input: s/o#, search for other s/o's with
+//					same s/o and set invoice # to match
+// 30apr07		rmd	finding so-invoice-no left justified after
+//					running this program
+
+procedure main
+local field
+	lf-found						type boolean
+	lf-so-order-no					like so-order-no 
+	lf-so-bo-suffix                 like so-bo-suffix
+	//
+	set lf-found = false
+	if num(get-param(1)) > 0
+		extract sales-order
+		on index so-order-no so-bo-suffix
+		key is num(get-param(1)) spaces
+		next same so-order-no
+		detail
+			get sales-order lock
+			on error
+			else
+				set so-user-only-alpha20-2 = so-invoice-no
+				// 30apr07
+				// set so-invoice-no = str(so-order-no)
+				set so-invoice-no = fstr(so-order-no,8,0)													
+				set so-user-only-alpha20-2 = concat("O" so-user-only-alpha20-2)
+				update sales-order
+				set lf-found = true
+				//message concat('old:' so-user-only-alpha20-2)
+				//message concat('new:' so-invoice-no)
+			endon
+		endextract	
+	endif
+/*	
+if lf-found = true
+	exit
+endif
+
+	if num(get-param(1)) > 0
+		extract sales-order-archive
+		on index so-order-no so-bo-suffix
+		key is num(get-param(1)) spaces
+		next same so-order-no
+		detail
+			set lf-so-order-no	= so-order-no 
+			set lf-so-bo-suffix = so-bo-suffix 			
+			get sales-order lock
+			on index so-order-no so-bo-suffix
+			key is lf-so-order-no lf-so-bo-suffix
+			on error
+			else
+				set so-user-only-alpha20-2 = so-invoice-no
+				// 30apr07
+				// set so-invoice-no = str(so-order-no)
+				set so-invoice-no = fstr(so-order-no,8,0)													
+				set so-user-only-alpha20-2 = concat("A" so-user-only-alpha20-2)
+				
+				update sales-order
+				set lf-found = true
+				//message concat('old:' so-user-only-alpha20-2)
+				//message concat('new:' so-invoice-no)
+				
+			endon
+		endextract	
+	endif
+*/	
+endprocedure // main ----------------------------------------------------------
+// soreconsol.spl

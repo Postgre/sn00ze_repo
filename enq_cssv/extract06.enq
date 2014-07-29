@@ -1,0 +1,7 @@
+select
+	cre-accountcode
+	cen-seq-no
+	cen-text
+from
+	cre-extra-notes
+format is external

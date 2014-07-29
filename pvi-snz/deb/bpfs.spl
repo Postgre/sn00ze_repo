@@ -1,0 +1,312 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/deb/bpfs ZUSR.E118
+//  Program Desc:	Finance Sales Report
+//  Requested By:	Chris Ward
+//  Request Date:	08may13
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	02jun14	mb		{1}	upgrade to 710.3
+//	13may13	rmd			progress
+//	10may13	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+version-number "140604.000" //"CUSTOM pvi-snz/deb/bpfs 140602" //{1}
+
+object tmp-deb-trans like deb-trans type memory
+
+field
+	ws-start-date		type date
+	ws-end-date         type date
+
+mode md-so-enq
+	prompt "SO Enq"
+	help "Enquire on this order"
+
+procedure main
+	do get-user-input entry-once
+endprocedure // main ----------------------------------------------------------
+
+screen get-user-input
+	window @1,1 to @5,30 title "Set Criteria"
+	box @1,1 to @4,30 title SPACES
+	accept ws-start-date    @2,12 title "Start Date"
+	accept ws-end-date  	@3,12 title "End Date"
+confirm
+	auto
+confirmed
+	do build-dataset
+	do display-in-grid
+endconfirm
+endscreen // get-user-input ---------------------------------------------------
+
+procedure build-dataset
+	open tmp-deb-trans truncate temporary
+	select * from deb-trans
+		where trans-type in {"PD" "JE" "CR"} and
+		substring(tr-details 1 3) in {"BC#" "BE#" "CE#" "GE#"} and
+		br-acc-code = " " and
+		trans-date between ws-start-date and ws-end-date
+	detail
+		set dr-tr-spare-1 = "O"
+		insert tmp-deb-trans
+	endselect
+/* // < {1} 710.3 no longer has table object : deb-trans-archive
+	select * from deb-trans-archive
+		where trans-type in {"PD" "JE" "CR"} and
+		substring(tr-details 1 3) in {"BC#" "BE#" "CE#" "GE#"} and
+		br-acc-code = " " and
+		trans-date between ws-start-date and ws-end-date
+	detail
+		set dr-tr-spare-1 = "A"
+		insert tmp-deb-trans
+	endselect
+*/ // > {1} 
+endprocedure // build-dataset -------------------------------------------------
+
+screen display-in-grid
+	window @1,1 to @24,90
+		title concat("Finance Sales")
+		primary tmp-deb-trans
+		datagrid occurs 20
+	allowed md-so-enq search //md-mode
+	review-from-start
+detail
+	display dr-tr-territory		@1,010 title "Territory"
+	display accountcode         @1,020 title "Acct"
+	display dr-tr-order-no 		@1,024 title "S/O"
+	display dr-tr-bo-suffix     @1,026 title "Suff"
+	display tr-details          @1,030 title "Details"
+	display trans-type          @1,040 title "Type"
+	display trans-date          @1,050 title "Date"
+	display tr-amount           @1,060 title "Amount"
+	display dr-tr-spare-1		@1,070 title "Open/Arc"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-so-enq
+			spl "so/m5ordenq"
+				parameters
+					"-e"
+					dr-tr-order-no
+					dr-tr-bo-suffix
+					dr-tr-order-no
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+
+
+/*
+// BP finance sales report by finance provider - archived
+select
+	accountcode
+	br-acc-code
+	trans-type
+	trans-date
+	tr-details
+	tr-amount
+	dr-tr-territory
+	tr-details-short = substring (tr-details 1 3)
+	start-date = input date "what is the start date?"
+	end-date = input date "what is the end date?"
+from
+	outer deb-master
+	deb-trans
+    deb-trans-archive
+where
+     br-acc-code = " " AND
+	(tr-details-short = "BC#" or tr-details-short = "BE#" or tr-details-short = "CE#" or tr-details-short = "GE#") AND
+//	tr-amount > 0 AND
+	(trans-type = "PD" or trans-type = "JE" or trans-type = "CR") AND
+	(trans-date between start-date and end-date)
+
+order by dr-tr-territory, tr-details-short
+
+format is rpt
+field total-tr-amount like tr-amount
+field sub-tot-tr-amount like tr-amount
+field sub-finco-tr-amount like tr-amount
+field subsub-no-fin-trans like tr-amount
+field sub-no-fin-trans like tr-amount
+field no-fin-trans like tr-amount
+
+report header
+	page
+	set total-tr-amount = 0
+	set no-fin-trans = 0
+header
+	print
+		"Finance sales report by finance provider - archived" in col 1
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	print
+		"from" in col 5
+		start-date in col 10
+		"to " in col 22
+		end-date in col 25
+	skip 1
+	print
+		"territory" in col 7
+		"tr-details" in col 22
+		"trans-type" in col 41
+		"trans-date" in col 59
+		"tr-amount" in col 83
+	skip 1
+before dr-tr-territory
+	set sub-tot-tr-amount = 0
+	set sub-no-fin-trans = 0
+before tr-details-short
+	set sub-finco-tr-amount = 0
+	set subsub-no-fin-trans = 0
+skip 1
+detail
+	set total-tr-amount += tr-amount
+	set sub-tot-tr-amount += tr-amount
+	set sub-finco-tr-amount += tr-amount
+	set subsub-no-fin-trans += 1
+	set sub-no-fin-trans += 1
+	set no-fin-trans += 1
+// START PRINTING LINE DETAILS HERE
+	print
+		dr-tr-territory in col 7
+		accountcode in col 12
+		tr-details in col 22
+		trans-type in col 41
+		trans-date in col 59
+		tr-amount in col 77
+// END PRINTING LINE DETAILS HERE
+after tr-details-short
+		print "Subtotal for" in col 53 no newline
+		print tr-details in col 66 no newline
+		print "in " in col 70 no newline
+		print dr-tr-territory in col 73 no newline
+		print sub-finco-tr-amount in col 77 no newline
+		print subsub-no-fin-trans in col 97
+after dr-tr-territory
+		print "-----------------" in col 77
+		print "SUBTOTAL FOR" in col 56 no newline
+		print dr-tr-territory in col 69 no newline
+		print sub-tot-tr-amount in col 77 no newline
+		print sub-no-fin-trans in col 97
+skip 1
+report footer
+	print
+		"-----------------" in col 77
+	print
+		total-tr-amount in col 77 no newline
+		print no-fin-trans in col 97
+*/
+
+
+
+/*
+// BP finance sales report by finance provider - current
+select
+	accountcode
+	br-acc-code
+	trans-type
+	trans-date
+	tr-details
+	tr-amount
+	dr-tr-territory
+	tr-details-short = substring (tr-details 1 3)
+	start-date = input date "what is the start date?"
+	end-date = input date "what is the end date?"
+from
+    deb-trans
+where
+	br-acc-code LIKE " " AND
+	(tr-details-short = "BC#" or tr-details-short = "BE#" or tr-details-short = "CE#" or tr-details-short = "GE#") AND
+//	tr-amount > 0 AND
+	(trans-type = "PD" or trans-type = "JE" or trans-type = "CR") AND
+	(trans-date between start-date and end-date)
+
+order by dr-tr-territory, tr-details-short
+
+format is rpt
+
+field total-tr-amount like tr-amount
+field sub-tot-tr-amount like tr-amount
+field sub-finco-tr-amount like tr-amount
+field subsub-no-fin-trans like tr-amount
+field sub-no-fin-trans like tr-amount
+field no-fin-trans like tr-amount
+
+report header
+	page
+	set total-tr-amount = 0
+	set no-fin-trans = 0
+header
+	print
+		"Finance sales report by finance provider - current" in col 1
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	print
+		"from" in col 5
+		start-date in col 10
+		"to " in col 22
+		end-date in col 25
+	skip 1
+	print
+		"territory" in col 7
+		"tr-details" in col 22
+		"trans-type" in col 41
+		"trans-date" in col 59
+		"tr-amount" in col 83
+	skip 1
+before dr-tr-territory
+	set sub-tot-tr-amount = 0
+	set sub-no-fin-trans = 0
+before tr-details-short
+	set sub-finco-tr-amount = 0
+	set subsub-no-fin-trans = 0
+skip 1
+detail
+	set total-tr-amount += tr-amount
+	set no-fin-trans += 1
+// START PRINTING LINE DETAILS HERE
+	print
+		dr-tr-territory in col 7
+		accountcode in col 12
+		tr-details in col 22
+		trans-type in col 41
+		trans-date in col 59
+		tr-amount in col 77
+// END PRINTING LINE DETAILS HERE
+	set sub-finco-tr-amount += tr-amount
+	set subsub-no-fin-trans += 1
+after tr-details-short
+		print "Subtotal for" in col 53 no newline
+		print tr-details in col 66 no newline
+		print "in " in col 70 no newline
+		print dr-tr-territory in col 73 no newline
+		print sub-finco-tr-amount in col 77 no newline
+		print subsub-no-fin-trans in col 97
+	set sub-tot-tr-amount += tr-amount
+	set sub-no-fin-trans += 1
+after dr-tr-territory
+		print "-----------------" in col 77
+		print "SUBTOTAL FOR" in col 56 no newline
+		print dr-tr-territory in col 69 no newline
+		print sub-tot-tr-amount in col 77 no newline
+		print sub-no-fin-trans in col 97
+skip 1
+report footer
+	print
+		"-----------------" in col 77
+	print
+		total-tr-amount in col 77 no newline
+		print no-fin-trans in col 97
+
+*/

@@ -1,0 +1,25 @@
+select
+	so-order-no
+	so-bo-suffix
+	sol-line-seq
+	order-log-date
+	order-log-time
+	ordlog-terminal-no
+	ordlog-login-id
+	accountcode
+	order-status
+	ordlog-type
+	ordlog-old-info
+	ordlog-new-info
+	ordlog-old-value
+	ordlog-new-value
+	ordlog-change-value
+	ordlog-line-type
+	ordlog-ordered-change-value
+	ordlog-item-wholesale-price
+	ordlog-disc-rate
+	ordlog-ordered-tax-chg-value
+from
+	sales-audit-file
+order by ordlog-type 
+format is lotus

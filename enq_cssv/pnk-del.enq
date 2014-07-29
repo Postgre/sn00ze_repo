@@ -1,0 +1,14 @@
+// Purpose: To select those records that have not had a sale recorded against 
+// them for 12 mths.and the description is product not
+// By: Ellen Gallagher
+// Title: pnk-del
+// Future Purpose: to mark them with an x for bulk deletes!!!
+update stock-master
+set
+        stk-user-group[2] = "D"
+        total-sales = sum-array (ash-value 1, 13)
+
+where
+	ash-years-ago = 0 
+	and total-sales = 0 
+	and stk-description like "%%PRODUCT%"

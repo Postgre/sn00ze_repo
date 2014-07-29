@@ -1,0 +1,17 @@
+select
+	cre-accountcode
+	cr-contact-name
+	accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	na-country-code
+	na-phone
+	na-fax-no
+from
+	cre-master
+	name-and-address-master
+format is lst

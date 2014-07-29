@@ -1,0 +1,4 @@
+// purchase Order Warehouse Update
+update purchase-order
+set
+	po-whse-code = input alpha "Update to which Warehouse"

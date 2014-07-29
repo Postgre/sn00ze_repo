@@ -1,0 +1,11 @@
+select
+	sys-tbl-code
+	sys-description
+	sys-money-value
+	sys-tbl-sales-mtd
+	sys-tbl-alpha-1
+from
+	system-table
+where
+	sys-tbl-type = 'CJ' 
+format is external

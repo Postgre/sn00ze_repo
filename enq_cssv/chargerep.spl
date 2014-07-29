@@ -1,0 +1,354 @@
+////////////////////////////////////////////////////////////////////////////////
+// Charges by Sales Rep
+//=========================================================================//
+// Modification History
+// Date		Who	SDR		What
+// 15may14	rmd	{1}		upgrade to 710.3
+// 22feb07	rmd			Update RBTCHPROC calls to new version
+// 18aug00	sgr	492		Fix printing of subtotal values
+// 19jul00	sgr	412		Change selection to Territory instead of warehouse
+// 19jul00	sgr	458		Only calc GST for != 0 tax rate
+// 10jul00	sgr	430		Ensure sales value is exclusive of GST
+// 13may00	sgr ???		Written
+////////////////////////////////////////////////////////////////////////////////
+
+#define NO_OF_SELECTION_PARAMETERS		'5'
+
+//#include "../../bms/include/bmsdef.spl"           //{1}
+//#include '../../bms/include/rbtchproc.spl'        //{1}
+#include "/pro/pronto/bms/include/bmsdef.spl"       //{1}
+#include '/pro/pronto/bms/include/rbtchproc.spl'	//{1}
+
+object	temp-sort-file
+	type is isam
+	record
+		tsf-chg-type		like sol-chg-type
+		tsf-order-no 		like so-order-no
+		tsf-order-date 		like so-order-date
+		tsf-cust-code 		like so-cust-code
+		tsf-shortname 		like shortname
+		tsf-rep-code		like so-rep-code
+		tsf-line-amount		like sol-line-amount
+	endrecord
+	key is tsf-chg-type tsf-order-no
+
+field	ws-warehouse			like sys-default-whse
+		ws-start-date			type date
+		ws-end-date				type date
+		ws-summary				type string pic x
+		total-sol-line-amount 	like sol-line-amount
+		sub-tot-sol-line-amount like sol-line-amount
+		ws-chg-type				type string pic x(2)
+
+procedure main
+	get system-control first
+	set ws-report-started = FALSE
+	// 22feb07
+	// DO_RUN_PROGRAM("Rep Charges Report")
+	RBTCHPROC_RUN_PROGRAM("Rep Charges Report")
+endprocedure //main ------------------------------------------------------------
+
+screen rbtchproc-report-parameters
+	allow entry
+before
+	clear
+	DO_SCREEN_HEADER()
+	display	"Rep Charges Report" @3,25 inverse
+	box @4,1 to @22,80
+	display "Warehouse Code    : " @6,4
+	display "Start Trans Date  : " @8,4
+	display "End   Trans Date  : " @9,4
+	display "(S)ummary or (D)etail : " @11,4
+detail
+	accept ws-warehouse @6,24
+		help "Enter warehouse code"
+		default sys-default-whse
+	accept ws-start-date @8,24
+		help "Enter start date"
+		default sys-period-start[sys-dl-per]
+	accept ws-end-date @9,24
+		help "Enter end date"
+		default sys-period-start[sys-dl-per + 1] - 1
+	accept ws-summary @11,30
+		help 'Print Report in (S)ummary or (D)etail'
+		default 'D'
+		uppercase
+	confirm auto
+	confirmed
+		// 22feb07
+		// DO_EXECUTION
+		RBTCHPROC_EXECUTION
+	endconfirm
+endscreen //rbtchproc-report-parameters --------------------------------------
+
+procedure rbtchproc-set-parameters
+	// 22feb07
+	// LOAD_OR_SET_ALPHA(ws-warehouse)
+	// LOAD_OR_SET_DATE(ws-start-date)
+	// LOAD_OR_SET_DATE(ws-end-date)
+	// LOAD_OR_SET_ALPHA(ws-summary)
+	RBTCHPROC_LOAD_SET_ALPHA(ws-warehouse)
+	RBTCHPROC_LOAD_SET_DATE(ws-start-date)
+	RBTCHPROC_LOAD_SET_DATE(ws-end-date)
+	RBTCHPROC_LOAD_SET_ALPHA(ws-summary)
+endprocedure //rbtchproc-set-parameters --------------------------------------
+
+procedure start-report
+	set rbtchproc-report-name = "Rep Charges Report"
+	report rbtchproc-report-name
+		header is report-header
+		no-message
+	set ws-report-started = TRUE
+endprocedure //start-report ----------------------------------------------------
+
+procedure report-header
+	get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is 'WH' ws-warehouse
+	on error
+		set sys-description = "UNKNOWN WHSE"
+	endon
+	print
+		"chargrep" in col 1
+		"CHARGES REPORT FOR WAREHOUSE:" in col 26
+		ws-warehouse in col 56 pic x(3) bold
+		sys-description in col 62 pic x(15) bold
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	print "FOR THE PERIOD FROM:" in col 28
+		ws-start-date in col 49 bold
+		"TO" in col 61
+		ws-end-date in col 64 bold
+	skip 1
+	print
+		"Order" in col 23
+		"Order" in col 38
+		"Customer" in col 52
+		"Customer" in col 67
+		"Rep" in col 103
+		"Charge" in col 114
+	print
+		"Date" in col 23
+		"No." in col 39
+		"Code" in col 54
+		"Name" in col 69
+		"Code" in col 103
+		"Amount" in col 114
+	print 132'='
+endprocedure //report-header --------------------------------
+
+procedure rbtchproc-report-detail
+	do start-report
+	if rbtchproc-in-background
+		// 22feb07
+		// DO_MESSAGE_REPORT_STARTED
+		RBTCHPROC_MESSAGE_REPORT_STARTED
+	else
+		box @18,47 to @22,80
+		display "Spoolfile :" @19,54
+			spool-file-name() @19,66 pic x(12)
+			"Now at :" @21,54
+	endif
+	open temp-sort-file truncate temporary
+	page
+	display 'Current Orders' @20,65 inverse flashing
+	select *
+	from sales-order
+	where so-order-status != '99'
+		and so-order-date between :ws-start-date and :ws-end-date
+		and so-territory-code = :ws-warehouse						//412jul00
+		//and so-whse-code = :ws-warehouse							//412jul00
+	detail
+		display so-order-no @21,65
+		select *
+		from sales-order-line
+		where so-order-no = :so-order-no
+			and so-bo-suffix = :so-bo-suffix
+			and sol-line-type = 'SC'
+		detail
+			get deb-master
+			on index accountcode
+			key is so-cust-code
+			on error
+				set shortname = 'Unknown'
+			endon
+			get temp-sort-file lock
+			on index tsf-chg-type tsf-order-no
+			key is sol-chg-type so-order-no
+			on error
+				set tsf-chg-type	= sol-chg-type
+				set tsf-order-no 	= so-order-no
+				set tsf-order-date 	= so-order-date
+				set tsf-cust-code 	= so-cust-code
+				set tsf-shortname 	= shortname
+				set tsf-rep-code	= so-rep-code
+				if sol-tax-rate != 0								//458jul00
+					set tsf-line-amount	= sol-line-amount
+										- (sol-line-amount / 11)	//430jul00
+				else												//458jul00
+					set tsf-line-amount = sol-line-amount			//458jul00
+				endif												//458jul00
+				insert temp-sort-file
+			else
+				set tsf-order-date 	= so-order-date
+				set tsf-cust-code 	= so-cust-code
+				set tsf-shortname 	= shortname
+				set tsf-rep-code	= so-rep-code
+				if sol-tax-rate != 0								//458jul00
+					set tsf-line-amount	+= sol-line-amount
+										- (sol-line-amount / 11)	//430jul00
+				else												//458jul00
+					set tsf-line-amount += sol-line-amount			//458jul00
+				endif												//458jul00
+				update temp-sort-file
+			endon
+		endselect
+	endselect
+	//
+	display 'Finished Orders' @20,65
+	select *
+	from sales-order-archive
+	where so-order-status != '99'
+		and so-order-date between :ws-start-date and :ws-end-date
+		and so-territory-code = :ws-warehouse						//412jul00
+		//and so-whse-code = :ws-warehouse							//412jul00
+	detail
+		display so-order-no @21,65
+		select *
+		from sales-order-line-archive
+		where so-order-no = :so-order-no
+			and so-bo-suffix = :so-bo-suffix
+			and sol-line-type = 'SC'
+		detail
+			get deb-master
+			on index accountcode
+			key is so-cust-code
+			on error
+				set shortname = 'Unknown'
+			endon
+			get temp-sort-file lock
+			on index tsf-chg-type tsf-order-no
+			key is sol-chg-type so-order-no
+			on error
+				set tsf-chg-type	= sol-chg-type
+				set tsf-order-no 	= so-order-no
+				set tsf-order-date 	= so-order-date
+				set tsf-cust-code 	= so-cust-code
+				set tsf-shortname 	= shortname
+				set tsf-rep-code	= so-rep-code
+				if sol-tax-rate != 0								//458jul00
+					set tsf-line-amount	= sol-line-amount
+										- (sol-line-amount / 11)	//430jul00
+				else												//458jul00
+					set tsf-line-amount = sol-line-amount			//458jul00
+				endif												//458jul00
+				insert temp-sort-file
+			else
+				set tsf-order-date 	= so-order-date
+				set tsf-cust-code 	= so-cust-code
+				set tsf-shortname 	= shortname
+				set tsf-rep-code	= so-rep-code
+				if sol-tax-rate != 0								//458jul00
+					set tsf-line-amount	+= sol-line-amount
+										- (sol-line-amount / 11)	//430jul00
+				else												//458jul00
+					set tsf-line-amount += sol-line-amount			//458jul00
+				endif												//458jul00
+				update temp-sort-file
+			endon
+		endselect
+	endselect
+	do print-trans
+	do total-transactions
+	do finish-report
+	close temp-sort-file and remove
+endprocedure //rbtchproc-report-detail ---------------------------------------
+
+procedure print-trans
+	select *
+	from temp-sort-file
+	before tsf-chg-type
+		set ws-chg-type = concat('C',tsf-chg-type)
+		get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is 'CH' ws-chg-type
+		on error
+			set sys-description = 'Unknown'
+		endon
+		print "Charge Type:" in col 2
+			tsf-chg-type in col 15 bold
+			"-" in col 17
+			sys-description in col 19 bold
+		skip
+	detail
+		if ws-summary = "D"
+			print
+				tsf-order-date in col 20
+				tsf-order-no in col 37
+				tsf-cust-code in col 51
+				tsf-shortname in col 67
+				tsf-rep-code in col 103
+				tsf-line-amount in col 112 pic zz,zz9.99-
+			set total-sol-line-amount += tsf-line-amount
+			set sub-tot-sol-line-amount += tsf-line-amount
+		else
+			set total-sol-line-amount += tsf-line-amount
+			set sub-tot-sol-line-amount += tsf-line-amount
+		endif
+	after tsf-chg-type
+		if ws-summary = "D"
+			print
+				"----------" in col 112
+			print
+				"Total for" in col 80 bold
+				sys-description in col 90 pic x(20) bold
+				sub-tot-sol-line-amount in col 112 pic zz,zz9.99- bold
+			skip 2
+		else
+			print
+				"Total for" in col 20 bold
+				sys-description in col 30 pic x(20) bold
+				sub-tot-sol-line-amount in col 52 pic zz,zz9.99- bold
+				skip 2
+		endif
+		set sub-tot-sol-line-amount = 0								//l492aug18
+	endselect
+endprocedure //print-trans
+
+procedure total-transactions
+	print
+		"----------" in col 52
+	print
+		"TOTAL CHARGES" in col 35 bold
+		total-sol-line-amount in col 52 pic zz,zz9.99- bold
+endprocedure //total-transactions --------------------------------------------
+
+procedure finish-report
+	if ws-report-started
+		skip 2
+		print 'Options selected : ' col 2 no-newline
+		//print "Warehouse : " col 22								//L412jul00
+		print "Territory : " col 22									//L412jul00
+			ws-warehouse
+		print "Trans Date: " col 22
+			ws-start-date in col 34
+			"-" in col 46
+			ws-end-date in col 48
+		if ws-summary = "S"
+			print "Summary mode" col 22
+		else
+			print "Detail mode" col 22
+		endif
+	endif
+	// 22feb07
+	// DO_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+	RBTCHPROC_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+	if not rbtchproc-in-background
+		display rbtchproc-report-finish-message @21,51
+		pause
+	endif
+endprocedure //finish-report ---------------------------------------------------
+
+//end of file -------------------------------------------------------

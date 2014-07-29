@@ -1,0 +1,27 @@
+// purchase Orders with 0 tax
+select
+	po-order-no
+	po-order-date
+	stock-code
+	stk-description
+	pol-tax-rate-code
+	pol-tax-rate
+	po-item-tax-amount
+	po-line-type
+from
+	purchase-order-line
+	purchase-order
+	stock-master
+where
+	((po-line-type = "SN" ) and 
+	(pol-tax-rate = 0 ) and 
+	(po-order-date >= 01/07/08 ) ) 
+format is lst
+suppress po-line-type
+field title of po-order-no is "PO Number"
+field title of po-order-date is "PO Date"
+field title of stock-code is "Item Code"
+field title of pol-tax-rate-code is "Tax Code"
+field title of pol-tax-rate is "Tax Rate"
+field title of po-item-tax-amount is "Tax Amount"
+field title of stk-description is "Item Description"

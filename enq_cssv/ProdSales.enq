@@ -1,0 +1,32 @@
+select
+	so-territory-code
+	today () - 1 
+	stock-code
+	stk-description
+	stk-pack-desc
+	stock-group
+	ws-item-cost = (sol-item-cost) * (sol-ordered-qty)
+	ws-sum-qty = sum (sol-ordered-qty) 
+	ws-sum-price = sum (sol-line-amount) 
+	ws-sum-cost = sum (ws-item-cost)
+	ws-state = 'VIC' 
+	ws-region = 'VM' 
+	sol-ordered-qty
+	sol-line-amount
+	sol-item-cost
+	so-order-date
+	so-order-no
+	so-bo-suffix
+from
+	sales-order-line
+	sales-order
+	stock-master
+where
+	so-order-date between today () - 7 and today () - 1 
+	and 
+	sol-ordered-qty > 0 
+	and 
+	so-order-type-code != 'Q' 
+order by stock-code 
+group by stock-code
+format is lotus

@@ -1,0 +1,4 @@
+update gl-trans
+	set gl-accountcode = "6M6402135"
+where
+	gl-accountcode = "Z3IV"

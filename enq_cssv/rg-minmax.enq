@@ -1,0 +1,12 @@
+// show stock items with Non Zero min & max
+select
+	stock-code
+	whse-code
+	whse-min-stock
+	whse-max-stock
+from
+	stock-warehouse-detail
+where
+	( ( whse-min-stock != 0  ) AND
+	( whse-max-stock != 0  ) )
+format is lst

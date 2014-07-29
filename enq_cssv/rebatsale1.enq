@@ -1,0 +1,83 @@
+select
+	stock-code
+	ws-supp = substring (stock-code 1 3) 
+	ash-type
+	ash-years-ago
+	ash-value
+	ash-cost
+	ash-qty
+	ws-qty = sum-array (ash-qty 1 6) 
+	ws-cost = sum-array (ash-cost 1 6) 
+	ws-value = sum-array (ash-value 1 6) 
+from
+	stock-master
+	stock-aged-sales-history
+where
+	ash-type = 'O' 
+	and ash-years-ago = 0 
+	and ws-supp in { 'BCR' 'BUR' 'CHS' 'DHF' 'DHB' 'END' 'FCR' 'FUR' 'FUN' 'LMI' 'ACC' 'APD' 'AUS' 
+	'LIE' 'LIZ' 'MIO' 'PRV' 'RIP' 'SEA' 'SOP' 'BCT' 'SMS' 'SBM' 'SYL' 'TFF' 'LIV' 
+	'JOY' 'MCC' 'HYC' 'KEO' 'LND' 'MAR' 'OBR' 'MFU' 'OZL' 'PIN' 'PGA' 'ABE' 
+	'BAM' 'BWZ' 'BER' 'CHP' 
+	'RBB' 'SIL' 'VIT' 'WEN' 'WTA' 'SSH' 'DBM' 'DES' 'SLE' 'SIM' 'SIB' 'ENX' 
+	'DEE' 'CAD' 'KIT' 'LIF' } 
+order by ws-supp 
+format is rpt
+field new-ws-supp pic 9
+field total-ws-qty like ws-qty
+field sub-tot-ws-qty like ws-qty
+field total-ws-cost like ws-cost
+field sub-tot-ws-cost like ws-cost
+field total-ws-value like ws-value
+field sub-tot-ws-value like ws-value
+report header
+	page
+	set total-ws-qty = 0
+	set total-ws-cost = 0
+	set total-ws-value = 0
+header
+	print 
+		"Sales by Supplier for last 6 months" in col 36
+		today() in col 102
+		"Pageno." in col 118
+		pageno() in col 126
+	print "ON-RANGE SUPPLIERS" in col 44 bold 
+	skip
+	print
+		"ws-qty" in col 41
+		"ws-cost" in col 74
+		"ws-value" in col 105
+	print
+		"supp" in col 7
+	skip 1
+before ws-supp
+	set new-ws-supp = 1
+	set sub-tot-ws-qty = 0
+	set sub-tot-ws-cost = 0
+	set sub-tot-ws-value = 0
+
+detail
+	if (new-ws-supp)
+		print ws-supp in col 8 pic x(4) no newline
+	endif
+	set new-ws-supp = 0
+	set total-ws-qty += ws-qty
+	set sub-tot-ws-qty += ws-qty
+	set total-ws-cost += ws-cost
+	set sub-tot-ws-cost += ws-cost
+	set total-ws-value += ws-value
+	set sub-tot-ws-value += ws-value
+after ws-supp
+	print
+		sub-tot-ws-qty in col 36
+		sub-tot-ws-cost in col 69
+		sub-tot-ws-value in col 102
+report footer
+	print
+		"-----------------" in col 36
+		"-----------------" in col 69
+		"-----------------" in col 102
+	print
+		total-ws-qty in col 36
+		total-ws-cost in col 69
+		total-ws-value in col 102

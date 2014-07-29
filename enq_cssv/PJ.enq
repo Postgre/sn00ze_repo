@@ -1,0 +1,10 @@
+select
+	gl-accountcode
+	gl-alt-key
+	gl-normal-balance-flag
+	gl-sequence-flag
+	gl-desc
+from
+	gl-master
+where gl-accountcode between "5M84012" and "5M84012~"
+format is lst

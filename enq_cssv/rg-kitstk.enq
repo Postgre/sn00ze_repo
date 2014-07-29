@@ -1,0 +1,9 @@
+// stock with type of K for kit
+select
+	stock-code
+	stk-stock-status
+from
+	stock-master
+where
+	( stk-stock-status = "K"  )
+format is lst

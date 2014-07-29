@@ -1,0 +1,19 @@
+select
+	stock-code
+	sup-shipping-method-code
+	stk-sales-tax-paid-rate
+	stk-trans-date
+	ws-start-date = input
+		date
+		prompt is "Start date"
+	ws-end-date = input
+		date
+		prompt is "End Date"
+from
+	stock-supplier
+	stock-master
+	stock-movements
+where
+	stk-sales-tax-paid-rate != 0  
+	and stk-trans-date between ws-start-date and ws-end-date 
+format is lst

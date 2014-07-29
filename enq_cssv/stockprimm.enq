@@ -1,0 +1,8 @@
+select
+	stock-code
+	prc-wholesale-price
+from
+	stock-master
+	stock-price
+order by prc-wholesale-price descending 
+format is lst

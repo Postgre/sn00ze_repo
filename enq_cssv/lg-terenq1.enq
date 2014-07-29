@@ -1,0 +1,10 @@
+// territory Enquiry
+select
+	accountcode
+	territory
+	warehouse
+from
+	deb-master
+where
+	warehouse != "101"
+format is lst

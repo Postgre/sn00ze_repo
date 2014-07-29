@@ -1,0 +1,109 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	whse-code
+	whse-qty-on-hand
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-qty
+	ws-qty-sold = sum-array (ash-qty 1 12) 
+	ws-start-whse = input
+		string
+		prompt is "Enter Start Warehouse code:"
+	ws-end-whse = input
+		string
+		prompt is "Enter End   Warehouse code:"
+	prc-wholesale-price
+	prc-recommend-retail
+	ws-regional = (prc-wholesale-price * 1.1 ) 
+	ws-metro = (prc-recommend-retail * 1.1 ) 
+	ash-value
+	ws-value = sum-array (ash-value 1 12) 
+	ash-cost
+	ws-cost = sum-array (ash-cost 1 12) 
+	ws-gp = ((ws-value - ws-cost ) / ws-value ) * 100 
+	ws-year = input
+		numeric
+		prompt is "Enter financial year (ie: 2001=Jul01 to Jun02, 2002=Jul02 to Jun03):"
+from
+	stock-master
+	stock-warehouse-detail
+	stock-aged-sales-history
+	stock-price
+where
+	whse-code between ws-start-whse and ws-end-whse 
+	and ash-whse = whse-code 
+	and whse-qty-on-hand > 0 
+	and ash-type = 'O' 
+	and ash-years-ago = ws-year 
+order by stock-code whse-code 
+format is lst
+suppress stk-description
+suppress stk-desc-line-2
+suppress ash-type
+suppress ash-years-ago
+suppress ash-whse
+suppress ash-qty[1]
+suppress ash-qty[2]
+suppress ash-qty[3]
+suppress ash-qty[4]
+suppress ash-qty[5]
+suppress ash-qty[6]
+suppress ash-qty[7]
+suppress ash-qty[8]
+suppress ash-qty[9]
+suppress ash-qty[10]
+suppress ash-qty[11]
+suppress ash-qty[12]
+suppress ash-qty[13]
+suppress ws-start-whse
+suppress ws-end-whse
+suppress prc-wholesale-price
+suppress prc-recommend-retail
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ash-cost[1]
+suppress ash-cost[2]
+suppress ash-cost[3]
+suppress ash-cost[4]
+suppress ash-cost[5]
+suppress ash-cost[6]
+suppress ash-cost[7]
+suppress ash-cost[8]
+suppress ash-cost[9]
+suppress ash-cost[10]
+suppress ash-cost[11]
+suppress ash-cost[12]
+suppress ash-cost[13]
+suppress ws-year
+field order is stock-code stk-description stk-desc-line-2 whse-code whse-qty-on-hand ws-qty-sold ws-metro ws-regional
+display pic of whse-qty-on-hand is zzz9
+display pic of ws-qty-sold is zzz9
+display pic of prc-wholesale-price is z,zz9.99
+display pic of prc-recommend-retail is z,zz9.99
+display pic of ws-regional is z,zz9.99
+display pic of ws-metro is z,zz9.99
+display pic of ws-value is zzz,zz9.99-
+display pic of ws-cost is zzz,zz9.99-
+display pic of ws-gp is zz9.99-
+subtotal on whse-qty-on-hand
+	with breaks on stock-code
+subtotal on ws-qty-sold
+	with breaks on stock-code
+subtotal on ws-value
+	with breaks on stock-code
+subtotal on ws-cost
+	with breaks on stock-code

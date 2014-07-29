@@ -1,0 +1,1192 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	sycasexpw.spl
+//  Program Desc:	Extract Show Your Card and Save written transaction details
+//  Requested By:	Lionel van Niekerk
+//  Request Date:	31mar10
+//	Keywords	:	SYCAS
+//	Usage		:	# prospl pvi-snz/edi/sycasexpw -silentall
+//	Output		:
+//	crontab		:	/pro/pronto/bin/sycasexpw.sh 7am daily
+//===========================================================================//
+//  Copyright (C) ProViewIT Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//	Filler Usage
+//		FILLER_2		sol-id, combination of scd, so, bo and sol
+//		FILLER_3
+//		FILLER_4
+//		FILLER_5
+//  Modification History
+//  Date	Who	Chg#	What
+//	05mar14	rmd	{710.3}	upgrade to 710.3 use custom objects over ISAM file
+//						for global-sycas-lines and sycas-lines
+//	05mar14	rmd	{710}	upgrade to 710
+//	14jun13	rmd			suppress possible orphan print commands
+//	23sep10	rmd			switch to sol iteration instead of soln to align with cssc
+//	22sep10	rmd			return sol-user-only-date1 as discount datestamp
+//						to align with cssc
+//	17sep10	rmd			add state prefix to sl-source-location
+//	11sep10 rmd			remove illegal characters from stock desc
+//	10sep10	rmd			go live, switch to live output directory
+//	30aug10	rmd			convert from delivered to written sales, add scd to sol-id
+//						don't report 100% write-off's
+//	27aug10	rmd			double neg found in 'returned' lines e.g. 295:46494A
+//	23aug10	rmd			member # and club not always in expected soln x.1 x.4
+//						perform deb-master lookup to retrieve
+//	28jun10	rmd			-forever option
+//	28may10	rmd			-global option
+//	27may10	rmd			-silent option
+//	06apr10	rmd			PartnerID = EXTSNOOZE
+//  01apr10	rmd			written
+///////////////////////////////////////////////////////////////////////////////
+
+mode md-ord-enq
+	prompt "Ord Enq"
+	currency
+
+mode md-create-output
+	prompt "Create Output"
+
+mode md-create-output-global
+	prompt "Create Global Output"
+
+object flat-file
+	type external
+	file "sycasexpw.csv" //ABCCO_20080229_001.CSV
+	record
+		ff-record				pic x(600)
+	endrecord
+
+field
+	ws-partner			pic x(10)
+	ws-file-date		pic x(8) //CCYYMMDD
+	ws-file-seq			pic x(3)
+	ws-file-name		pic x(100)
+	ws-file-name-global	pic x(100)
+	ws-forever			type boolean
+	ws-destructive		type boolean
+
+//<{710.3}
+/*
+object sycas-lines
+	type isam
+	//file "/data/common/sycas-lines"
+	//file "sycas-lines"
+	//file "sycas-lines-2"		//30aug10
+	//file "written-sycas-lines"	//30aug10
+	file "written-sycas-lines-3"	//17sep10
+	record
+		sl-consolidation-division       like sys-consolidation-division
+		sl-order-no                     like so-order-no
+		sl-bo-suffix                    like so-bo-suffix
+		sl-line-seq						like sol-line-seq	//following fields satisfy sycas record 055 design
+		sl-record-type					pic x(3) 			//055
+		sl-action						pic x				//(A)dd
+		sl-time-stamp					pic x(14)			//CCYYMMDDHHMMSS
+		sl-member-number				pic x(20)
+		sl-stock-code					like stock-code
+		sl-stk-description				pic x(50)
+		sl-qty                          pic x(10)			//IIIIIIIIDD
+		sl-gross-price                  pic x(10)			//IIIIIIIIDD
+		sl-discount-amount              pic x(10) 			//IIIIIIIDDS $100 = 10000$ 15% = 1500%
+		sl-source-location				pic x(50)
+		sl-sub-category                 pic x(50)
+		sl-category                     pic x(50)
+		sl-short-description            pic x(50)
+		sl-motor-club                   pic x(5) 			//    RAA, RACQ, RAC, RACT, AANT, RACV, NRMA
+		sl-state						pic x(4)
+		sl-status						pic x				//(R)eady, (S)ent, (H)old
+	endrecord
+	key is sl-consolidation-division sl-order-no sl-bo-suffix sl-line-seq
+	key is sl-time-stamp
+	//055,A,20080211131411,003930,123,"SOMETHING ELSE",4,2000,200,"ACT",,"UPPER ELSE","SHORT",NRMA,,,,
+object global-sycas-lines		like sycas-lines
+	type isam
+	//file "/data/common/sycas-lines"
+	//file "/data/common/sycas-lines-2" 	//30aug10
+	//file "/data/common/written-sycas-lines"	//30aug10
+	file "/pro/data/mas/written-sycas-lines-3"	//17sep10	//{710} /data/common created
+*/
+//>{710.3}
+
+procedure main
+	set ws-destructive = FALSE
+	get system-control first
+	//message "sycas debug: " sys-consolidation-division
+	set ws-partner 		= "EXTSNOOZE" // "SNOOZE"
+	set ws-file-date 	= format-picture(today(),"YYYYMMDD")
+	//set ws-file-seq	    = "001"
+	set ws-file-seq	    = sys-consolidation-division
+	//10sep10 ----------------------------------- start
+	if get-param(2) = "-test"
+		//set ws-file-name 	= strconcat("/pro/pronto/edi/out/flatfile/globalred_tests/" ws-partner "_" ws-file-date "_" ws-file-seq "w.csv")	//{710}
+		//set ws-file-name-global = strconcat("/pro/pronto/edi/out/flatfile/globalred_tests/" ws-partner "_" ws-file-date "_000w.csv")          //{710}
+		set ws-file-name 	= strconcat("/2k12export/710/sycas/test_" ws-partner "_" ws-file-date "_" ws-file-seq "w.csv")						//{710}
+		set ws-file-name-global = strconcat("/2k12export/710/sycas/test_" ws-partner "_" ws-file-date "_000w.csv")                             //{710}
+		else
+		//set ws-file-name 	= strconcat("/pro/pronto/edi/out/flatfile/globalred/" ws-partner "_" ws-file-date "_" ws-file-seq "x.csv")			//{710}
+		//set ws-file-name-global = strconcat("/pro/pronto/edi/out/flatfile/globalred/" ws-partner "_" ws-file-date "_000x.csv")                //{710}
+		set ws-file-name 	= strconcat("/2k12export/710/sycas/" ws-partner "_" ws-file-date "_" ws-file-seq "x.csv")							//{710}
+        set ws-file-name-global = strconcat("/2k12export/710/sycas/" ws-partner "_" ws-file-date "_000x.csv")		                            //{710}
+	endif
+	//10sep10 ------------------------------------- end
+	if ws-destructive
+		command "sh"
+			parameters
+				"-c"
+				"rm written-syc*"
+	endif
+	get sycas-lines first
+	on error
+		open sycas-lines create permanent
+		on error
+			command "sh"
+				parameters
+					"-c"
+					"rm written-sycas-lines-3*"
+			open sycas-lines create permanent
+		endon
+	endon
+	get global-sycas-lines first
+	on error
+		//message sys-consolidation-division ": Had to create global-sycas-lines"
+		open global-sycas-lines create permanent
+	endon
+
+	set ws-forever = FALSE
+	if get-param(1) = "-silent"
+		do build-dataset
+		do create-output
+	elseif get-param(1) = "-buildonly"
+		//message "-buildonly"
+		do build-dataset
+	elseif get-param(1) = "-global"
+		do display-in-grid-global
+	elseif get-param(1) = "-silentall"
+		do silent-all
+	elseif get-param(1) = "-forever"
+		set ws-forever = TRUE
+		//set ws-file-name-global = strconcat("/pro/pronto/edi/out/flatfile/sycas_forever_" ws-partner "_" ws-file-date "_000.csv")	//{710}
+		set ws-file-name-global = strconcat("/2k12export/710/sycas/sycas_forever_" ws-partner "_" ws-file-date "_000.csv")          //{710}
+		do silent-all
+	else
+		do build-dataset
+		do display-in-grid
+	endif
+endprocedure // main ----------------------------------------------------------
+
+procedure silent-all
+	report "SILENT All"
+		spool-only
+		extract system-companies
+			detail
+				if sys-comp-spare2 = "Y"
+					if ws-forever
+						//message "Y:" strconcat(sys-comp-code ":" sys-comp-path)
+					endif
+					print
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"SYCASEXPW called"
+					command "sh"
+						parameters
+							"-c"
+							//concat("cd " strconcat(sys-comp-path) ";prospl rmd/edi/sycasexpw -buildonly")		//{710}
+							concat("cd " strconcat(sys-comp-path) ";prospl pvi-snz/edi/sycasexpw -buildonly")	//{710}
+					//sync disc reason (VU) and SYCAS membership types (ZM)
+
+					command "sh"
+						parameters
+							"-c"
+							concat("cd " strconcat(sys-comp-path) ";prospl pvi-snz/sys/stsync VU")
+					print
+						"Sync VU"
+					command "sh"
+						parameters
+							"-c"
+							concat("cd " strconcat(sys-comp-path) ";prospl pvi-snz/sys/stsync ZM")
+					print
+						"Sync ZM"
+				else
+					if ws-forever
+						//message "N:" strconcat(sys-comp-code ":" sys-comp-path)
+					endif
+					print
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"SYCASEXPW not called"
+				endif
+			endextract
+			do create-output-global
+	report finished
+endprocedure // silent-all ----------------------------------------------------
+
+
+procedure build-dataset //23sep10
+local field
+	lf-price			type numeric
+	lf-disc				type numeric
+	lf-ordered-qty		like sol-ordered-qty
+	lf-qty-sign			pic x
+	lf-so-order-no      like so-order-no
+	lf-so-bo-suffix     like so-bo-suffix
+	lf-sol-line-seq     like sol-line-seq
+	lf-soln-seq-no 		like soln-seq-no
+	lf-sol-line-seq-int	like sol-line-seq
+	lf-archive-or-open	pic x
+	lf-postcode			like postcode
+	lf-testing-date		type date
+	//lf-state			pic x(10)
+	//
+	//lf-sol-line-seq		like sol-line-seq
+	//message sys-consolidation-division ":build-dataset"
+	extract sales-order-line//-archive
+		on index sol-line-type stock-code so-order-no so-bo-suffix
+		key is "DN" SPACES 0 SPACES
+		next same sol-line-type
+	detail
+		//
+		//test for MW/SC
+		if sol-user-only-alpha4-2 in {"P" "D"} and sol-user-only-alpha4-1 in {"SC" "MW"}// lf-testing-date between ws-start-date and ws-end-date		//13sep10
+		else
+			continue
+		endif
+		set lf-testing-date = date-from-date-time(sol-user-only-date1,1) //13sep10
+		set sl-time-stamp = strconcat(format-picture(date-from-date-time(sol-user-only-date1,1),"YYYYMMDD") format-picture(time-from-date-time(sol-user-only-date1,1),"HHMMSS")) //pic x(14)		//CCYYMMDDHHMMS
+		get sales-order
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error
+			continue
+			//set so-territory-code = "NF"
+			//set so-cust-code = "No Order"
+		endon
+		//get header info
+		set sys-description = SPACES
+		get system-table
+			on index sys-tbl-type sys-tbl-code
+			key is "TC" strconcat(so-territory-code)
+		on error
+			set sl-source-location = strconcat(sys-consolidation-division ":" so-territory-code ":")
+		else
+			set sl-source-location = strconcat(sys-consolidation-division ":" so-territory-code ":" sys-description)
+		endon
+		if sys-description = SPACES
+			//<14jun13
+			//print
+			//	"Cannot find"
+			//	strconcat(sys-consolidation-division ":" so-territory-code)
+			//	so-order-no
+			//	so-bo-suffix
+			//>14jun13
+		endif
+		//get member info
+		get deb-master
+			on index accountcode
+			key is so-cust-code
+		on error
+			//set sl-member-number 	= "MEMBER NOT FOUND"
+		else
+			if accountcode != territory
+				set sl-member-number 	= dr-user-only-alpha20-2
+				set sl-motor-club 		= dr-user-only-alpha4-2
+			else //cash sale
+				set sl-member-number 	= "140267"
+				set sl-motor-club 		= "RACV"
+			endif
+		endon
+		//get gross price and discount (inc gst) from this sol
+		set lf-price 			= sol-user-only-num1
+		set lf-disc 			= sol-user-only-num1 - sol-user-only-num2
+		//get state
+		set sl-state = "---"
+		if sl-state = "---"
+			switch on substring(so-territory-code,1,1)
+				case "1"
+					set sl-state = "NSW*"
+				case "2"
+					set sl-state = "QLD*"
+				case "3"
+					set sl-state = "VIC*"
+				case "6"
+					set sl-state = "WA *"
+				case "8"
+					set sl-state = "SA *"
+				else
+					set sl-state = "VIC+"
+			endswitch
+		endif
+		//
+		set lf-so-order-no      = so-order-no
+		set lf-so-bo-suffix     = so-bo-suffix
+		set lf-sol-line-seq     = sol-line-seq
+		//set lf-soln-seq-no 		= soln-seq-no
+		set lf-sol-line-seq-int = integer(sol-line-seq)
+		set lf-archive-or-open 	= "O" //SPACES
+		//get stock-code from related SN sales-order-line
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq-int
+		on error
+    		get sales-order-line
+				on index so-order-no so-bo-suffix sol-line-seq
+				key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+			continue
+		else
+			set sl-stock-code 		= stock-code
+			set lf-ordered-qty		= sol-ordered-qty
+			if lf-ordered-qty < 0		//30aug10
+				set lf-qty-sign = "-"
+			else
+				set lf-qty-sign = SPACES
+			endif
+			get stock-master
+			on error
+				set sl-stk-description 	= "ITEM NOT FOUND"
+			else
+				//11sep10
+				set sl-stk-description 	= substring(concat(strconcat(stk-description) " " strconcat(stk-desc-line-2)),1,50)
+				do string-clean
+					parameters
+						sl-stk-description
+					returning
+						sl-stk-description
+			endon
+		endon
+		// restore the DN line to continue the extract with correct record
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+		//
+		get sycas-lines
+			on index sl-consolidation-division sl-order-no sl-bo-suffix sl-line-seq
+			key is sys-consolidation-division so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sl-consolidation-division       = sys-consolidation-division
+			set sl-order-no                     = so-order-no
+			set sl-bo-suffix                    = so-bo-suffix
+			set sl-line-seq						= sol-line-seq
+			set sl-record-type					= "055"
+			set sl-action						= "A"
+			set sl-qty                          = strconcat(str(lf-ordered-qty))	              //30aug10
+			set sl-gross-price                  = left-justify(concat(substring(fstr(lf-price,8,2)1,8) substring(fstr(lf-price,8,2)10,11)))
+			set sl-discount-amount              = left-justify(concat(substring(fstr(lf-disc,7,2)1,7) substring(fstr(lf-disc,7,2)9,10)))
+			set sl-status						= "R"
+			insert sycas-lines
+		endon
+		get global-sycas-lines
+			on index sl-consolidation-division sl-order-no sl-bo-suffix sl-line-seq
+			key is sys-consolidation-division so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sl-consolidation-division       = sys-consolidation-division
+			set sl-order-no                     = so-order-no
+			set sl-bo-suffix                    = so-bo-suffix
+			set sl-line-seq						= sol-line-seq
+			set sl-record-type					= "055"
+			set sl-action						= "A"
+			set sl-qty                          = strconcat(str(lf-ordered-qty))	              //30aug10
+			set sl-gross-price                  = left-justify(concat(substring(fstr(lf-price,8,2)1,8) substring(fstr(lf-price,8,2)10,11)))
+			set sl-discount-amount              = left-justify(concat(substring(fstr(lf-disc,7,2)1,7) substring(fstr(lf-disc,7,2)9,10)))
+			set sl-status						= "R"
+			insert global-sycas-lines
+		endon
+	endextract
+	//process archived orders
+	extract sales-order-line-archive
+		on index sol-line-type stock-code so-order-no so-bo-suffix
+		key is "DN" SPACES 0 SPACES
+		next same sol-line-type
+	detail
+		//
+		//test for MW/SC
+		if sol-user-only-alpha4-2 in {"P" "D"} and sol-user-only-alpha4-1 in {"SC" "MW"}// lf-testing-date between ws-start-date and ws-end-date		//13sep10
+		else
+			continue
+		endif
+		set lf-testing-date = date-from-date-time(sol-user-only-date1,1) //13sep10
+		set sl-time-stamp = strconcat(format-picture(date-from-date-time(sol-user-only-date1,1),"YYYYMMDD") format-picture(time-from-date-time(sol-user-only-date1,1),"HHMMSS")) //pic x(14)		//CCYYMMDDHHMMS
+		get sales-order-archive
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error
+			continue
+			//set so-territory-code = "NF"
+			//set so-cust-code = "No Order"
+		endon
+		//get header info
+		set sys-description = SPACES
+		get system-table
+			on index sys-tbl-type sys-tbl-code
+			key is "TC" strconcat(so-territory-code)
+		on error
+			set sl-source-location = strconcat(sys-consolidation-division ":" so-territory-code ":")
+		else
+			set sl-source-location = strconcat(sys-consolidation-division ":" so-territory-code ":" sys-description)
+		endon
+		if sys-description = SPACES
+			//<14jun13
+			//print
+			//	"Cannot find"
+			//	strconcat(sys-consolidation-division ":" so-territory-code)
+			//	so-order-no
+			//	so-bo-suffix
+			//>14jun13
+		endif
+		//get member info
+		get deb-master
+			on index accountcode
+			key is so-cust-code
+		on error
+			//set sl-member-number 	= "MEMBER NOT FOUND"
+		else
+			if accountcode != territory
+				set sl-member-number 	= dr-user-only-alpha20-2
+				set sl-motor-club 		= dr-user-only-alpha4-2
+			else //cash sale
+				set sl-member-number 	= "140267"
+				set sl-motor-club 		= "RACV"
+			endif
+		endon
+		//get gross price and discount (inc gst) from this sol
+		set lf-price 			= sol-user-only-num1
+		set lf-disc 			= sol-user-only-num1 - sol-user-only-num2
+		//get state
+		set sl-state = "---"
+		if sl-state = "---"
+			switch on substring(so-territory-code,1,1)
+				case "1"
+					set sl-state = "NSW*"
+				case "2"
+					set sl-state = "QLD*"
+				case "3"
+					set sl-state = "VIC*"
+				case "6"
+					set sl-state = "WA *"
+				case "8"
+					set sl-state = "SA *"
+				else
+					set sl-state = "VIC+"
+			endswitch
+		endif
+		//
+		set lf-so-order-no      = so-order-no
+		set lf-so-bo-suffix     = so-bo-suffix
+		set lf-sol-line-seq     = sol-line-seq
+		//set lf-soln-seq-no 		= soln-seq-no
+		set lf-sol-line-seq-int = integer(sol-line-seq)
+		set lf-archive-or-open 	= "O" //SPACES
+		//get stock-code from related SN sales-order-line
+		get sales-order-line-archive
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq-int
+		on error
+	 		get sales-order-line-archive
+					on index so-order-no so-bo-suffix sol-line-seq
+					key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+				continue
+			//continue
+		else
+			set sl-stock-code 		= stock-code
+			set lf-ordered-qty		= sol-ordered-qty
+			if lf-ordered-qty < 0		//30aug10
+				set lf-qty-sign = "-"
+			else
+				set lf-qty-sign = SPACES
+			endif
+			get stock-master
+			on error
+				set sl-stk-description 	= "ITEM NOT FOUND"
+			else
+				//11sep10
+				set sl-stk-description 	= substring(concat(strconcat(stk-description) " " strconcat(stk-desc-line-2)),1,50)
+				do string-clean
+					parameters
+						sl-stk-description
+					returning
+						sl-stk-description
+			endon
+		endon
+		// restore the DN line to continue the extract with correct record
+		get sales-order-line-archive
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+		//
+		get sycas-lines
+			on index sl-consolidation-division sl-order-no sl-bo-suffix sl-line-seq
+			key is sys-consolidation-division so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sl-consolidation-division       = sys-consolidation-division
+			set sl-order-no                     = so-order-no
+			set sl-bo-suffix                    = so-bo-suffix
+			set sl-line-seq						= sol-line-seq
+			set sl-record-type					= "055"
+			set sl-action						= "A"
+			set sl-qty                          = strconcat(str(lf-ordered-qty))	              //30aug10
+			set sl-gross-price                  = left-justify(concat(substring(fstr(lf-price,8,2)1,8) substring(fstr(lf-price,8,2)10,11)))
+			set sl-discount-amount              = left-justify(concat(substring(fstr(lf-disc,7,2)1,7) substring(fstr(lf-disc,7,2)9,10)))
+			set sl-status						= "R"
+			insert sycas-lines
+		endon
+		get global-sycas-lines
+			on index sl-consolidation-division sl-order-no sl-bo-suffix sl-line-seq
+			key is sys-consolidation-division so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sl-consolidation-division       = sys-consolidation-division
+			set sl-order-no                     = so-order-no
+			set sl-bo-suffix                    = so-bo-suffix
+			set sl-line-seq						= sol-line-seq
+			set sl-record-type					= "055"
+			set sl-action						= "A"
+			set sl-qty                          = strconcat(str(lf-ordered-qty))	              //30aug10
+			set sl-gross-price                  = left-justify(concat(substring(fstr(lf-price,8,2)1,8) substring(fstr(lf-price,8,2)10,11)))
+			set sl-discount-amount              = left-justify(concat(substring(fstr(lf-disc,7,2)1,7) substring(fstr(lf-disc,7,2)9,10)))
+			set sl-status						= "R"
+			insert global-sycas-lines
+		endon
+	endextract
+endprocedure // build-dataset -------------------------------------------------
+
+
+//procedure build-dataset-old //23sep10
+//local field
+//	lf-price			type numeric
+//	lf-disc				type numeric
+//	lf-qty-sign			pic x
+//	lf-so-order-no      like so-order-no
+//	lf-so-bo-suffix     like so-bo-suffix
+//	lf-sol-line-seq     like sol-line-seq
+//	lf-soln-seq-no 		like soln-seq-no
+//	lf-archive-or-open	pic x
+//	lf-postcode			like postcode
+//	//lf-state			pic x(10)
+//	//
+//	//lf-sol-line-seq		like sol-line-seq
+//	//message sys-consolidation-division ":build-dataset"
+//	extract sales-order-line-notes //sales-order-line-archive
+//		when soln-type = "PS" and fraction(soln-seq-no) = 0.1
+//	detail
+//		set lf-so-order-no      = so-order-no
+//		set lf-so-bo-suffix     = so-bo-suffix
+//		set lf-sol-line-seq     = sol-line-seq
+//		set lf-soln-seq-no 		= soln-seq-no
+//		set lf-archive-or-open 	= SPACES
+//		//message so-order-no so-bo-suffix sol-line-seq soln-seq-no
+//		//set lf-sol-line-seq = sol-line-seq - 0.1
+//		//30aug10 ----------------------------------------------- start
+//		// no longer a need to skip if sola not found!
+//		//get sales-order-line-archive lock
+//		//	on index so-order-no so-bo-suffix sol-line-seq
+//		//	key is so-order-no so-bo-suffix sol-line-seq
+//		//on error
+//		//	//message "no sola"
+//		//	continue
+//		//else
+//		//	//message "found sola" so-order-no so-bo-suffix sol-line-seq
+//		//	if sol-user-only-num2 = 140267
+//		//		//message "already captured"
+//		//		//continue
+//		//	endif
+//		//endon
+//		//set sol-user-only-num2 = 140267
+//		//update sales-order-line-archive//
+//		//	on error
+//		//	endon
+//		//determine open or archive
+//		get sales-order-line
+//		on error
+//			get sales-order-line-archive
+//			on error
+//				continue
+//			else
+//				set lf-archive-or-open 	= "A"
+//			endon
+//		else
+//			set lf-archive-or-open 	= "O"
+//		endon
+//		//get name-and-address-master
+//		//	on index accountcode na-type
+//		//	key is strconcat(so-territory-code) "TC"
+//		//on error
+//		//	set sl-state = "---"
+//		//else
+//		//	set sl-state = "---"
+//		//	set lf-postcode			= postcode
+//		//	extract postcodes
+//		//		on index postcode
+//		//		key is lf-postcode
+//		//		next same postcode
+//		//	detail
+//		//		if postcode-state != SPACES
+//		//			set sl-state = postcode-state
+//		//			break
+//		//		endif
+//		//	endextract
+//		//endon
+//		set sl-state = "---"
+//		if sl-state = "---"
+//			switch on substring(so-territory-code,1,1)
+//				case "1"
+//					set sl-state = "NSW*"
+//				case "2"
+//					set sl-state = "QLD*"
+//				case "3"
+//					set sl-state = "VIC*"
+//				case "6"
+//					set sl-state = "WA *"
+//				case "8"
+//					set sl-state = "SA *"
+//				else
+//					set sl-state = "VIC+"
+//			endswitch
+//		endif
+//		//30aug10 ------------------------------------------------- end
+//		// sycas discount
+//		set sl-stock-code = stock-code
+//		set lf-price 	= sol-item-price
+//		//if sol-shipped-qty < 0    //30aug10
+//		if sol-ordered-qty < 0		//30aug10
+//			set lf-qty-sign = "-"
+//		else
+//			set lf-qty-sign = SPACES
+//		endif
+//		//30aug10 written sales
+//		//if sol-shipped-qty = 0 //avoid div by 0 error
+//		if sol-ordered-qty = 0 //avoid div by 0 error
+//			set lf-disc 	= 0
+//		else
+//			//set lf-disc 	= sol-shipped-discount-amt / sol-shipped-qty	//30aug10
+//			set lf-disc 	= sol-ordered-disc-amt / sol-ordered-qty	//30aug10
+//		endif
+//		//30aug10 -------------------------------------------- start
+//		//30aug10 some users apply price override instead of discount
+//		//see if a price override record exists and use those values
+//		if lf-disc = 0
+//			get sales-order-line
+//				on index so-order-no so-bo-suffix sol-line-seq
+//				key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq + 0.22
+//			on error
+//				get sales-order-line-archive
+//					on index so-order-no so-bo-suffix sol-line-seq
+//					key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq + 0.22
+//				on error
+//					//if no discount and no price override can be found, skip recore
+//					continue
+//				endon
+//			endon
+//			//x.22 record holds price override info
+//			//sol-user-only-num1: old unit price
+//			//sol-user-only-num2: new unit price
+//			set lf-price = sol-user-only-num1
+//			set lf-disc = sol-user-only-num1 - sol-user-only-num2
+//			//22sep10 pickup datestamp from user only field in 0.22 DISC note line
+//			set sl-time-stamp = strconcat(format-picture(date-from-date-time(sol-user-only-date1,1),"YYYYMMDD") format-picture(time-from-date-time(sol-user-only-date1,1),"HHMMSS")) //pic x(14)		//CCYYMMDDHHMMS
+//		endif
+//		//reset numbering
+//		set so-order-no     = lf-so-order-no
+//		set so-bo-suffix    = lf-so-bo-suffix
+//		set sol-line-seq	= lf-sol-line-seq
+//		//regain currency on sol/sola
+//		if lf-archive-or-open = "A"
+//			get sales-order-line-archive
+//		elseif lf-archive-or-open = "O"
+//			get sales-order-line
+//		endif
+//		//30aug10 ---------------------------------------------- end
+//		get stock-master
+//		on error
+//			set sl-stk-description 	= "ITEM NOT FOUND"
+//		else
+//			//11sep10
+//			set sl-stk-description 	= substring(concat(strconcat(stk-description) " " strconcat(stk-desc-line-2)),1,50)
+//			do string-clean
+//				parameters
+//					sl-stk-description
+//				returning
+//					sl-stk-description
+//		endon
+//		//30aug10 -------------------------------------- start
+//		//get sales-order-archive
+//		//	on index so-order-no so-bo-suffix
+//		//	key is so-order-no so-bo-suffix
+//		//on error
+//		//	//message "cannot find soa"
+//		//	//set so-territory-code = "NSO"
+//		//	//set sl-source-location = strconcat(sys-consolidation-division ":" so-territory-code ":")
+//		//	continue
+//		//else
+//		//	set sys-description = SPACES
+//		//	get system-table
+//		//		on index sys-tbl-type sys-tbl-code
+//		//		key is "TC" strconcat(so-territory-code)
+//		//	on error
+//		//		//message "cannot find" strconcat(so-territory-code)
+//		//		set sl-source-location = strconcat(sys-consolidation-division ":" so-territory-code ":")
+//		//	else
+//		//		//message "found" strconcat(so-territory-code) ":" sys-description
+//		//		set sl-source-location = strconcat(sys-consolidation-division ":" so-territory-code ":" sys-description)
+//		//		//message sl-source-location
+//		//	endon
+//		//	if sys-description = SPACES
+//		//		print
+//		//			"Cannot find"
+//		//			strconcat(sys-consolidation-division ":" so-territory-code)
+//		//			so-order-no
+//		//			so-bo-suffix
+//		//	endif
+//		//endon
+//		get sales-order
+//			on index so-order-no so-bo-suffix
+//			key is so-order-no so-bo-suffix
+//		on error
+//			get sales-order-archive
+//				on index so-order-no so-bo-suffix
+//				key is so-order-no so-bo-suffix
+//			on error
+//				//message "cannot find soa"
+//				//set so-territory-code = "NSO"
+//				//set sl-source-location = strconcat(sys-consolidation-division ":" so-territory-code ":")
+//				continue
+//			endon
+//		endon
+//				//17sep10 --------------------- start
+//		//lf-state			pic x(10)
+//
+//		//17sep10 ----------------------- end
+//		//
+//		//if we've made it this for we have currency on a sales order regardless of open or archive
+//		set sys-description = SPACES
+//		get system-table
+//			on index sys-tbl-type sys-tbl-code
+//			key is "TC" strconcat(so-territory-code)
+//		on error
+//			//message "cannot find" strconcat(so-territory-code)
+//			set sl-source-location = strconcat(sys-consolidation-division ":" so-territory-code ":")
+//			//set sl-source-location = strconcat(sl-state ":" sys-consolidation-division ":" so-territory-code ":") 					//17sep10
+//		else
+//			//message "found" strconcat(so-territory-code) ":" sys-description
+//			set sl-source-location = strconcat(sys-consolidation-division ":" so-territory-code ":" sys-description)
+//			//set sl-source-location = strconcat(lf-state ":" sys-consolidation-division ":" so-territory-code ":" sys-description) 	//17sep10
+//			//message sl-source-location
+//		endon
+//		if sys-description = SPACES
+//			print
+//				"Cannot find"
+//				strconcat(sys-consolidation-division ":" so-territory-code)
+//				so-order-no
+//				so-bo-suffix
+//		endif
+//		//30aug10 ---------------------------------------- end
+//		set sl-member-number 	= soln-text
+//		set soln-seq-no 		= lf-soln-seq-no + 0.3
+//		get sales-order-line-notes
+//			on error
+//			set sl-motor-club  	= "RRAC"
+//		else
+//			set sl-motor-club  	= soln-text
+//		endon
+//		//23aug10 sometimes member number is not in x.1 soln and club not in x.4
+//		get deb-master
+//			on index accountcode
+//			key is so-cust-code
+//		on error
+//			//set sl-member-number 	= "MEMBER NOT FOUND"
+//		else
+//			if accountcode != territory
+//				set sl-member-number 	= dr-user-only-alpha20-2
+//				set sl-motor-club 		= dr-user-only-alpha4-2
+//			endif
+//		endon
+//		//restore original
+//		set soln-seq-no 	= lf-soln-seq-no
+//		get sales-order-line-notes
+//		//30aug10 ignore write off's and items with 0 gross
+//		if lf-price = lf-disc or lf-price = 0
+//			continue
+//		endif
+//		get sycas-lines
+//			on index sl-consolidation-division sl-order-no sl-bo-suffix sl-line-seq
+//			key is sys-consolidation-division so-order-no so-bo-suffix sol-line-seq
+//		on error
+//			set sl-consolidation-division       = sys-consolidation-division
+//			set sl-order-no                     = so-order-no
+//			set sl-bo-suffix                    = so-bo-suffix
+//			set sl-line-seq						= sol-line-seq
+//			//following fields satisfy sycas record 055 design
+//			set sl-record-type					= "055"
+//			set sl-action						= "A"
+//			//22sep10 set sl-time-stamp					= strconcat(format-picture(sol-date-stamp,"YYYYMMDD") format-picture(sol-time-stamp,"HHMMSS")) //pic x(14)		//CCYYMMDDHHMMS
+//			//set sl-qty                          = strconcat(lf-qty-sign str(sol-shipped-qty))	//27aug10
+//			//set sl-qty                          = strconcat(str(sol-shipped-qty))               //27aug10
+//			set sl-qty                          = strconcat(str(sol-ordered-qty))	              //30aug10
+//			set sl-gross-price                  = left-justify(concat(substring(fstr(lf-price,8,2)1,8) substring(fstr(lf-price,8,2)10,11)))
+//			set sl-discount-amount              = left-justify(concat(substring(fstr(lf-disc,7,2)1,7) substring(fstr(lf-disc,7,2)9,10)))
+//			set sl-status						= "R"
+//			insert sycas-lines
+//		endon
+//		get global-sycas-lines
+//			on index sl-consolidation-division sl-order-no sl-bo-suffix sl-line-seq
+//			key is sys-consolidation-division so-order-no so-bo-suffix sol-line-seq
+//		on error
+//			set sl-consolidation-division       = sys-consolidation-division
+//			set sl-order-no                     = so-order-no
+//			set sl-bo-suffix                    = so-bo-suffix
+//			set sl-line-seq						= sol-line-seq
+//			//following fields satisfy sycas record 055 design
+//			set sl-record-type					= "055"
+//			set sl-action						= "A"
+//
+//			//22sep10 set sl-time-stamp					= strconcat(format-picture(sol-date-stamp,"YYYYMMDD") format-picture(sol-time-stamp,"HHMMSS")) //pic x(14)		//CCYYMMDDHHMMS
+//			//set sl-qty                          = strconcat(lf-qty-sign str(sol-shipped-qty))	//27aug10
+//			//set sl-qty                          = strconcat(str(sol-shipped-qty))               //27aug10
+//			set sl-qty                          = strconcat(str(sol-ordered-qty))	              //30aug10
+//			set sl-gross-price                  = left-justify(concat(substring(fstr(lf-price,8,2)1,8) substring(fstr(lf-price,8,2)10,11)))
+//			set sl-discount-amount              = left-justify(concat(substring(fstr(lf-disc,7,2)1,7) substring(fstr(lf-disc,7,2)9,10)))
+//			set sl-status						= "R"
+//			insert global-sycas-lines
+//			//message "insert gsl:" sl-consolidation-division sl-order-no sl-bo-suffix
+//			//message sl-source-location
+//		endon
+//
+//
+//		//set so-order-no 	= lf-so-order-no
+//		//set so-bo-suffix    = lf-so-bo-suffix
+//		//set sol-line-seq    = lf-sol-line-seq
+//		//set soln-seq-no 	= lf-soln-seq-no
+//		//get sales-order-line-notes
+//	endextract
+//endprocedure // build-dataset-old -------------------------------------------------
+//
+procedure string-clean
+parameters
+	lp-sl-stk-description	like sl-stk-description
+returning
+	lr-sl-stk-description	like sl-stk-description
+local field
+	i						type numeric
+	//l						type numeric
+	c						pic x
+	set lr-sl-stk-description = SPACES
+	//set l = strlen(lp-sl-stk-description)
+	for i = strlen(lp-sl-stk-description) down to 1
+		set c = substring(lp-sl-stk-description,i,i)
+		if c not in {'"' "'" "," ";" ":"}
+			set lr-sl-stk-description = concat(c strconcat(lr-sl-stk-description))
+		endif
+	endfor
+endprocedure // string-clean --------------------------------------------------
+
+procedure build-dataset-old
+local field
+	lf-price			type numeric
+	lf-disc				type numeric
+	lf-qty-sign			pic x
+	extract sales-order-line-archive
+	detail
+		if sol-user-only-alpha4-2 = "SYC" // sycas discount
+			set sl-stock-code = stock-code
+			set lf-price 	= sol-item-price
+			if sol-shipped-qty < 0
+				set lf-qty-sign = "-"
+			else
+				set lf-qty-sign = SPACES
+			endif
+			if sol-shipped-qty = 0 //avoid div by 0 error
+				set lf-disc 	= 0
+			else
+				set lf-disc 	= sol-shipped-discount-amt / sol-shipped-qty
+			endif
+			get stock-master
+			on error
+				set sl-stk-description 	= "ITEM NOT FOUND"
+			else
+				set sl-stk-description 	= substring(concat(strconcat(stk-description) " " strconcat(stk-desc-line-2)),1,50)
+				do string-clean
+					parameters
+						sl-stk-description
+					returning
+						sl-stk-description
+			endon
+			get sales-order-archive
+				on index so-order-no so-bo-suffix
+				key is so-order-no so-bo-suffix
+			on error
+				continue
+			endon
+			get deb-master
+				on index accountcode
+				key is so-cust-code
+			on error
+				set sl-member-number 	= "MEMBER NOT FOUND"
+			else
+				set sl-member-number 	= dr-user-only-alpha20-2
+				set sl-motor-club 		= dr-user-only-alpha4-2
+			endon
+			get sycas-lines
+				on index sl-consolidation-division sl-order-no sl-bo-suffix sl-line-seq
+				key is sys-consolidation-division so-order-no so-bo-suffix sol-line-seq
+			on error
+				set sl-consolidation-division       = sys-consolidation-division
+				set sl-order-no                     = so-order-no
+				set sl-bo-suffix                    = so-bo-suffix
+				set sl-line-seq						= sol-line-seq
+				//following fields satisfy sycas record 055 design
+				set sl-record-type					= "055"
+				set sl-action						= "A"
+				set sl-time-stamp					= strconcat(format-picture(sol-date-stamp,"YYYYMMDD") format-picture(sol-time-stamp,"HHMMSS")) //pic x(14)		//CCYYMMDDHHMMS
+				set sl-qty                          = strconcat(lf-qty-sign str(sol-shipped-qty))
+				set sl-gross-price                  = left-justify(concat(substring(fstr(lf-price,8,2)1,8) substring(fstr(lf-price,8,2)10,11)))
+				set sl-discount-amount              = left-justify(concat(substring(fstr(lf-disc,7,2)1,7) substring(fstr(lf-disc,7,2)9,10)))
+				insert sycas-lines
+			endon
+		endif
+	endextract
+endprocedure // build-dataset-old ---------------------------------------------
+
+screen display-in-grid
+	window @1,1 to @24,90
+		title concat("Review sycas-lines")
+		primary sycas-lines
+		datagrid occurs 20
+	allowed search correct remove md-ord-enq md-create-output
+	review-from-start
+detail
+	display sl-consolidation-division	@01,02 title "sl-consolidation-division"
+	display sl-order-no                 @01,04 title "sl-order-no"
+	display sl-bo-suffix                @01,06 title "sl-bo-suffix"
+	display sl-line-seq				    @01,08 title "sl-line-seq"
+	display sl-record-type			    @01,10 title "sl-record-type"
+	display sl-action				    @01,12 title "sl-action"
+	display sl-time-stamp			    @01,14 title "sl-time-stamp"
+	display sl-member-number		    @01,16 title "sl-member-number"
+	display sl-stock-code			    @01,18 title "sl-stock-code"
+	display sl-stk-description		    @01,20 title "sl-stk-description"
+	display sl-qty                      @01,22 title "sl-qty"
+	display sl-gross-price              @01,24 title "sl-gross-price"
+	display sl-discount-amount          @01,26 title "sl-discount-amount"
+	display sl-source-location		    @01,28 title "sl-source-location"
+	display sl-sub-category             @01,30 title "sl-sub-category"
+	display sl-category                 @01,32 title "sl-category"
+	display sl-short-description        @01,34 title "sl-short-description"
+	display sl-motor-club               @01,36 title "sl-motor-club"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-ord-enq
+			spl "so/m5ordenq"
+				parameters
+					"-e"
+					sl-order-no
+					sl-bo-suffix
+		case md-create-output
+			do create-output
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+
+procedure create-output
+local field
+	lf-counter			type numeric
+	lf-sol-id			pic x(30)
+	//lf-state			pic x(10)
+	//
+	open flat-file truncate permanent
+		file ws-file-name
+	do insert-header
+	set lf-counter = 0
+	set ff-record = strconcat("HEADER,TXNREC")
+	insert flat-file
+	extract sycas-lines lock
+		on index sl-time-stamp
+		//when sl-time-stamp between "200801" and "201012"
+		when sl-status = "R"
+	detail
+		//17sep10 --------------------- start
+		//lf-state			pic x(10)
+		//get sales-order
+		//	on index so-order-no so-bo-suffix
+		//	key is sl-order-no sl-bo-suffix
+		//on error
+		//	get sales-order-archive
+		//		on index so-order-no so-bo-suffix
+		//		key is sl-order-no sl-bo-suffix
+		//	on error
+		//		set so-territory-code = "XXX"
+		//	else
+		//	endon
+		//endon
+		//if so-territory-code = "XXX"
+		//	set lf-state = "XXX"
+		//else
+		//	get name-and-address-master
+		//		on index accountcode na-type
+		//		key is so-territory-code "TC"
+		//	on error
+		//		set lf-state = "XXX"
+		//	else
+		//		get postcodes
+		//			on index postcode
+		//			key is postcode
+		//		on error
+		//			set lf-state = "XXX"
+		//		else
+		//			set lf-state = postcode-state
+		//		endon
+		//	endon
+		//endif
+		//set lf-state = substring(sl-source-location,1,3)
+		//17sep10 ----------------------- end
+		//set lf-sol-id = strconcat(str(sl-order-no) ":" sl-bo-suffix ":" str(sl-line-seq))                             //30aug10 add scd to sol-id
+		set lf-sol-id = strconcat(sl-consolidation-division ":" str(sl-order-no) ":" sl-bo-suffix ":" str(sl-line-seq))	//30aug10 add scd to sol-id
+		//set ff-record = strconcat(sl-record-type "," sl-action "," sl-time-stamp "," sl-member-number "," sl-stock-code """ "," """ sl-stk-description """ "," sl-qty "," sl-gross-price "," sl-discount-amount ",,,,," sl-motor-club ",,,,")
+		//set ff-record = strconcat(sl-record-type ',' sl-action ',' sl-time-stamp ',' sl-member-number ',"' sl-stock-code '","' sl-stk-description '",' sl-qty ',' sl-gross-price ',' sl-discount-amount ',"' substring(sl-source-location,9,50) '",,,,' sl-motor-club ',,,,')
+		if ws-forever
+			//set ff-record = strconcat(sl-record-type ',' sl-action ',' sl-time-stamp ',' sl-member-number ',"' sl-stock-code '","' sl-stk-description '",' sl-qty ',' sl-gross-price ',' sl-discount-amount ',"' strconcat(sl-source-location) '",,,,' sl-motor-club ',' lf-sol-id ',,,')
+			set ff-record = strconcat(sl-record-type ',' sl-action ',' sl-time-stamp ',' sl-member-number ',"' sl-stock-code '","' sl-stk-description '",' sl-qty ',' sl-gross-price ',' sl-discount-amount ',"' strconcat(sl-source-location) '",,,,' sl-motor-club ',' lf-sol-id ',' sl-state ',,')
+		else
+			//set ff-record = strconcat(sl-record-type ',' sl-action ',' sl-time-stamp ',' sl-member-number ',"' sl-stock-code '","' sl-stk-description '",' sl-qty ',' sl-gross-price ',' sl-discount-amount ',"' substring(sl-source-location,9,50) '",,,,' sl-motor-club ',' lf-sol-id ',,,')
+			set ff-record = strconcat(sl-record-type ',' sl-action ',' sl-time-stamp ',' sl-member-number ',"' sl-stock-code '","' sl-stk-description '",' sl-qty ',' sl-gross-price ',' sl-discount-amount ',"' substring(sl-source-location,9,50) '",,,,' sl-motor-club ',' lf-sol-id ',' sl-state ',,')
+		endif
+		insert flat-file
+		on error
+			set sl-status = "E"
+		else
+			set sl-status = "S"
+		endon
+		update sycas-lines
+		set lf-counter += 1
+	endextract
+	set ff-record = strconcat("FOOTER,TXNREC," str(lf-counter))
+	insert flat-file
+	// footer
+	set ff-record = strconcat("FOOTER," ws-partner ",FILE")
+	insert flat-file
+	command
+		"sh"
+	parameters
+		"-c"
+		concat("cat " ws-file-name " | mailx -s '" strconcat(ws-file-name) "' robd@snooze.com.au")
+	//
+	command
+		"sh"
+	parameters
+		"-c"
+		concat("(uuencode " strconcat(ws-file-name) " " strconcat(ws-file-name) "; echo 'Please find file attached') | mail -s '" strconcat(ws-file-name) "' robd@snooze.com.au")
+endprocedure // create-output -------------------------------------------------
+
+screen display-in-grid-global
+	window @1,1 to @24,90
+		title concat("Review sycas-lines")
+		primary global-sycas-lines
+		datagrid occurs 20
+	allowed search correct remove md-create-output-global
+	review-from-start
+detail
+	display sl-consolidation-division	@01,02 title "sl-consolidation-division"
+	display sl-order-no                 @01,04 title "sl-order-no"
+	display sl-bo-suffix                @01,06 title "sl-bo-suffix"
+	display sl-line-seq				    @01,08 title "sl-line-seq"
+	display sl-record-type			    @01,10 title "sl-record-type"
+	display sl-action				    @01,12 title "sl-action"
+	display sl-time-stamp			    @01,14 title "sl-time-stamp"
+	display sl-member-number		    @01,16 title "sl-member-number"
+	display sl-stock-code			    @01,18 title "sl-stock-code"
+	display sl-stk-description		    @01,20 title "sl-stk-description"
+	display sl-qty                      @01,22 title "sl-qty"
+	display sl-gross-price              @01,24 title "sl-gross-price"
+	display sl-discount-amount          @01,26 title "sl-discount-amount"
+	display sl-source-location		    @01,28 title "sl-source-location"
+	display sl-sub-category             @01,30 title "sl-sub-category"
+	display sl-category                 @01,32 title "sl-category"
+	display sl-short-description        @01,34 title "sl-short-description"
+	display sl-motor-club               @01,36 title "sl-motor-club"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-ord-enq
+			spl "so/m5ordenq"
+				parameters
+					"-e"
+					sl-order-no
+					sl-bo-suffix
+		case md-create-output-global
+			do create-output-global
+	endswitch
+endconfirm
+endscreen // display-in-grid-global -------------------------------------------
+
+
+procedure create-output-global
+local field
+	lf-counter			type numeric
+	lf-sol-id			pic x(20)
+	//lf-state			pic x(10)
+	//
+	open flat-file truncate permanent
+		file ws-file-name-global
+	do insert-header
+	set lf-counter = 0
+	set ff-record = strconcat("HEADER,TXNREC")
+	insert flat-file
+	extract global-sycas-lines lock
+		on index sl-time-stamp
+		//when sl-time-stamp between "200801" and "201012"
+		//when substring(sl-time-stamp,1,8) = format-picture(today(),"yyyymmdd")
+		//when sl-status = "R"
+	detail
+		//set lf-state = substring(sl-source-location,1,3)	//17sep10
+		//set lf-sol-id = strconcat(str(sl-order-no) ":" sl-bo-suffix ":" str(sl-line-seq))                             //30aug10
+		set lf-sol-id = strconcat(sl-consolidation-division ":" str(sl-order-no) ":" sl-bo-suffix ":" str(sl-line-seq))	//30aug10
+		if ws-forever
+			//set ff-record = strconcat(sl-record-type ',' sl-action ',' sl-time-stamp ',' sl-member-number ',"' sl-stock-code '","' sl-stk-description '",' sl-qty ',' sl-gross-price ',' sl-discount-amount ',"' strconcat(sl-source-location) '",,,,' sl-motor-club ',' lf-sol-id ',,,')
+			set ff-record = strconcat(sl-record-type ',' sl-action ',' sl-time-stamp ',' sl-member-number ',"' sl-stock-code '","' sl-stk-description '",' sl-qty ',' sl-gross-price ',' sl-discount-amount ',"' strconcat(sl-source-location) '",,,,' sl-motor-club ',' lf-sol-id ',' sl-state ',,')
+		elseif sl-status != "R"
+			continue
+		else
+			//set ff-record = strconcat(sl-record-type ',' sl-action ',' sl-time-stamp ',' sl-member-number ',"' sl-stock-code '","' sl-stk-description '",' sl-qty ',' sl-gross-price ',' sl-discount-amount ',"' substring(sl-source-location,9,50) '",,,,' sl-motor-club ',' lf-sol-id ',,,')
+			set ff-record = strconcat(sl-record-type ',' sl-action ',' sl-time-stamp ',' sl-member-number ',"' sl-stock-code '","' sl-stk-description '",' sl-qty ',' sl-gross-price ',' sl-discount-amount ',"' substring(sl-source-location,9,50) '",,,,' sl-motor-club ',' lf-sol-id ',' sl-state ',,')
+		endif
+		//set ff-record = strconcat(sl-record-type "," sl-action "," sl-time-stamp "," sl-member-number "," sl-stock-code """ "," """ sl-stk-description """ "," sl-qty "," sl-gross-price "," sl-discount-amount ",,,,," sl-motor-club ",,,,")
+		insert flat-file
+		on error
+			set sl-status = "E"
+		else
+			set sl-status = "S"
+		endon
+		update global-sycas-lines
+		set lf-counter += 1
+	endextract
+	set ff-record = strconcat("FOOTER,TXNREC," str(lf-counter))
+	insert flat-file
+	// footer
+	set ff-record = strconcat("FOOTER," ws-partner ",FILE")
+	insert flat-file
+	command
+		"sh"
+	parameters
+		"-c"
+		concat("cat " ws-file-name-global " | mailx -s '" strconcat(ws-file-name-global) "' robd@snooze.com.au")
+	//
+	command
+		"sh"
+	parameters
+		"-c"
+		concat("(uuencode " strconcat(ws-file-name-global) " " strconcat(ws-file-name-global) "; echo 'Please find file attached') | mail -s '" strconcat(ws-file-name-global) "' robd@snooze.com.au")
+endprocedure // create-output-global ------------------------------------------
+
+procedure insert-header
+	set ff-record = strconcat("HEADER," ws-partner ",FILE")
+	insert flat-file
+	set ff-record = strconcat("HEADER,PARTNER")
+	insert flat-file
+	set ff-record = strconcat("030,X," ws-partner)
+	insert flat-file
+	set ff-record = strconcat("FOOTER,PARTNER,1")
+	insert flat-file
+endprocedure // insert-header -------------------------------------------------
+// sycasexpw.spl

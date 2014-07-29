@@ -1,0 +1,185 @@
+////////////////////////////////////////////////////////////////////////////////
+// Number of Customers
+//=========================================================================//
+// Copyright (C) Captn Snooze Management
+//
+// PRONTO is a registered trademark of Prometheus Software Developments P/L.
+//
+// All Rights Reserved. Unauthorized copying is prohibited.
+//=========================================================================//
+//
+// Modification History
+// Date		Who	SDR		What
+// 14may14	rmd			upgrade to 710.3
+// 22feb07	rmd			Convert to XI rbtchproc calls
+// 03mar00	sgr			Written
+////////////////////////////////////////////////////////////////////////////////
+
+#define NO_OF_SELECTION_PARAMETERS		'5'
+
+//#include "../../bms/include/bmsdef.spl"
+//#include '../../bms/include/rbtchproc.spl'
+#include "/pro/pronto/bms/include/bmsdef.spl"
+#include "/pro/pronto/bms/include/rbtchproc.spl"
+
+field	ws-start-date				type date
+		ws-end-date					type date
+
+
+object	tsf-sort-file
+	type is memory
+	record is
+		tsf-territory-code		like so-territory-code
+		tsf-counter				type numeric
+	endrecord
+	key is tsf-territory-code
+
+procedure main
+	get system-control first
+	set ws-report-started = FALSE
+	// 22feb07
+	// DO_RUN_PROGRAM("Number of Customers Report")
+	RBTCHPROC_RUN_PROGRAM("Number of Customers Report")
+endprocedure //main ------------------------------------------------------------
+
+screen rbtchproc-report-parameters
+	allow entry
+before
+	clear
+	DO_SCREEN_HEADER()
+	display	"Number of Customers Report" @3,25 inverse
+	box @4,1 to @22,80
+	display "Start Trans Date  : " @9,4
+	display "End   Trans Date  :" @10,4
+detail
+	accept ws-start-date @9,24
+		default today() - 7
+	accept ws-end-date @10,24
+		default today()
+	confirm auto
+	confirmed
+		// 22feb07
+		// DO_EXECUTION
+		RBTCHPROC_EXECUTION
+	endconfirm
+endscreen //rbtchproc-report-parameters --------------------------------------
+
+procedure rbtchproc-set-parameters
+	// 22feb07
+	// LOAD_OR_SET_DATE(ws-start-date)
+	// LOAD_OR_SET_DATE(ws-end-date)
+	RBTCHPROC_LOAD_SET_DATE(ws-start-date)
+	RBTCHPROC_LOAD_SET_DATE(ws-end-date)
+endprocedure //rbtchproc-set-parameters --------------------------------------
+
+procedure start-report
+	set rbtchproc-report-name = "Number of Customers Report"
+	report rbtchproc-report-name
+		header is number-of-customers-header
+		no-message
+	set ws-report-started = TRUE
+endprocedure //start-report ----------------------------------------------------
+
+procedure number-of-customers-header
+	print company-name col 1
+		bold
+		"Date:" col 47
+		tod() col 63 pic hh:mm
+		today() col 53 pic dd-mmm-yy
+		'Page:' col 69
+		left-justify(str(page-no)) col 75 pic x(4)
+	print rbtchproc-report-name in col 24 pic x(30)
+	skip
+	print
+		"Store No" in col 1
+		"Num of Customers" in col 15
+	print 80"=" in col 1
+endprocedure //number-of-customers-header --------------------------------
+
+procedure rbtchproc-report-detail
+	do start-report
+	if rbtchproc-in-background
+		// 22feb07
+		// DO_MESSAGE_REPORT_STARTED
+		RBTCHPROC_MESSAGE_REPORT_STARTED
+	else
+		box @18,47 to @22,80
+		display "Spoolfile :" @19,54
+			spool-file-name() @19,66 pic x(12)
+			"Now at :" @21,54
+	endif
+	open tsf-sort-file truncate temporary
+	page
+	if not rbtchproc-in-background
+		display 'Current Orders' @20,60
+	endif
+	select so-order-no so-bo-suffix so-order-date so-order-status
+			so-territory-code
+	from sales-order
+	where so-order-date between :ws-start-date and :ws-end-date
+		and so-order-status != '99'
+		and so-bo-suffix = spaces
+	detail
+		get tsf-sort-file
+		on index tsf-territory-code
+		key is so-territory-code
+		on error
+			set tsf-counter = 1
+			insert tsf-sort-file
+		else
+			set tsf-counter += 1
+			update tsf-sort-file
+		endon
+	endselect
+	select so-order-no so-bo-suffix so-order-date so-order-status
+			so-territory-code
+	from sales-order-archive
+	where so-order-date between :ws-start-date and :ws-end-date
+		and so-order-status != '99'
+		and so-bo-suffix = spaces
+	detail
+		get tsf-sort-file
+		on index tsf-territory-code
+		key is so-territory-code
+		on error
+			set tsf-counter = 1
+			insert tsf-sort-file
+		else
+			set tsf-counter += 1
+			update tsf-sort-file
+		endon
+	endselect
+	do detail-report
+	do finish-report
+	close tsf-sort-file and remove
+endprocedure //rbtchproc-report-detail ---------------------------------------
+
+procedure detail-report
+	select *
+	from tsf-sort-file
+	detail
+		print
+			tsf-territory-code in col 5
+			tsf-counter in col 20 pic zzz,zz9
+	endselect
+endprocedure //detail-report -------------------------------------------------
+
+procedure finish-report
+	if ws-report-started
+		skip 2
+		print 'Options selected : ' col 2 no-newline
+		print "Trans Date: " col 22
+			ws-start-date in col 34
+			"-" in col 46
+			ws-end-date in col 48
+	endif
+	// 22feb07
+	// DO_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+	RBTCHPROC_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+	if not rbtchproc-in-background
+		display rbtchproc-report-finish-message @21,51
+		pause
+	endif
+endprocedure //finish-report ---------------------------------------------------
+
+//end of file -------------------------------------------------------

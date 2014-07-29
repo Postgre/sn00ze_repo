@@ -1,0 +1,11 @@
+select
+	accountcode
+	shortname
+	balance
+	open-bal
+	future-bal
+	warehouse
+	last-payment
+from
+	deb-master
+format is lst

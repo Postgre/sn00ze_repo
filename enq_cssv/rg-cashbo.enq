@@ -1,0 +1,16 @@
+// report back orders on cash accnts for Vic Company owned stores
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-date
+	so-order-status
+	so-rep-code
+	so-order-total-amount
+from
+	sales-order
+where
+	((so-cust-code <= "400" ) and 
+	(so-order-status = "11" ) ) 
+order by so-order-date 
+format is lst

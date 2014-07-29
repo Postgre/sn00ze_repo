@@ -1,0 +1,755 @@
+// smplstktk4.spl
+// 15may14	rmd	{1} convert to 710.3
+// 31May07	rmd	Simple Stocktake
+//				Screen 1 capture control code and whse
+// 				Screen 2 Capture location and reference
+//					remember existing values
+//					if location = APN or stock-code halt and raise error
+//				Screen 3 Capture multiple items and qty's (0 returns to Screen 2)
+//					allow entry of APN or stock-code, qty 5 digits or less
+
+// 04Jun07	rmd	If count qty = 0, don't warn "already counted", just overwrite
+// 08Jun07	rmd	if item "found" and inserted, freeze qty wasn't initialised prior
+// 14Jun07	rmd	Test count for APN/Locn values and stop and warn.
+//				disallow count > MAX_QTY
+
+// 09jun08	rmd default whse taken from user's store-id
+//				validate control code is that of an active stocktake
+//				validate whse is within start end range of control record
+
+// 09jun08	rmd small qty's sometimes throw errors as they resolve to stock codes.
+//				this is to prevent an acidentally scanned numeric apn being confused as a count
+//				remove this check for now.
+// 10jun08	rmd 'no location' option
+//				switch add or override to add or cancel
+// 10jun08	rmd	version 3, override empty location with the one scanned
+//				if stock-warehouse-detail.whse-bin-location is empty load it here too
+// 11jun08	rmd	version 4, no locations, if product scanned previously automatically add the new count
+//				added auto-find option to use as a sub-set of no location option.
+//				when using no location, the location used to lookup the stv is SPACES, if this does not
+//				find a match in stv AND auto-find is TRUE, do an extract until a match is found, primitive
+//				but effective if stock only exists in one location (as it should bing non adv whse)
+//				count-qty as a stock-code test is too sensitive, qty's like 1 and 2 resolve to a stock code
+//				put in a cutoff where any count less than x will not be tested to see if it's a stock item.
+//				single-scan mode.. no qty requested, user scan's once for each item.
+//				if single-scanning, display last scanned item along with accumulative qty.
+// 26jun08	rmd	want to be prompted for qty again set ws-single-scan = FALSE
+
+
+
+#define MAX_QTY 99999														// 14Jun07
+//#include "/prod/app/pronto/bms/include/i8scrsize.spl"
+//#include "../../../../bms/include/i8scrsize.spl"
+#include "/pro/pronto/bms/include/i8scrsize.spl"
+
+mode md-exit
+	prompt "0-Exit"
+	help "Exit Screen"
+
+mode correct
+	prompt "Edit"
+	help "Edit Values"
+
+
+fields
+	ws-stv-control-code                   	like stv-control-code
+	ws-whse-code                          	like whse-code
+	ws-stv-bin-location                   	like stv-bin-location
+	ws-stv-lot-batch-no                   	like stv-lot-batch-no
+	ws-stock-code                         	like stock-code
+	// ws-stv-count-qty                      	like stv-count-qty
+	ws-stv-freeze-whse-cost               	like stv-freeze-whse-cost
+	ws-stock-code-exists					type boolean
+	ws-resolved-stock-code					like stock-code
+	ws-conversion-factor         			type numeric
+	ws-use-location							type boolean
+	ws-auto-add								type boolean
+	ws-auto-find							type boolean
+	ws-single-scan							type boolean
+
+procedure main
+	get system-control first
+	set ws-use-location = FALSE // TRUE
+	set ws-auto-add = TRUE
+	set ws-auto-find = TRUE
+	// 26jun08
+	set ws-single-scan = TRUE// FALSE // TRUE
+	do i8scrsize-determine-max-screen-size
+	set ws-whse-code = getenv("DEFWHSE")
+	if strlen(ws-whse-code) = 0
+		get system-user
+		on index user-id sys-comp-code
+		key is login-id() sys-consolidation-division
+		// user-whse is optional, rarely exists for non-RF accounts, if null use store whse
+		if user-whse = SPACES
+		//if store-id = SPACES
+			if sys-default-whse = SPACES
+				set user-whse = sys-consolidation-division
+				//message concat("sys-consol: " user-whse)
+			else
+				set user-whse = sys-default-whse
+				//message concat("sys-default: " user-whse)
+			endif
+		endif
+		set ws-whse-code = user-whse
+		//message concat("user-whse: " user-whse)
+	else
+		//message concat("DEFWHSE: " ws-whse-code)
+	endif
+	do screen-1
+endprocedure // main ----------------------------------------------------------
+
+screen screen-1
+local field
+	i								type numeric
+	j								type numeric
+	k								type numeric
+	window @1,1 to @i8scrsize-max-rows,i8scrsize-max-columns
+	allow
+		correct
+before
+	clear @1,1 to @8,20
+	display "Control Code" @1,2
+	display "Whse Code" @3,2
+detail
+	accept ws-stv-control-code @2,2
+		help "Control Code/0-Exit"
+		uppercase
+		//optional
+	validations
+		if ws-stv-control-code in {"0" SPACES}
+			exit
+		endif
+		get stock-take-control
+		on index stc-control-code
+		key is ws-stv-control-code
+		on error
+			// display concat(ws-stv-control-code " not found") @3,2 bell
+			// display concat(ws-stv-control-code " not found") @3,2 inverse flashing bell
+			for i = 1 to 10
+				// clear @3,1 to @3,20
+				// display concat(ws-stv-control-code " not found") @3,2 flashing bell
+				for j = 1 to 30000
+					set k = j * 2.5
+				endfor
+				clear @4,1 to @4,20
+				display concat(ws-stv-control-code " not found") @4,2 inverse flashing bell background
+			endfor
+			message concat(ws-stv-control-code " not found")
+			reenter
+		else
+			set ws-whse-code = stc-whse-from
+		endon
+	endvalidations
+	accept ws-whse-code @4,2
+		help "Warehouse Code"
+		uppercase
+		default ws-whse-code
+	validations
+		get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "WH" ws-whse-code
+		on error
+			message concat(ws-whse-code " not valid")
+			reenter
+		endon
+		get stock-take-control
+		on index stc-control-code
+		key is ws-stv-control-code
+		on error
+		else
+			if ws-whse-code between stc-whse-from and stc-whse-to
+			else
+				message concat(ws-whse-code " not within range " stc-whse-from "-" stc-whse-to)
+				reenter
+			endif
+		endon
+	endvalidations
+	confirm auto
+	confirmed
+		//message "On to screen 2"
+		do screen-2
+	endconfirm
+endscreen // screen-1 ---------------------------------------------------------
+
+screen screen-2
+local field
+	lf-stv-bin-location			pic x(13)
+	lf-stv-lot-batch-no			pic x(13)
+	i								type numeric
+	j								type numeric
+	k								type numeric
+	window @1,1 to @i8scrsize-max-rows,i8scrsize-max-columns
+	allow
+		correct
+before
+	clear @1,1 to @8,20
+	display "Counter's Initials" @1,2
+	if ws-use-location
+		display "Location Code" @3,2
+	else
+		set lf-stv-bin-location = SPACES
+	endif
+	//display "Reference" @3,2
+//ws-stv-bin-location
+//ws-stv-lot-batch-no
+detail
+	//set lf-stv-bin-location = ws-stv-bin-location
+	set lf-stv-lot-batch-no = ws-stv-lot-batch-no
+	accept lf-stv-lot-batch-no @2,2
+		help "Counter's Initials"
+		uppercase
+		default ws-stv-lot-batch-no
+	validations
+		// if no location being used, this is the exit point, look for zero's
+		if lf-stv-lot-batch-no in {"0"}
+			//message "Breaking"
+			// do screen-1
+			// exit
+			break
+		endif
+		if lf-stv-lot-batch-no in {SPACES}
+			//message "Breaking"
+			// do screen-1
+			// exit
+			message "Please enter Counter's Initials"
+			reenter lf-stv-lot-batch-no
+		endif
+		// ensure the reference is not a stock item
+		set ws-stock-code-exists = FALSE
+		do process-scanned-item
+			parameters
+				lf-stv-lot-batch-no
+		if ws-stock-code-exists = TRUE
+			for i = 1 to 10
+				for j = 1 to 30000
+					set k = j * 2.5
+				endfor
+				clear @4,1 to @4,20
+				display strconcat(ws-resolved-stock-code "=stock code") @4,2 inverse flashing bell background
+			endfor
+			message strconcat(ws-resolved-stock-code "=stock code")
+			reenter
+		else
+			set ws-stv-lot-batch-no = lf-stv-lot-batch-no
+		endif
+	endvalidations
+	accept lf-stv-bin-location @4,2
+		//help "Locn Code/0-Exit"
+		help "Locn Code"
+		default SPACES // ws-stv-bin-location
+		uppercase
+		when ws-use-location
+	validations
+		//if lf-stv-bin-location in {"0"}
+		//	// do screen-1
+		//	// exit
+		//	break
+		//endif
+		// ensure the location is not a stock item
+		set ws-stock-code-exists = FALSE
+		do process-scanned-item
+			parameters
+				lf-stv-bin-location
+		if ws-stock-code-exists = TRUE
+			for i = 1 to 10
+				for j = 1 to 30000
+					set k = j * 2.5
+				endfor
+				clear @2,1 to @2,20
+				display strconcat(ws-resolved-stock-code "=stock code") @2,2 inverse flashing bell background
+			endfor
+			message strconcat(ws-resolved-stock-code "=stock code")
+			// clear @3,1 to @3,20
+			reenter
+		else
+			set ws-stv-bin-location = lf-stv-bin-location
+		endif
+	endvalidations
+after
+	//want user to stay here until they enter 0 into ws-stock-code
+	if lf-stv-bin-location in {"0"}// SPACES}
+		do screen-1
+	elseif lf-stv-lot-batch-no in {"0"}// SPACES}
+		do screen-1
+	else
+		do screen-3
+		//message "Press 0 to exit"
+		//back-to-detail
+	endif
+	confirm auto
+	confirmed
+		//message "On to screen 3"
+		//set lr-escape = FALSE
+	endconfirm
+endscreen // screen-2 ---------------------------------------------------------
+
+screen screen-3
+local field
+	lf-stock-code								like stock-code
+	lf-stv-count-qty							like stv-count-qty
+	lf-stv-scanned-qty							pic x(14)
+	//lf-add-or-override							pic x
+	lf-add-or-cancel							pic x
+	i											type numeric
+	j											type numeric
+	k											type numeric
+	lr-stk-description							like stk-description
+	lf-last-scanned-message						pic x(19) //like stock-code
+	window @1,1 to @8,20 //@i8scrsize-max-rows,i8scrsize-max-columns
+	// primary stock-take-variance
+	allow
+		//entry md-exit
+		//correct
+		entry
+before
+	clear @1,1 to @8,20
+	display "Stock Code" @1,2
+detail
+	clear @3,1 to @8,20
+	// 09jul08 shift warning up one line
+	if ws-use-location
+		display concat("Location: " ws-stv-bin-location) @6,2 background
+	else
+		set ws-stv-bin-location = SPACES
+	endif
+	// display concat("Ref: " ws-stv-lot-batch-no) @7,2
+	//display ("Exit To Prev Screen") @6,2 // @7,2
+	//display ("To Change Location") @7,2 // @8,2
+	if ws-use-location
+		display "Exit To Change Locn" @6,2 background // @7,2
+	endif
+	//set lf-add-or-override = SPACES
+	set lf-add-or-cancel = SPACES
+
+	// accept ws-stock-code @2,2
+	if ws-single-scan
+		display lf-last-scanned-message @3,2 background
+	endif
+	accept lf-stock-code @2,2
+		help "Item Code/0-Exit"
+		// default ws-stock-code
+		uppercase
+	validations
+		if lf-stock-code in {"0" SPACES}
+			// do screen-2
+			// exit
+			break
+		endif
+		// ensure it is a stock item
+		set ws-stock-code-exists = FALSE
+		do process-scanned-item
+			parameters
+				lf-stock-code
+			returning
+				lr-stk-description
+		if ws-stock-code-exists = FALSE
+			message strconcat(lf-stock-code " not found")
+			reenter
+		else
+			set ws-stock-code = ws-resolved-stock-code
+			display ws-stock-code @2,2 background
+			display lr-stk-description @3,2 background
+		endif
+		// test if stock-code already present for this location
+		// and prompt to add or override qty
+		//message concat("ws-whse-code: " ws-whse-code)
+		//message concat("ws-stv-bin-location: " ws-stv-bin-location)
+		//message concat("ws-stock-code :" ws-stock-code)
+		get stock-take-variance
+		on index whse-code stv-bin-location stock-code
+		key is ws-whse-code ws-stv-bin-location ws-stock-code
+		on error
+			//message "No stv match"
+			// no match with this locn code, try spaces unless auto-find is enabled
+			if ws-auto-find
+				extract stock-take-variance
+				on index whse-code stock-code stv-bin-location
+				key is ws-whse-code ws-stock-code SPACES
+				next same whse-code stock-code
+				detail
+					if stv-control-code = ws-stv-control-code
+						if stv-bin-location != SPACES
+							if stv-count-qty = 0
+								set lf-add-or-cancel = "L"
+							else
+								set lf-add-or-cancel = "A"
+							endif
+							set ws-stv-bin-location = stv-bin-location
+						endif
+					endif
+				endextract
+			else
+				get stock-take-variance lock
+				on index whse-code stv-bin-location stock-code
+				key is ws-whse-code SPACES ws-stock-code
+				on error
+					// new entry
+				else
+					// force location from SPACES to the 'found' location
+					set stv-bin-location = ws-stv-bin-location
+					set lf-add-or-cancel = "L"
+					update stock-take-variance
+					// if whse bin is not defined, use the scanned location
+					get stock-warehouse-detail lock
+					on index whse-code stock-code
+					key is ws-whse-code ws-stock-code
+					on error
+					else
+						if whse-bin-location = SPACES
+							set whse-bin-location = ws-stv-bin-location
+							update stock-warehouse-detail
+						endif
+					endon
+				endon
+			endif
+		else
+			if stv-control-code = ws-stv-control-code
+				// exists in stv
+				// 04Jun06 - check if 0 qty
+				if stv-count-qty != 0
+					if not ws-auto-add
+						message "Already Counted"
+						//display "Add/Override" @3,2
+						clear @3,1 to @3,20
+						display "Add Qty or Cancel" @3,2 background
+						//accept lf-add-or-override @3,17
+						//clear @3,1 to @3,20
+						accept lf-add-or-cancel @3,20
+							uppercase
+							default "A"
+							//allowed "A" "O"
+							allowed "A" "C"
+							//help "(A)dd or (O)verride"
+							help "(A)dd Qty / (C)ancel"
+						if lf-add-or-cancel = "C"
+							clear @4,1 to @8,20
+							reenter lf-stock-code
+						endif
+					else
+						set lf-add-or-cancel = "A"
+					endif
+					if not ws-single-scan
+						display concat("Existing EA: " str(stv-count-qty)) @4,2 background
+					endif
+				else
+					// 04Jun06 - check if 0 qty
+					//set lf-add-or-override = "F" // Force overwrite
+					set lf-add-or-cancel = "F" // Force overwrite
+				endif
+			endif
+		endon
+	endvalidations
+	// ws-stv-count-qty                      	like stv-count-qty
+	// ws-stv-freeze-whse-cost               	like stv-freeze-whse-cost
+	// ensure the count qty is no larger than 99999.99
+	if (not ws-single-scan) and (ws-conversion-factor = 1)
+		if lf-add-or-cancel = "A"
+			display "Qty to add:" @5,2 background
+		else
+			display "Count Qty:" @5,2 background
+		endif
+	else
+		display concat("Qty x " str(ws-conversion-factor) ":") @5,2 inverse background
+	endif
+	//accept lf-stv-count-qty @5,13 pic z(4)9t99					// 14Jun07
+	if ws-single-scan
+		set lf-stv-scanned-qty = "1"
+		set lf-stv-count-qty = num(lf-stv-scanned-qty)
+		set lf-last-scanned-message = concat(strconcat(lf-stock-code) ": " str(stv-count-qty + 1))
+	else
+		accept lf-stv-scanned-qty @5,15 pic x(5) // z(4)9
+			help "Count Qty"
+		validations
+			if lf-stv-scanned-qty in {"0" SPACES}						// 14Jun07
+				break
+			endif
+			// 09jun08
+			// ensure the qty is not a stock item
+			set ws-stock-code-exists = FALSE
+			do process-scanned-item
+				parameters
+					lf-stv-scanned-qty
+			// 11jun08 if count qty less than X don't care if it resolves to a stock item
+			if num(lf-stv-scanned-qty) < 100
+				set ws-stock-code-exists = FALSE
+			endif
+			if ws-stock-code-exists = TRUE
+				for i = 1 to 10
+					for j = 1 to 30000
+						set k = j * 2.5
+					endfor
+					//clear @2,1 to @2,20
+					//display strconcat(ws-resolved-stock-code "=stock code") @2,2 inverse flashing bell
+				endfor
+				message strconcat(ws-resolved-stock-code "=stock code")
+				// clear @3,1 to @3,20
+				reenter
+			else
+				if num(lf-stv-scanned-qty) > MAX_QTY
+					message "Quantity too high"
+					reenter
+				else
+					set lf-stv-count-qty = num(lf-stv-scanned-qty)
+				endif
+			endif
+
+		endvalidations
+	endif
+	// get cost
+	get stock-warehouse-detail
+	on index whse-code stock-code
+	key is ws-whse-code ws-stock-code
+	on error
+		set whse-avg-cost = 0 // set ws-stv-freeze-whse-cost = 0
+	endon
+	set ws-stv-freeze-whse-cost = whse-avg-cost
+	get stock-take-control
+	on index stc-control-code
+	key is ws-stv-control-code
+	// set up stv to write out
+		get stock-take-variance lock
+		on index whse-code stv-bin-location stock-code
+		key is ws-whse-code ws-stv-bin-location ws-stock-code
+		on error
+			// new entry
+			// 08Jun07
+			initialise stock-take-variance
+			set stv-control-code                   	= ws-stv-control-code
+			set whse-code                          	= ws-whse-code
+			set stv-bin-location                   	= ws-stv-bin-location
+			set stv-lot-batch-no                   	= ws-stv-lot-batch-no
+			set stock-code                         	= ws-stock-code
+			set stv-count-qty                      	= lf-stv-count-qty * ws-conversion-factor
+			set stv-freeze-whse-cost               	= ws-stv-freeze-whse-cost
+			set stv-freeze-date						= stc-freeze-date
+			// insert last char of stv-bin-location before stv-bin-location in stv-sort-location
+			set i = strlen(stv-bin-location)
+			set stv-sort-location					= concat(substring(stv-bin-location,i,i) stv-bin-location)
+			set stv-count-date						= today()
+			set stv-count-date-time 				= gmt() // sys-time // gmt()
+			set stv-card-ref						= "INS"
+			insert stock-take-variance
+			//message "Inserted"
+		else
+			if stv-lot-batch-no = SPACES
+				set stv-lot-batch-no = ws-stv-lot-batch-no
+			endif
+			//switch on lf-add-or-override
+			switch on lf-add-or-cancel
+			case "A"
+				set stv-count-qty 						+= lf-stv-count-qty * ws-conversion-factor
+				set stv-count-date						= today()
+				set stv-count-date-time 				= gmt() // sys-time // gmt()
+				set stv-card-ref						= "UPD:A"
+				update stock-take-variance
+				//message "Updated A"
+			case "C"
+				break
+			case "O"
+				set stv-count-qty 						= lf-stv-count-qty * ws-conversion-factor
+				set stv-count-date						= today()
+				set stv-count-date-time 				= gmt() // sys-time // gmt()
+				set stv-card-ref						= "UPD:O"
+				update stock-take-variance
+				//message "Updated O"
+			case "F"
+				set stv-count-qty 						= lf-stv-count-qty * ws-conversion-factor
+				set stv-count-date						= today()
+				set stv-count-date-time 				= gmt() // sys-time // gmt()
+				set stv-card-ref						= "UPD:F"
+				update stock-take-variance
+			case "L"
+				set stv-bin-location					= ws-stv-bin-location
+				set stv-count-qty 						= lf-stv-count-qty * ws-conversion-factor
+				set stv-count-date						= today()
+				set stv-count-date-time 				= gmt() // sys-time // gmt()
+				set stv-card-ref						= "UPD:L"
+				update stock-take-variance
+			endswitch
+		endon
+after
+	//want user to stay here until they enter 0 into ws-stock-code
+	if lf-stock-code in {"0" SPACES}
+		do screen-2
+	else
+		message "Press 0 to exit"
+		back-to-detail
+	endif
+	confirm auto
+	confirmed
+	endconfirm
+endscreen // screen-3 ---------------------------------------------------------
+
+procedure process-scanned-item
+	parameters
+		lp-scanned-item					like stock-code
+	returning
+		lr-stk-description				like stk-description
+	//
+	local field
+		lf-stock-code					like stock-code
+		lf-item-found					type boolean
+		lf-conversion-factor			type numeric
+	//
+	set lf-conversion-factor = 1
+	do search-stock-master
+		parameters
+			lp-scanned-item
+		returning
+			lf-stock-code
+			lf-item-found
+	if not lf-item-found
+		do search-stock-master-by-apn
+			parameters
+				lp-scanned-item
+			returning
+				lf-stock-code
+				lf-item-found
+		if not lf-item-found
+			do search-stock-master
+				parameters
+					lp-scanned-item
+				returning
+					lf-stock-code
+					lf-item-found
+			if not lf-item-found
+				do search-stock-unit-conversion
+					parameters
+						lp-scanned-item
+					returning
+						lf-stock-code
+						lf-item-found
+						lf-conversion-factor
+
+				if not lf-item-found
+					do search-stock-conversion-procedure
+						parameters
+							lp-scanned-item
+						returning
+							lf-stock-code
+							lf-item-found
+							lf-conversion-factor
+				endif
+			endif
+		endif
+	endif
+	if lf-item-found
+		set ws-stock-code-exists = TRUE
+		set ws-resolved-stock-code = lf-stock-code
+		get stock-master
+		on index stock-code
+		key is
+		lf-stock-code
+		set lr-stk-description = stk-description
+		// conversion factor needs to always be 1 for Snooze
+		set ws-conversion-factor = 1 // lf-conversion-factor
+//		do build-dataset
+//			parameters
+//				lf-stock-code
+//		if i8scrsize-max-rows >= 16
+//			do something
+//				parameters
+//					lf-stock-code
+//		elseif i8scrsize-max-rows >= 8
+//			do something-else
+//				parameters
+//					lf-stock-code
+//		endif
+	else
+		set ws-stock-code-exists = FALSE
+		//message "Not found"
+	endif
+endprocedure //process-scanned-item --------------------------------------------
+
+procedure search-stock-master
+	parameters
+		lp-scanned-item					like stock-code
+	//
+	returning
+		lr-stock-code					like stock-code
+		lr-item-found					type boolean
+	//
+	get stock-master
+		on index stock-code
+		key is lp-scanned-item
+	on error
+		set lr-item-found = FALSE
+	else
+		set lr-item-found = TRUE
+		set lr-stock-code = stock-code
+	endon
+endprocedure //search-stock-master --------------------------------------------
+
+procedure search-stock-master-by-apn
+	parameters
+		lp-scanned-item					like stock-code
+	//
+	returning
+		lr-stock-code					like stock-code
+		lr-item-found					type boolean
+	//
+	get stock-master
+		on index stk-apn-number
+		key is lp-scanned-item
+	on error
+		set lr-item-found = FALSE
+	else
+		set lr-item-found = TRUE
+		set lr-stock-code = stock-code
+	endon
+endprocedure //search-stock-master-by-apn -------------------------------------
+
+procedure search-stock-unit-conversion
+	parameters
+		lp-scanned-item					like stock-code
+	//
+	returning
+		lr-stock-code					like stock-code
+		lr-item-found					type boolean
+		lr-conversion-factor			type numeric
+	//
+	set lr-item-found = FALSE
+	select *
+	from
+		stock-unit-conversion
+	order by
+		suc-trade-unit-no
+		stock-code
+		suc-unit-desc
+	when
+		suc-trade-unit-no = :lp-scanned-item
+	before
+		set lr-stock-code = stock-code
+		set lr-conversion-factor = suc-unit-conversion
+		set lr-item-found = TRUE
+	detail
+		break
+	endselect
+endprocedure //search-stock-unit-conversion -----------------------------------
+
+procedure search-stock-conversion-procedure
+	parameters
+		lp-scanned-item					like stock-code
+	//
+	returning
+		lr-stock-code					like stock-code
+		lr-item-found					type boolean
+		lr-conversion-factor			type numeric
+	//
+	select *
+	from
+		stock-conversion-procedure
+	order by
+		scp-component-code
+	when
+		scp-component-code = :lp-scanned-item
+	before
+		set lr-stock-code = scp-stock-code
+		set lr-conversion-factor = num(scp-stock-group)
+		set lr-item-found = TRUE
+	detail
+		break
+	endselect
+endprocedure //search-stock-conversion-procedure ------------------------------
+// smplstktk.spl

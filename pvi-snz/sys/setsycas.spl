@@ -1,0 +1,46 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/setsycas.spl
+//  Program Desc:	Set SYCAS flag
+//  Requested By:	Leigh Green
+//  Request Date:	14dec10
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	07apr14	rmd			upgrade for 710
+//	14dec10	rmd			written
+///////////////////////////////////////////////////////////////////////////////
+
+procedure main
+	do get-sycas entry-once
+endprocedure // main ----------------------------------------------------------
+screen get-sycas
+window @1,1 to @5,30 title "Include in SYCAS Extract?"
+before
+	box @1,1 to @4,30 title SPACES
+detail
+	get system-control first
+	get system-companies lock
+		on index sys-comp-code
+		key is sys-consolidation-division
+	on error
+	else
+		display sys-comp-desc @2,6 bold background
+		accept sys-comp-spare2 @3,20 title "Include in SYCAS?:" pic x // = "Y"
+			default sys-comp-spare2
+			uppercase
+			allowed "Y" "N" SPACES
+			validation
+				//reenter sys-comp-spare2 // optional
+			endvalidation
+		//message "SYCAS Flag set"
+	endon
+confirm
+confirmed
+	update system-companies
+endconfirm
+endscreen // get-sycas -------------------------------------------------------------

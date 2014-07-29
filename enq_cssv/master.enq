@@ -1,0 +1,20 @@
+select
+distinct
+	stock-code
+	stk-description
+	stk-sort-analysis-code
+	sys-description
+	sup-shipping-method-code
+from
+	stock-master
+	stock-supplier
+	system-table
+where
+	stk-sort-analysis-code != space 
+	and 
+	sys-tbl-type = 'SX' 
+	and 
+	sys-tbl-code = stk-sort-analysis-code 
+	and 
+	sup-shipping-method-code in { 'A' 'B' } 
+format is lotus

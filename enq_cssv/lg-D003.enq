@@ -1,0 +1,8 @@
+// debtors Warehouse Change
+update deb-master
+set
+	
+	dr-user-only-alpha4-1 = input alpha prompt "Set backtrack value (same Value)"
+	warehouse = input alpha prompt "Change Default Warehouse to (New Value)"
+where
+	warehouse = input alpha prompt "From This Warehouse"

@@ -1,0 +1,25 @@
+// cash Drawer Tender Transaction Enquiry
+select
+	cd-terminal
+	cd-trans-seq-no
+	cd-trans-date
+	cd-money-type
+	cd-money-amount
+	cd-item-reference
+	cd-item-accountcode
+from
+	cash-draw-trans
+	cash-draw-money-trans
+	cash-draw-item-trans
+where
+	( ( cd-terminal = 317  ) AND
+	( cd-money-type = "H"  ) )
+order by cd-terminal cd-trans-seq-no cd-trans-date cd-item-reference cd-item-accountcode cd-money-type cd-money-amount 
+format is lst
+field title of cd-terminal is "Drawer"
+field title of cd-trans-seq-no is "Sequence"
+field title of cd-trans-date is "Date"
+field title of cd-money-type is "Tender"
+field title of cd-money-amount is "Amount"
+field title of cd-item-reference is "Order No."
+field title of cd-item-accountcode is "Customer"

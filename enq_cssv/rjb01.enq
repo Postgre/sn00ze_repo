@@ -1,0 +1,6 @@
+update name-and-address-master
+set
+	na-phone = concat ("02 9",sub-string (na-phone 4,12))
+where
+	sub-string (na-phone 1,3) = "02 "
+	and na-type = "C"

@@ -1,0 +1,98 @@
+select
+	stock-code
+	stk-trans-type
+	stk-trans-date
+	stk-trans-ref1
+	stk-trans-ref3
+	stk-trans-qty
+	stk-trans-cost
+	stk-description
+	stk-desc-line-2
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+	company-name
+	ws-start-date = input date "Enter start transaction date:"
+	ws-end-date = input date "Enter   end transaction date:"
+from
+	stock-movements
+	stock-master
+	system-table
+	system-control
+where
+	stk-trans-type = 'SA' 
+	and stk-trans-date between ws-start-date and ws-end-date 
+	and sys-tbl-type = 'IR' 
+	and stk-trans-ref3 = sys-tbl-code 
+order by stk-trans-ref3 stk-trans-date stock-code 
+format is rpt
+field new-stk-trans-date pic 9
+field new-stk-trans-ref3 pic 9
+field sub-tot-stk-trans-cost like stk-trans-cost
+report header
+	page
+header
+	print 
+		company-name in col 1
+		"STOCK ADJUSTMENT REPORT" in col 53
+		today() in col 98
+		"Pageno." in col 115
+		pageno() in col 124
+	skip 1
+	print
+		"Stock" in col 6
+		"Stock" in col 20
+		"Adjust." in col 102
+		"Adjustment" in col 116
+	print
+		"Code" in col 6
+		"Description" in col 20
+		"Date" in col 74
+		"Reference" in col 87
+		"Qty" in col 104
+		"Cost" in col 120
+	print "=================================================================================================================================" in col 1
+	skip
+before stk-trans-date
+	set new-stk-trans-date = 1
+before stk-trans-ref3
+	set new-stk-trans-ref3 = 1
+	set sub-tot-stk-trans-cost = 0
+
+detail
+	if (new-stk-trans-ref3)
+		print
+		stk-trans-ref3 in col 1 bold underlined
+		sys-description in col 12 bold underlined
+	endif
+	print stock-code in col 8 pic x(12) no newline
+	if (new-stk-trans-date)
+		print stk-trans-date in col 71 no newline
+	endif
+	print stk-trans-ref1 in col 87 no newline
+	print stk-trans-qty in col 102 pic zzzz9- no newline
+	print stk-trans-cost in col 113 pic zz,zzz,zz9.99- no newline
+	print stk-description in col 25 bold  no newline
+	print stk-desc-line-2 in col 56 pic is x(10) no newline
+	skip
+	set new-stk-trans-date = 0
+	set new-stk-trans-ref3 = 0
+	set sub-tot-stk-trans-cost += stk-trans-cost
+after stk-trans-date
+after stk-trans-ref3
+	print
+		"--------------" in col 113
+	print
+		"Total for " in col 68 bold 
+		sys-description in col 78 bold 
+		sub-tot-stk-trans-cost in col 113 pic zz,zzz,zz9.99- bold 
+	skip
+report footer
+	skip 2
+	print "Program Name           :" in col 10
+		"stkadjrep.enq" in col 35
+	skip
+	print "Start Transaction Date :" in col 10
+		ws-start-date in col 35
+	print "End   Transaction Date :" in col 10
+		ws-end-date in col 35

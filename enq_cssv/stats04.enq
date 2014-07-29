@@ -1,0 +1,26 @@
+// stats04.eng
+// to list the status of the database by product group and status code
+// 
+select
+	stock-code
+	stk-stock-status
+	stk-user-group
+	stk-description
+	ws-group = stk-user-group[2] 
+	ws-count = count () 
+from
+	stock-master
+where
+	stk-user-group[1] = 'D' 
+order by ws-group 
+group by ws-group
+format is lst
+title line 1 is "Capt'n Snooze"
+title line 2 is "Stats04"
+title line 3 is "-"
+title line 4 is "Count of Stock codes with a D in Group code 1"
+suppress stock-code
+suppress stk-stock-status
+suppress stk-user-group[2]
+suppress stk-description
+display type of stk-user-group[1] is string

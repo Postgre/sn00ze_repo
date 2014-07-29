@@ -1,0 +1,23 @@
+// BP count cash & carry sales
+select
+	accountcode
+	trans-type
+	trans-date
+	rep-code1
+	tr-amount
+	accountshort1 = substring (accountcode 1 3)
+	store_number = input string "what is the store number?"
+	start-date = input date "what is the start date?"
+	end-date = input date "what is the end date?"
+from
+	deb-trans
+where
+	accountshort1 = store_number AND trans-type = "IN" AND (trans-date between start-date and end-date)
+
+format is lst
+suppress accountshort1
+suppress trans-type
+suppress start-date
+suppress end-date
+
+total on tr-amount

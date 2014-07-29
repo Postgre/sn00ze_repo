@@ -1,0 +1,8 @@
+// delete Zero counts from wrong Stock Control Code
+delete
+from
+	stock-take-variance
+where
+	( ( whse-code LIKE INPUT ALPHA prompt is "Warehouse Code"   ) AND
+	( stv-control-code LIKE INPUT ALPHA prompt is "Stock Control Code"   ) )
+

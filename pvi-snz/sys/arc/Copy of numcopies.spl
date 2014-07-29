@@ -1,0 +1,134 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/numcopies
+//  Program Desc:	
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	29mar14	rmd			upgraded for 710
+///////////////////////////////////////////////////////////////////////////////
+
+// numcopies.spl
+// 13may09	rmd	if no lines exist, abort print job
+// 04feb09	rmd	if cash sale force all lines to taken and status to 70
+// 15oct08	rmd force update if order is transfer ready to update (65)
+// 30sep08	rmd written
+object cash-sale-repair
+type is isam
+file is "SNZCSR"
+	record
+		csr-so-order-no            		like so-order-no 
+		csr-so-bo-suffix                like so-bo-suffix
+		csr-sol-line-seq                like sol-line-seq
+		csr-note                        pic x(50)
+		csr-date                        type date
+		csr-time                        type time
+		csr-login-id					pic x(20)
+	endrecord
+	key is csr-so-order-no csr-so-bo-suffix csr-sol-line-seq
+
+field
+	ws-so-order-no   					like so-order-no 
+	ws-so-bo-suffix                     like so-bo-suffix
+
+procedure main
+local field
+	lf-cash-account						type boolean
+	lf-repair-required					type boolean
+	lf-no-lines-exist					type boolean
+	window @5,5 to @13,30 title is "Invoice Print"
+	returning
+		lr-num-of-copies				type numeric
+	set ws-so-order-no 		= num(get-param(1))
+    set ws-so-bo-suffix     = get-param(2)
+    open cash-sale-repair create permanent
+    //
+    set lf-no-lines-exist = TRUE
+    extract sales-order-line
+    on index so-order-no so-bo-suffix sol-line-seq
+    key is ws-so-order-no ws-so-bo-suffix 0
+    detail
+    	//if sol-line-type = "SN"
+    		set lf-no-lines-exist = FALSE
+    	//endif
+    endextract
+    if lf-no-lines-exist
+	    message concat("No Lines for Order #" str(ws-so-order-no) " - nothing to print.")
+	    exit
+	else
+		//message "Lines Exist"
+	endif
+    //04feb09 if a cash sale force lines to taken and order status to 70
+    get sales-order lock
+    on index so-order-no so-bo-suffix
+    key is ws-so-order-no ws-so-bo-suffix
+    on error
+    
+    else
+    	// test if cash sale
+    	set lf-cash-account = FALSE
+    	get deb-master
+    	on index accountcode
+    	key is so-cust-code
+    	on error
+    	else
+    		if accountcode = territory
+    			set lf-cash-account = TRUE
+    		endif
+    	endon
+    	if lf-cash-account
+    		if so-order-status != "70"
+  				set lf-repair-required 				= TRUE
+    			set csr-so-order-no            		= so-order-no 
+				set csr-so-bo-suffix                = so-bo-suffix
+				set csr-sol-line-seq                = 0
+				set csr-note                        = strconcat("Status [" so-order-status "] set to 70")
+				set csr-date                        = today()
+				set csr-time                        = tod()
+				set csr-login-id					= login-id()
+    			insert cash-sale-repair
+    			set so-order-status = "70"
+    			update sales-order
+   	 			extract sales-order-line lock
+    			on index so-order-no so-bo-suffix sol-line-seq
+    			key is ws-so-order-no ws-so-bo-suffix 0
+    			next same so-order-no so-bo-suffix
+    			detail
+    				if sol-line-type in {"SN" "KN" "WN"} and sol-print-line != "T"
+    					set lf-repair-required 				= TRUE
+    					set csr-so-order-no            		= so-order-no 
+						set csr-so-bo-suffix                = so-bo-suffix
+						set csr-sol-line-seq                = sol-line-seq
+						set csr-note                        = strconcat("Print Line [" sol-print-line "] set to T")
+						set csr-date                        = today()
+						set csr-time                        = tod()
+						set csr-login-id					= login-id()
+						insert cash-sale-repair
+						set sol-print-line = "T"
+						update sales-order-line
+					endif
+    			endextract
+    		endif
+   	 	endif
+    endon
+	box @5,5 to @12,30
+    //display  "Invoice #:" 			@8,8 scale 125 background bold
+    //display  ws-so-order-no			@9,8 scale 125 background bold
+    //display  ws-so-order-no				@8,16 title "Invoice #:" scale 125 background bold
+    if lf-repair-required
+    	display  ws-so-order-no				@8,16 title "Order #:" scale 125 background bold colour red
+    else
+    	display  ws-so-order-no				@8,16 title "Order #:" scale 125 background bold
+    endif
+    accept lr-num-of-copies			@6,25 pic z title is "Number Of Copies:"
+   		default 1
+    
+   	//15oct08 if order is at status 65, force update
+endprocedure // main ----------------------------------------------------------
+// numcopies.spl

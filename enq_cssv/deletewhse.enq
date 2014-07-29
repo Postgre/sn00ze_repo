@@ -1,0 +1,3 @@
+delete from stock-warehouse-detail
+where
+	whse-code != "313" 

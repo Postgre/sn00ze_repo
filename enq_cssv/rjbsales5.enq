@@ -1,0 +1,64 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-value-lytd
+	ash-qty-lytd
+	stk-description
+	stk-desc-line-2
+	stk-desc-line-3
+	stock-group
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = 'O' 
+	and ash-years-ago = 0 
+	and stock-group = 'IS' 
+	and (stk-description like "%BASE%" or stk-desc-line-2 like "%BASE%" or stk-desc-line-3 like "%BASE%" ) 
+format is rpt
+field total-ash-value-lytd like ash-value-lytd
+field total-ash-qty-lytd like ash-qty-lytd
+report header
+	page
+	set total-ash-value-lytd = 0
+	set total-ash-qty-lytd = 0
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"stock-code" in col 9
+		"ash" in col 35
+		" ash" in col 49
+		"ws-ash-value" in col 64
+		"ws-ash-qty" in col 91
+		"stock" in col 118
+	print
+		"type" in col 35
+		"years" in col 49
+		"group" in col 118
+	print
+		" ago" in col 49
+	skip 1
+
+detail
+//	print
+//		stock-code in col 9
+//		ash-type in col 35
+//		ash-years-ago in col 49
+//		ws-ash-value in col 64
+//		ws-ash-qty in col 91
+//		stock-group in col 118
+	set total-ash-value-lytd += ash-value-lytd
+	set total-ash-qty-lytd += ash-qty-lytd
+report footer
+	print
+		"-----------------" in col 64
+		"-----------------" in col 91
+	print
+		"Base" in col 20
+		total-ash-value-lytd in col 64
+		total-ash-qty-lytd in col 91

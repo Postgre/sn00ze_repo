@@ -1,0 +1,70 @@
+select
+	stock-code
+	stock-group
+	sys-tbl-type
+	sys-tbl-code
+	sys-tbl-alpha-1
+	sys-description
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+from
+	stock-master
+	system-table
+	stock-aged-sales-history
+where
+	sys-tbl-type = 'PG' 
+	and ash-type = 'Q' 
+	and ash-years-ago = 0 
+	and stock-group = sys-tbl-code 
+order by ash-whse sys-tbl-alpha-1 
+format is rpt
+field total-ash-value like ash-value
+field sub-tot-ash-value like ash-value
+field sub-tot1-ash-value like ash-value
+report header
+	page
+	set total-ash-value[2] = 0
+header
+	print today() in col 45
+		tod() in col 58
+		"Pageno." in col 68
+		pageno() in col 76
+	skip 1
+	print
+		"sys tbl" in col 16
+		"ash" in col 50
+		"ash-value" in col 61
+	print
+		"alpha 1" in col 16
+		"whse" in col 50
+	skip 1
+before ash-whse
+	set sub-tot1-ash-value[2] = 0
+before sys-tbl-alpha-1 
+	set sub-tot-ash-value[2] = 0
+
+detail
+	print
+		sys-tbl-alpha-1 in col 29
+		ash-whse in col 16 no newline
+	set total-ash-value[2] += ash-value[2]
+	set sub-tot-ash-value[2] += ash-value[2]
+	set sub-tot1-ash-value[2] += ash-value[2]
+after sys-tbl-alpha-1
+	print
+		sub-tot-ash-value[2] in col 46
+	skip
+after ash-whse
+	print
+		"---------------" in col 46
+	print
+		ash-whse in col 35
+		sub-tot1-ash-value[2] in col 46
+	skip
+report footer
+	print
+		"---------------" in col 46
+	print
+		total-ash-value[2] in col 46

@@ -1,0 +1,311 @@
+//repdisc.spl
+////////////////////////////////////////////////////////////////////////////////
+// Sales Order Discounts by Rep
+//=========================================================================//
+// Copyright (C) Captn Snooze Management
+//
+// PRONTO is a registered trademark of Prometheus Software Developments P/L.
+//
+// All Rights Reserved. Unauthorized copying is prohibited.
+//=========================================================================//
+//
+// Modification History
+// Date		Who	SDR		What
+// 15may14	rmd			upgrade to 710.3
+// 23oct08	rmd			Cater for neg discount percentages
+// 26feb07	rmd			Update RBTCHPROC calls to new version
+// 19jul00	sgr	458		Exclude GST from value if tax rate != 0
+// 03mar00	sgr			Written
+////////////////////////////////////////////////////////////////////////////////
+
+#define NO_OF_SELECTION_PARAMETERS		'5'
+
+//#include "../../bms/include/bmsdef.spl"
+//#include '../../bms/include/rbtchproc.spl'
+#include "/pro/pronto/bms/include/bmsdef.spl"
+#include '/pro/pronto/bms/include/rbtchproc.spl'
+
+field	ws-start-date				type date
+		ws-end-date					type date
+		ws-territory-code			like so-territory-code
+
+
+object	tsf-sort-file
+	type is memory
+	record is
+		tsf-territory-code		like so-territory-code
+		tsf-rep-code			like rep-code
+		tsf-sales-amount		like sol-line-amount
+		tsf-disc-amount			like sol-line-amount
+	endrecord
+	key is tsf-territory-code tsf-rep-code
+
+procedure main
+	get system-control first
+	set ws-report-started = FALSE
+	// 26feb07
+	// DO_RUN_PROGRAM("Rep Discount Report")
+	RBTCHPROC_RUN_PROGRAM("Rep Discount Report")
+endprocedure //main ------------------------------------------------------------
+
+screen rbtchproc-report-parameters
+	allow entry
+before
+	clear
+	DO_SCREEN_HEADER()
+	display	"Rep Discount Report" @3,25 inverse
+	box @4,1 to @22,80
+	display "Start Trans Date  : " @9,4
+	display "End   Trans Date  :" @10,4
+detail
+	accept ws-start-date @9,24
+		default today() - 7
+	accept ws-end-date @10,24
+		default today()
+	confirm auto
+	confirmed
+		// 26feb07
+		// DO_EXECUTION
+		RBTCHPROC_EXECUTION
+	endconfirm
+endscreen //rbtchproc-report-parameters --------------------------------------
+
+procedure rbtchproc-set-parameters
+	// 26feb07
+	// LOAD_OR_SET_DATE(ws-start-date)
+	// LOAD_OR_SET_DATE(ws-end-date)
+	RBTCHPROC_LOAD_SET_DATE(ws-start-date)
+	RBTCHPROC_LOAD_SET_DATE(ws-end-date)
+endprocedure //rbtchproc-set-parameters --------------------------------------
+
+procedure start-report
+	set rbtchproc-report-name = "Rep Discount Report"
+	report rbtchproc-report-name
+		header is rep-discount-header
+		no-message
+	set ws-report-started = TRUE
+endprocedure //start-report ----------------------------------------------------
+
+procedure rep-discount-header
+	print company-name col 1
+		bold
+		"Date:" col 47
+		tod() col 63 pic hh:mm
+		today() col 53 pic dd-mmm-yy
+		'Page:' col 69
+		left-justify(str(page-no)) col 75 pic x(4)
+	print rbtchproc-report-name in col 24 pic x(30)
+	skip
+	print
+		'Sales Orders' in col 55
+		'Discount' in col 78
+		'Discount' in col 100
+	print
+		'Sales Rep' in col 12
+		'Amount' in col 58
+		'$' in col 82
+		'%' in col 104
+	print 132"=" in col 1
+endprocedure //rep-discount-header --------------------------------
+
+procedure rbtchproc-report-detail
+	do start-report
+	if rbtchproc-in-background
+		// 26feb07
+		// DO_MESSAGE_REPORT_STARTED
+		RBTCHPROC_MESSAGE_REPORT_STARTED
+	else
+		box @18,47 to @22,80
+		display "Spoolfile :" @19,54
+			spool-file-name() @19,66 pic x(12)
+			"Now at :" @21,54
+	endif
+	open tsf-sort-file truncate temporary
+	page
+	if not rbtchproc-in-background
+		display 'Current Orders' @20,60
+	endif
+	//
+	select so-order-no so-bo-suffix so-order-status so-order-date
+			 so-territory-code so-rep-code
+	from sales-order
+	where
+		so-order-status != '99' and
+		so-order-date between :ws-start-date and :ws-end-date
+	detail
+		if not rbtchproc-in-background
+			display so-order-no @21,60
+			display so-bo-suffix @21,68
+		endif
+		select *
+		from sales-order-line
+		where so-order-no = :so-order-no and
+				so-bo-suffix = :so-bo-suffix and
+				sol-line-type = 'SN'
+		detail
+			do discount-details
+		endselect
+	endselect
+	if not rbtchproc-in-background
+		display 'Archive Orders' @20,60
+	endif
+	select so-order-no so-bo-suffix so-order-status so-order-date
+			 so-territory-code so-rep-code
+	from sales-order-archive
+	where
+		so-order-status != '99' and
+		so-order-date between :ws-start-date and :ws-end-date
+	detail
+		if not rbtchproc-in-background
+			display so-order-no @21,60
+			display so-bo-suffix @21,68
+		endif
+		select *
+		from sales-order-line-archive
+		where so-order-no = :so-order-no and
+				so-bo-suffix = :so-bo-suffix and
+				sol-line-type = 'SN'
+		detail
+			do discount-details
+		endselect
+	endselect
+	//
+	do print-details
+	do finish-report
+	close tsf-sort-file and remove
+endprocedure //rbtchproc-report-detail ---------------------------------------
+
+procedure discount-details
+field	ws-rep-code 		like so-rep-code
+		ws-order-amount 	like sol-line-amount
+		ws-disc-amount 		like sol-line-amount
+		st-order-amount		like sol-line-amount
+		st-disc-amount		like sol-line-amount
+		gt-order-amount		like sol-line-amount
+		gt-disc-amount		like sol-line-amount
+	//
+	get stock-price
+	on index stock-code prc-region-code
+	key is stock-code spaces
+	on error
+		set prc-recommend-retail = 0
+	endon
+	//
+	if prc-recommend-retail != 0
+		set ws-territory-code = so-territory-code
+		set ws-rep-code = so-rep-code
+		if sol-tax-rate != 0										//458jul00
+			set ws-order-amount = sol-line-amount -					//458jul00
+									(sol-line-amount / 11)			//458jul00
+		else														//458jul00
+			set ws-order-amount = sol-line-amount
+		endif														//458jul00
+		set ws-disc-amount = (prc-recommend-retail * sol-ordered-qty)
+								 - ws-order-amount					//458jul00
+								// - sol-line-amount				//458jul00
+		//
+		get tsf-sort-file
+		on index tsf-territory-code tsf-rep-code
+		key is ws-territory-code ws-rep-code
+		on error
+			set tsf-territory-code = ws-territory-code
+			set tsf-rep-code = ws-rep-code
+			set tsf-sales-amount = ws-order-amount
+			set tsf-disc-amount = ws-disc-amount
+			insert tsf-sort-file
+		else
+			set tsf-sales-amount += ws-order-amount
+			set tsf-disc-amount += ws-disc-amount
+			update tsf-sort-file
+		endon
+	endif
+	set ws-territory-code = spaces
+	set ws-rep-code = spaces
+	set ws-order-amount = 0
+	set ws-disc-amount = 0
+endprocedure //discount-details
+
+procedure print-details
+	select *
+	from tsf-sort-file
+	order by tsf-territory-code tsf-rep-code
+	before tsf-territory-code
+		get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is 'TC' tsf-territory-code
+		//
+		print
+			so-territory-code in col 2 bold
+			sys-description in col 8 bold
+	detail
+		get rep-master
+		on index rep-code
+		key is tsf-rep-code
+		//
+		print
+			tsf-rep-code in col 12
+			rep-description in col 16
+			tsf-sales-amount in col 54 pic zz,zzz,zz9.99-
+			tsf-disc-amount in col 75 pic zz,zzz,zz9.99-
+			//23oct08
+			//tsf-disc-amount / (tsf-sales-amount + tsf-disc-amount) * 100 in col 96 pic zz,zzz,zz9.99%
+			tsf-disc-amount / (tsf-sales-amount + tsf-disc-amount) * 100 in col 96 pic --,---,--9.99%
+			//23oct08
+		set st-order-amount += tsf-sales-amount
+		set st-disc-amount += tsf-disc-amount
+		set gt-order-amount += tsf-sales-amount
+		set gt-disc-amount += tsf-disc-amount
+	after tsf-territory-code
+		print
+			"--------------" in col 54
+			"--------------" in col 75
+			"--------------" in col 96
+		print
+			"Total for" in col 24 bold
+			sys-description in col 34 pic x(15) bold
+			st-order-amount in col 54 pic zz,zzz,zz9.99-
+			st-disc-amount in col 75 pic zz,zzz,zz9.99-
+			//23oct08
+			//st-disc-amount / (st-order-amount + st-disc-amount) * 100 in col 96 pic zz,zzz,zz9.99%
+			st-disc-amount / (st-order-amount + st-disc-amount) * 100 in col 96 pic --,---,--9.99%
+			//23oct08
+		set st-order-amount = 0
+		set st-disc-amount = 0
+		skip
+	endselect
+	print
+		"--------------" in col 54
+		"--------------" in col 75
+		"--------------" in col 96
+	print
+		"Grand Total" in col 24 bold
+		gt-order-amount in col 54 pic zz,zzz,zz9.99-
+		gt-disc-amount in col 75 pic zz,zzz,zz9.99-
+		gt-disc-amount / (gt-order-amount + gt-disc-amount) * 100
+						in col 96 pic zz,zzz,zz9.99%
+	//
+endprocedure //print-details -------------------------------------------------
+
+procedure finish-report
+	if ws-report-started
+		skip 2
+		print 'Sales Order Discount by Rep Report only includes sales figures for products which have a recommended' in col 2
+		print 'retail price. Delivery charges are also excluded. This report should not be used for sales results.' in col 2
+		skip 2
+		print 'Options selected : ' col 2 no-newline
+		print "Trans Date: " col 22
+			ws-start-date in col 34
+			"-" in col 46
+			ws-end-date in col 48
+	endif
+	// 26feb07
+	// DO_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+	RBTCHPROC_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+	if not rbtchproc-in-background
+		display rbtchproc-report-finish-message @21,51
+		pause
+	endif
+endprocedure //finish-report ---------------------------------------------------
+
+//end of file -------------------------------------------------------
+//repdisc.spl

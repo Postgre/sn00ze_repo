@@ -1,0 +1,20 @@
+// sales Order in an Unusual Status
+// 16sep13 rmd switch back to archive and <= 70 status
+select
+	so-order-no 
+	so-bo-suffix
+	so-cust-code
+	so-order-status
+from
+	//sales-order-archive
+	sales-order
+where
+	//((so-order-status <= "99" ) and 
+	((so-order-status <= "70" ) and
+	(so-order-status not in { "11" "30" "40" "44" } ) ) 
+order by so-order-no 
+format is lst
+field title of so-order-no is "Sales" "Order" "Number"
+field title of so-bo-suffix is "Suffix"
+field title of so-cust-code is "Customer" "Code"
+field title of so-order-status is "Order" "Status"

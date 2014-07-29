@@ -1,0 +1,4 @@
+delete from gl-trans
+where
+	( ( gl-accountcode = "3M3051230"  ) AND
+	( gl-trans-type != "BF"  ) )

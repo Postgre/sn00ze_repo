@@ -1,0 +1,9 @@
+// select stock codes with Non blank APN
+select
+	stock-code
+	stk-apn-number
+from
+	stock-master
+where
+	( stk-apn-number != " "  )
+format is lst

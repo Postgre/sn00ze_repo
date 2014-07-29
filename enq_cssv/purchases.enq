@@ -1,0 +1,65 @@
+select
+	po-order-no
+	po-backorder-flag
+	cre-accountcode
+	po-received-date
+	po-order-status
+	po-received-total
+	ws-start-date = add-month (today () -1 1) 
+	company-name
+	cr-shortname
+from
+	purchase-order
+	system-control
+	cre-master
+where
+	po-received-date >= ws-start-date 
+	and po-received-date < today () 
+	and po-received-date 
+	and po-order-status in { '60' '70' '75' '90' } 
+	and
+	( sub-string (cre-accountcode 1,3) in {'APD' 'ABE' 'BAM' 'BCR' 'BER' 'WRT' 'BUR' 'CHP' 'CHS' 'COO' 'DBM' 'DES' 'DHB' 'DHF' 'DHL' 'SLE' 'SIB' 'SIM' 'END' 'ENX' 'FUN' 'FCR' 'FUR' 'GLO' 'THO' 'DEE' 'HYC' 'CAD' 'JOY' 'KEO' 'LND' 'LMI' 'LIE' 'LIZ' 'MAR' 'MCC'}
+	or sub-string (cre-accountcode 1,3) in {'MIO' 'OBR' 'MFU' 'OZL' 'PIN' 'PGA' 'PUR' 'RBB' 'RIP' 'SEA' 'SOP' 'BCT' 'SHE' 'SIL' 'SSH' 'TFF' 'VIT' 'WEN' 'WTA'})
+order by cre-accountcode po-order-no po-backorder-flag 
+format is rpt
+field total-po-received-total like po-received-total
+field sub-tot-po-received-total like po-received-total
+report header
+	page
+	set total-po-received-total = 0
+header
+	print 
+		company-name in col 1
+		"Purchases by Core Supplier" in col 54
+		today() in col 95
+		"Pageno." in col 114
+		pageno() in col 122
+	print "from" in col 54
+		ws-start-date in col 59 pic dd-mmm-yy bold 
+		"to" in col 69
+		today () - 1 in col 72 pic dd-mmm-yy bold 
+	skip
+	print "Supplier Code" in col 23
+		"Supplier Name" in col 41
+		"Received Amount" in col 85
+	print "================================================================================================================================" in col 1
+	skip 1
+before cre-accountcode
+	set sub-tot-po-received-total = 0
+
+detail
+	print
+		cre-accountcode in col 25
+		cr-shortname in col 41 no newline
+//		po-received-total in col 84
+	set total-po-received-total += po-received-total
+	set sub-tot-po-received-total += po-received-total
+after cre-accountcode
+	print
+		sub-tot-po-received-total in col 84
+	skip
+report footer
+	print
+		"---------------" in col 84
+	print
+		total-po-received-total in col 84

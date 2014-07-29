@@ -1,0 +1,38 @@
+select
+	cre-accountcode
+	cr-type
+	cr-shortname
+from
+	cre-master
+where
+	cr-type = 'A'
+format is rpt
+report header
+	page
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"    cre" in col 15
+		"cr-shortname" in col 42
+		"    cr" in col 88
+		" cr" in col 113
+	print
+		"accountcode" in col 15
+		"settlement" in col 88
+		"type" in col 113
+	print
+		"   disc" in col 88
+	print
+		"   code" in col 88
+	skip 1
+
+detail
+	print
+		cre-accountcode in col 15
+		cr-shortname in col 42
+		cr-type in col 113
+report footer

@@ -1,0 +1,9 @@
+// customers with a territory of 301
+select
+	accountcode
+	territory
+from
+	deb-master
+where
+	( territory = "301"  )
+format is lst

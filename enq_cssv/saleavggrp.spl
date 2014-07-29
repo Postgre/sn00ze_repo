@@ -1,0 +1,420 @@
+///////////////////////////////////////////////////////////////////////////////
+// Average Sales by Sales Rep
+//=========================================================================//
+// Copyright (C) Captn Snooze Management
+//
+// PRONTO is a registered trademark of Prometheus Software Developments P/L.
+//
+// All Rights Reserved. Unauthorized copying is prohibited.
+//=========================================================================//
+//
+//	Modification History
+// 	Date	Who	chg#	What
+//  22apr14	rmd {6} 	upgrade to 710
+// 	21oct13	rmd	{5}		ignore sales against ZZ rep code
+// 	24aug08	rmd			ignore charges to match cube and combined 214/237/238 report
+// 	29jul08	rmd			-eod mode, start and end date = today, terr range = user-store-id
+// 	21jul00	sgr	L471	Exclude transfer orders
+// 	19jul00	sgr	458		Ensure order value is exclusive of GST
+// 	27mar00	sgr			Written
+////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+#define NO_OF_SELECTION_PARAMETERS		'2'
+
+//#include "../../bms/include/bmsdef.spl"			//{6}
+//#include '../../bms/include/rbtchproc.spl'        //{6}
+//#include "../../bms/include/i5sostatii.spl"       //{6}
+#include "/pro/pronto/bms/include/bmsdef.spl"       //{6}
+#include '/pro/pronto/bms/include/rbtchproc.spl'    //{6}
+#include "/pro/pronto/bms/include/i5sostatii.spl"   //{6}
+
+field	ws-start-date				type date
+		ws-end-date					type date
+		ws-start-territory			like so-territory-code
+		ws-end-territory			like so-territory-code
+		tot-sales					like so-order-total-amount
+		tot-cost					like so-ordered-total-cost
+		tot-counter					type numeric
+		gt-sales					like so-order-total-amount
+		gt-cost						like so-ordered-total-cost
+		gt-counter					type numeric
+		ws-include-charges			type boolean
+
+object	tsf-sort-file
+	type is memory
+	record is
+		tsf-territory				like so-territory-code
+		tsf-rep-code				like so-rep-code
+		tsf-sales					like so-order-total-amount
+		tsf-cost					like so-ordered-total-cost
+		tsf-counter					type numeric
+	endrecord
+	key is tsf-territory tsf-rep-code
+
+procedure main
+	get system-control first
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+
+	set ws-report-started = FALSE
+	if get-param(2) = "-includecharges"
+		set ws-include-charges = TRUE
+	else
+		set ws-include-charges = FALSE
+	endif
+	if get-param(1) = "-b"
+		RBTCHPROC_MESSAGE_PROGRAM_HEADER
+		do load-report-parameters
+	elseif get-param(1) = "-eod"             	// 29jul08 rmd
+		set ws-start-date = today()             // 29jul08 rmd
+		set ws-end-date = today()               // 29jul08 rmd
+		set ws-start-territory = user-store-id 	// 29jul08 rmd
+		set ws-end-territory = user-store-id   	// 29jul08 rmd
+		do rbtchproc-report-detail              // 29jul08 rmd
+	else
+		RBTCHPROC_RUN_PROGRAM("Avg Sales by Rep")
+	endif
+endprocedure //main ------------------------------------------------------------
+
+screen rbtchproc-report-parameters
+	allow entry
+before
+	clear
+	DO_SCREEN_HEADER()
+	display	"Avg Sales by Rep" @3,25 inverse
+	box @4,1 to @22,80
+	display "Start Trans Date  : " @9,4
+	display "End   Trans Date  :" @10,4
+	display "Start Territory   :" @12,4
+	display "End Territory     :" @13,4
+detail
+	accept ws-start-date @9,24
+		default today() - 7
+	accept ws-end-date @10,24
+		default today() - 1
+	set ws-start-territory = spaces
+	accept ws-start-territory @12,24
+		default ws-start-territory
+	set ws-end-territory = ws-start-territory
+	accept ws-end-territory @13,24
+		default ws-end-territory
+		fill with trailing '~'
+	confirm auto
+	confirmed
+		RBTCHPROC_EXECUTION
+	endconfirm
+endscreen //rbtchproc-report-parameters --------------------------------------
+
+procedure rbtchproc-set-parameters
+	RBTCHPROC_LOAD_SET_DATE(ws-start-date)
+	RBTCHPROC_LOAD_SET_DATE(ws-end-date)
+	RBTCHPROC_LOAD_SET_ALPHA(ws-start-territory)
+	RBTCHPROC_LOAD_SET_ALPHA(ws-end-territory)
+endprocedure //rbtchproc-set-parameters --------------------------------------
+
+procedure load-report-parameters
+	RBTCHPROC_CHECK_SELECTION_PARAM_COUNT
+	set ws-start-date = today() - 7
+	set ws-end-date = today() - 1
+	do rbtchproc-report-detail
+endprocedure //load-report-paramters
+
+procedure start-report
+	set rbtchproc-report-name = "Avg Sales by Rep"
+	report rbtchproc-report-name
+		header is avg-sales-by-rep
+		no-message
+	set ws-report-started = TRUE
+endprocedure //start-report ------------------------------------------------
+
+procedure avg-sales-by-rep
+	print
+		company-name col 1 bold
+		rbtchproc-report-name in col 40 pic x(30)
+		"Date:" col 87
+		today() col 93 pic dd-mmm-yy
+		tod() col 103 pic hh:mm
+		'Page:' col 109
+		left-justify(str(page-no)) col 115 pic x(4)
+	skip 1
+	print "|------------------------ TOTAL ---------------------|" in col 27
+		"|--------------------- AVERAGE ---------------|" in col 83
+	print "Rep" in col 1
+		"Rep" in col 6
+		"No." in col 78
+	print "Code" in col 1
+		"Name" in col 6
+		"Sales" in col 32
+		"Cost" in col 47
+		"G.P. $" in col 60
+		"G.P.%" in col 68
+		"Orders" in col 76
+		"Sales" in col 88
+		"Cost" in col 102
+		"G.P. $" in col 115
+		"G.P.%" in col 125
+	print 132"=" in col 1
+endprocedure //avg-sales-by-rep --------------------------------------------
+
+procedure rbtchproc-report-detail
+	do start-report
+	if get-param(1) = '-b'
+		RBTCHPROC_MESSAGE_REPORT_STARTED
+	else
+		box @18,47 to @22,80
+		display "Spoolfile :" @19,54
+			spool-file-name() @19,66 pic x(12)
+			"Now at :" @21,54
+	endif
+	open tsf-sort-file truncate temporary
+	page
+	//
+	do extract-data
+	do print-detail
+	do finish-report
+	close tsf-sort-file and remove
+endprocedure //rbtchproc-report-detail ---------------------------------------
+
+procedure extract-data
+	if get-param(1) != '-b'
+		display 'Current Orders' @20,55
+	endif
+	select *
+	from sales-order
+	where
+		//so-order-status != '99'										//L471
+		so-order-status not in I5SOSTATII_OUTSTANDING_TRANSFERS_STATII and			//L471
+		so-order-status not in I5SOSTATII_OUTSTANDING_CONSIGNMENT_STATII and		//L471
+		so-order-type-code not in { I5SO_TYPE_PROFORMA I5SO_TYPE_QUOTATION }	//L471
+		and so-order-date between :ws-start-date and :ws-end-date
+		and so-order-type-code != 'Q'
+		and so-territory-code between :ws-start-territory and :ws-end-territory
+		and so-rep-code not = "ZZ"	//{5}
+	detail
+		if get-param(1) != '-b'
+			display so-order-no @21,65
+			display so-bo-suffix @21,75
+		endif
+		//select *
+		//from sales-order-line
+		//where so-order-no = :so-order-no
+		//	and so-bo-suffix = :so-bo-suffix
+		//	and sol-ordered-qty != 0
+		//detail
+		if ws-include-charges
+		else
+			// 24aug08 take charges away from total order value and cost.
+			extract sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is so-order-no so-bo-suffix 0
+			next same so-order-no so-bo-suffix
+			detail
+				if sol-line-type = "SC"
+					set so-order-total-amount	-= sol-line-amount
+					set so-order-total-tax		-= sol-ordered-sales-tax-amt
+					set so-ordered-total-cost	-= sol-line-cost
+				endif
+			endextract
+		endif
+			get tsf-sort-file
+			on index tsf-territory tsf-rep-code
+			key is so-territory-code so-rep-code
+			on error
+				set tsf-territory = so-territory-code
+				set tsf-rep-code = so-rep-code
+				set tsf-sales = so-order-total-amount
+									- so-order-total-tax			//458jul00
+				set tsf-cost = so-ordered-total-cost
+				set tsf-counter = 1
+				insert tsf-sort-file
+			else
+				set tsf-sales += so-order-total-amount
+									- so-order-total-tax			//458jul00
+				set tsf-cost += so-ordered-total-cost
+				set tsf-counter += 1
+				update tsf-sort-file
+			endon
+		//endselect
+	endselect
+	if get-param(1) != '-b'
+		display 'Archived Orders' @20,55
+	endif
+	select *
+	from sales-order-archive
+	where
+		//so-order-status != '99'										//L471
+		so-order-status = I5SO_UPDATED 									//L471
+		and so-order-date between :ws-start-date and :ws-end-date
+		and so-order-type-code != 'Q'
+		and so-territory-code between :ws-start-territory and :ws-end-territory
+	detail
+		if get-param(1) != '-b'
+			display so-order-no @21,65
+			display so-bo-suffix @21,75
+		endif
+	//	select *
+	//	from sales-order-line-archive
+	//	where so-order-no = :so-order-no
+	//		and so-bo-suffix = :so-bo-suffix
+	//		and sol-ordered-qty > 0
+	//	detail
+		if ws-include-charges
+		else
+			// 24aug08 take charges away from total order value and cost.
+			extract sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is so-order-no so-bo-suffix 0
+			next same so-order-no so-bo-suffix
+			detail
+				if sol-line-type = "SC"
+					set so-order-total-amount	-= sol-line-amount
+					set so-order-total-tax		-= sol-ordered-sales-tax-amt
+					set so-ordered-total-cost	-= sol-line-cost
+				endif
+			endextract
+		endif
+
+			get tsf-sort-file
+			on index tsf-territory tsf-rep-code
+			key is so-territory-code so-rep-code
+			on error
+				set tsf-territory = so-territory-code
+				set tsf-rep-code = so-rep-code
+				set tsf-sales = so-order-total-amount
+									- so-order-total-tax			//458jul00
+				set tsf-cost = so-ordered-total-cost
+				set tsf-counter = 1
+				insert tsf-sort-file
+			else
+				set tsf-sales += so-order-total-amount
+									- so-order-total-tax			//458jul00
+				set tsf-cost += so-ordered-total-cost
+				set tsf-counter += 1
+				update tsf-sort-file
+			endon
+	//	endselect
+	endselect
+endprocedure //extract-data -------------------------------------------------
+
+procedure print-detail
+	select *
+	from tsf-sort-file
+	before tsf-territory
+		get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is 'TC' tsf-territory
+		on error
+			set sys-description = 'Unknown'
+		endon
+		print
+			tsf-territory in col 3 bold
+			sys-description in col 9 bold
+	detail
+		get rep-master
+		on index rep-code
+		key is tsf-rep-code
+		on error
+			set rep-description = 'Unknown'
+		endon
+		print
+			tsf-rep-code in col 1
+			rep-description in col 5
+			tsf-sales in col 27 pic zzzzzz9.99-
+			tsf-cost in col 41 pic zzzzzz9.99-
+			tsf-sales - tsf-cost in col 55 pic zzzzzz9.99-
+			((tsf-sales - tsf-cost) / tsf-sales) * 100 in col 69 pic z9.9-
+			tsf-counter in col 76 pic zzz9
+			tsf-sales / tsf-counter in col 83 pic zzzzzz9.99-
+			tsf-cost / tsf-counter in col 97 pic zzzzzz9.99-
+			(tsf-sales - tsf-cost) / tsf-counter in col 111 pic zzzzzz9.99-
+			((((tsf-sales - tsf-cost) / tsf-counter) / (tsf-sales / tsf-counter)) * 100) in col 125 pic z9.9-
+		set tot-sales += tsf-sales
+		set tot-cost += tsf-cost
+		set tot-counter += tsf-counter
+	after tsf-territory
+		print
+			'------------' in col 27
+			'------------' in col 41
+			'------------' in col 55
+			'-----' in col 69
+			'----' in col 76
+			'------------' in col 83
+			'------------' in col 97
+			'------------' in col 111
+			'-----' in col 125
+		print
+			"Terr:" in col 10 bold
+			tsf-territory in col 17 bold
+			tot-sales in col 27 pic zzzzzz9.99-
+			tot-cost in col 41 pic zzzzzz9.99-
+			tot-sales - tot-cost in col 55 pic zzzzzz9.99-
+			((tot-sales - tot-cost) / tot-sales) * 100 in col 69 pic z9.9-
+			tot-counter in col 76 pic zzz9
+			tot-sales / tot-counter in col 83 pic zzzzzz9.99-
+			tot-cost / tot-counter in col 97 pic zzzzzz9.99-
+			(tot-sales - tot-cost) / tot-counter in col 111 pic zzzzzz9.99-
+			((((tot-sales - tot-cost) / tot-counter) / (tot-sales / tot-counter)) * 100) in col 125 pic z9.9-
+			skip
+		set gt-sales += tot-sales
+		set gt-cost += tot-cost
+		set gt-counter += tot-counter
+		set tot-sales = 0
+		set tot-cost = 0
+		set tot-counter = 0
+	endselect
+		print
+			'------------' in col 27
+			'------------' in col 41
+			'------------' in col 55
+			'-----' in col 69
+			'----' in col 76
+			'------------' in col 83
+			'------------' in col 97
+			'------------' in col 111
+			'-----' in col 125
+		print
+			"Grand Total:" in col 10 bold
+			gt-sales in col 27 pic zzzzzz9.99-
+			gt-cost in col 41 pic zzzzzz9.99-
+			gt-sales - gt-cost in col 55 pic zzzzzz9.99-
+			((gt-sales - gt-cost) / gt-sales) * 100 in col 69 pic z9.9-
+			gt-counter in col 76 pic zzz9
+			gt-sales / gt-counter in col 83 pic zzzzzz9.99-
+			gt-cost / gt-counter in col 97 pic zzzzzz9.99-
+			(gt-sales - gt-cost) / gt-counter in col 111 pic zzzzzz9.99-
+			((((gt-sales - gt-cost) / gt-counter) / (gt-sales / gt-counter)) * 100) in col 125 pic z9.9-
+endprocedure //print-detail
+
+procedure finish-report
+	if ws-report-started
+		skip
+		if ws-include-charges
+			print "NOTE: This report includes delivery charges" in col 5 bold
+		else
+			print "NOTE: This report excludes delivery charges" in col 5 bold
+		endif
+		skip 2
+		print 'Options selected : ' col 2 no-newline
+		print "Trans Date: " col 22
+			ws-start-date in col 34
+			"-" in col 46
+			ws-end-date in col 48
+		print "Territory: " col 22
+			ws-start-territory in col 34
+			"-" in col 46
+			ws-end-territory in col 46
+	endif
+	RBTCHPROC_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+	if get-param(1) != '-b'
+		display rbtchproc-report-finish-message @21,51
+		pause
+	else
+		RBTCHPROC_MESSAGE_REPORT_FINISHED
+	endif
+endprocedure //finish-report ---------------------------------------------------
+
+//end of file -------------------------------------------------------

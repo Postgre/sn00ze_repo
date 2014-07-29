@@ -1,0 +1,68 @@
+select
+	accountcode
+	trans-date
+	trans-type
+	trans-ref
+	tr-details
+	batch-ref
+	tr-amount
+from
+	deb-trans
+where
+	accountcode = input string "Enter Accountcode : " 
+	and trans-date <= input date "Enter Cut-off Date   : " 
+format is rpt
+field new-accountcode pic 9
+field total-tr-amount like tr-amount
+field ws-running-total like tr-amount
+report header
+	page
+	set total-tr-amount = 0
+	set ws-running-total = 0
+header
+	print "Capt'n Snooze Overdue billing Report"  in col 47 
+		today () in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	print " "  in col 65 
+	skip 1
+	print
+		"Accountcode" in col 7
+		"Trans" in col 22
+		"Trans" in col 37
+		"Reference" in col 45
+		"Details" in col 59
+		"Batch" in col 82
+		"Amount" in col 91
+		"Running" in col 106
+	print
+		"Date" in col 22
+		"Type" in col 37
+		"Ref." in col 82
+		"Balance" in col 107
+	skip 1
+before accountcode
+	set new-accountcode = 1
+
+detail
+	set ws-running-total += tr-amount
+	if (new-accountcode)
+		print accountcode in col 7 no newline
+	endif
+	print trans-date in col 22 no newline
+	print trans-type in col 37 no newline
+	print trans-ref in col 45 no newline
+	print tr-details in col 59 no newline
+	print batch-ref in col 82 no newline
+	print tr-amount in col 91 no newline
+	print ws-running-total in col 107 no newline
+	skip
+	set new-accountcode = 0
+	set total-tr-amount += tr-amount
+after accountcode
+report footer
+	print
+		"---------------" in col 91
+	print
+		total-tr-amount in col 91

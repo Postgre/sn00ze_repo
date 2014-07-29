@@ -1,0 +1,8 @@
+select
+	stock-code
+	prc-region-code
+	prc-wholesale-price
+	prc-recommend-retail
+from
+	stock-price
+format is external

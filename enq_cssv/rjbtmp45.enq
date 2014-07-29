@@ -1,0 +1,14 @@
+select
+	gl-accountcode
+	gl-trans-type
+	gl-trans-date
+	gl-other-side
+	gl-details
+	gl-reference
+	gl-amount
+from
+	gl-trans
+where
+	gl-accountcode in { "5M8301901" "5M8301931"} 
+	and gl-trans-date between 01-jul-2001 and 31-aug-2001 
+format is external

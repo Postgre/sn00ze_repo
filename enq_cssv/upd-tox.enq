@@ -1,0 +1,10 @@
+// upd-tox.enq
+// to change a range of product codes to X
+update stock-master
+set
+	stk-user-group[2] = 'X' 
+	ws-stock-start = input alpha "Enter starting stock code"
+	ws-stock-end = input alpha "Enter ending stock code to change to X"
+	stk-condition-code = "O" 
+where
+	stock-code between ws-stock-start and ws-stock-end 

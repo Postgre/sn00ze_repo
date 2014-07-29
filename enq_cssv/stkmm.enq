@@ -1,0 +1,16 @@
+select
+	gl-accountcode
+	gl-trans-type
+	gl-trans-date
+	gl-batch-ref
+	gl-amount
+from
+	gl-trans
+where
+	gl-amount = 327 
+format is lst
+field title of gl-accountcode is "Accountcode"
+field title of gl-trans-type is "transaction-type"
+field title of gl-trans-date is "date"
+field title of gl-batch-ref is "batch-number"
+field title of gl-amount is "amount"

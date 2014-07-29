@@ -1,0 +1,23 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-date
+	so-order-status
+	stock-code
+	sol-line-amount
+	accountcode
+	postcode
+from
+	sales-order
+	sales-order-line
+	name-and-address-master
+where
+	so-order-status != '99' 
+	and so-order-date between 26-nov-2001 and 01-dec-2001 
+	and so-cust-code = accountcode 
+order by postcode so-order-no 
+format is lst
+total on sol-line-amount
+subtotal on sol-line-amount
+	with breaks on postcode

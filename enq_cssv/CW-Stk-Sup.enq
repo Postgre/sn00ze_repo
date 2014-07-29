@@ -1,0 +1,18 @@
+//Stock associated with Supplier Report
+//Reports on stock codes that are associated with a specific supplier.
+select
+	cre-accountcode
+	stock-code
+	stock-group
+	stk-description
+	stk-desc-line-2
+	whse-code
+	whse-qty-on-hand
+	whse-qty-on-order
+from
+	stock-master
+	stock-supplier
+	stock-warehouse-detail
+where
+	cre-accountcode = input alpha prompt is "Enter Supplier Code "
+order by stock-code

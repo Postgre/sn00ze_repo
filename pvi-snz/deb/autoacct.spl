@@ -1,0 +1,1152 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/deb/autoacct
+//  Program Desc:	Customer Account creation helpeer
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	21feb14	rmd			upgraded to 710
+///////////////////////////////////////////////////////////////////////////////
+
+// autoacct.spl
+// 22aug11	rmd	extend email address to 60 characters (as autoacct3)
+// 18aug10	rmd	use Territory instead of Warehouse to determine default state
+// 09jun09	rc	included extra contact numbers for delivery
+// 07apr09	rmd	add addr line 3 and contact details for each phone #
+// 28oct08	rmd if MULTISITE=0 force territory = sys-consolidation-division
+// 24oct08	rmd	if multiple postcodes exist for a suburb let user choose
+//				hide any codes greater starting with 1, 8 or 9 many cbd suburbs have these entries
+// 30sep08	rmd capability to correct existing accounts
+// 18aug08	rmd all users to see del address screens
+// 28jul08	rmd restrict state to ACT, NSW, NT, QLD, SA, TAS, VIC, WA
+// 22jul08	rmd option to maintain customer DA record
+// 02apr08	rmd if no phone number supplied, invoice prints date in ph# field
+//				set empty ph# to "Not Supplied"
+// 09mar08	rmd dr-cust-type now being populated (with "C")
+// 09mar08	rmd disable search for matching LastName/FirstName LLLLFF strings
+//				can be re-enabled by setting ws-account-pattern-search = TRUE
+// 08mar08	rmd	dr-date-created now being populated (with today's date)
+// 11feb08	rmd if nothing selected from deblookup5, autoacct2 errors
+// 11feb08	rmd	postcode is mandatory when creating new accounts
+// 17jan08	rmd	disallow cash accounts for quotations and layby's
+//				default credit-limit = "S"
+// 01jan08	rmd	call rmd/deb/debkwupd passing accountcode to update keywords
+// 11dec07	rmd	Default value in KW to = user default territory
+//				if user presses enter without changing this default
+//				assume cash sale to default cash account.
+
+
+// /pro/pronto/bmsxi5/cus/captn/rmd/deb
+// /pro/pronto/bmsxi5/bms/include
+
+#ifndef I85PCODE_POSTCODE_SEARCH
+#define I85PCODE_POSTCODE_SEARCH
+#endif
+#include "../../../bms/include/i85pcode.spl"
+#include "../../../bms/include/m1enqdeb.spl"
+
+
+mode md-select
+	currency
+	prompt "Select"
+
+mode md-enquiry
+	currency
+	prompt "Enquiry"
+	help "Enquire on this account"
+
+// 30sep08
+mode md-correct
+	currency
+	prompt "Correct"
+	help "Correct/Maintain details for this account"
+
+mode md-exit
+	prompt "Exit"
+
+mode md-create-new
+	prompt "Create &New"
+
+
+object tmp-deb-master
+type memory
+	record
+		tdm-accountcode			like accountcode
+		tdm-shortname			like shortname
+		tdm-suburb				like na-suburb
+		tdm-phone				like na-phone
+	endrecord
+	key is tdm-accountcode
+
+field
+	ws-keyword-search					like deb-key-word
+
+	ws-accountcode						like accountcode
+	ws-name-1							pic x(16)
+	ws-name-2							pic x(16)
+	ws-shortname						like shortname
+	ws-suffix							type numeric
+	ws-acct-exists						type boolean
+//	ws-new-or-existing					pic x
+	ws-continue							pic x
+	ws-accept							pic x
+	ws-email							pic x(60) //like na-name //22aug11
+	ws-rep-code							like rep-code
+	ws-cash-not-allowed					type boolean
+	ws-user-store-id					like user-store-id
+	ws-account-pattern-search			type boolean
+	ws-da-address						pic x
+	ws-state							pic xxx
+	//ws-display-suburb					like na-suburb
+
+	//ws-warehouse                        like warehouse
+	//ws-territory                        like territory
+	//ws-price-code                       like price-code
+	//ws-na-name                          like na-name
+	//ws-na-company                       like na-company
+	//ws-na-street                        like na-street
+	//ws-na-suburb                        like na-suburb
+	//ws-na-country                       like na-country
+	//ws-postcode                         like postcode
+	//ws-na-phone                         like na-phone
+	ws-master-territory					like territory
+
+
+screen main
+	//window @1,1 to @24,63 title is "Enter Customer Details"	//rc 04jun09
+	//window @1,1 to @30,70 title is "Enter Customer Details"		//rc 04jun09
+	window @1,1 to @30,80 title is "Enter Customer Details"		//22aug11
+	allowed entry
+
+returning
+	lr-accountcode						like accountcode
+
+field
+	lf-counter							type numeric
+	lf-accountcode						like accountcode
+	lf-postcode							like postcode
+	lf-f2-pressed						type boolean
+	lf-reenter							type boolean
+	lf-valid-ph-no						type boolean
+	//
+before
+	get system-control first
+
+	set ws-master-territory = sys-consolidation-division //28oct08
+
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+
+	set ws-rep-code = get-param(1)
+	set ws-user-store-id = user-store-id
+	set ws-account-pattern-search = FALSE
+	// get ws-state
+	get name-and-address-master
+	on index accountcode na-type
+	//key is ws-user-store-id "WH"	//18aug10
+	key is ws-user-store-id "TC"    //18aug10
+	on error
+		set ws-state = SPACES
+	else
+		//set ws-state = substring(na-country,1,3)
+		set ws-state = substring(na-country,strlen(na-country) - 2,strlen(na-country))
+		if substring(ws-state,1,1) = SPACES // WA or NT
+			set ws-state = substring(ws-state,strlen(ws-state) - 1,strlen(ws-state))
+		endif
+	endon
+	//18aug10, if not a state, discard
+	if ws-state not in {"ACT" "NSW" "NT" "QLD" "SA" "TAS" "VIC" "WA"}
+		set ws-state = SPACES
+	endif
+
+
+	//message concat("Rep:" ws-rep-code)
+	// message user-whse
+	// display "New or Existing?"
+
+	if get-param(3) in {"-layby" "-quotation"}
+		set ws-cash-not-allowed = TRUE
+		set user-store-id = SPACES
+		set ws-rep-code = get-param(9)
+		//if get-param(3) = "-quotation"
+		//	set ws-rep-code = get-param(9)
+		//endif
+	endif
+
+	set lr-accountcode = user-store-id // user-whse
+	// display "Search Existing Customers" @1,3 bold // background
+	//if get-param(1) != "-new"
+		//box @1,3 to @4,55 title is "Search Existing Customers"	//rc 04jun09
+		//box @1,3 to @3,65 title is "Search Existing Customers"		//rc 04jun09
+		box @1,3 to @3,80 title is "Search Existing Customers"		//22aug11
+		display "Keyword:"    	@2,6
+		// display "Account Code:	@3,1
+	//endif
+
+	// display "Create New Customer" @4,3 bold // background
+	//box @4,3 to @7,55 title is "Create New Customer"		//rc 04jun09
+	//box @4,3 to @7,65 title is "Create New Customer"		//rc 04jun09
+	box @4,3 to @7,80 title is "Create New Customer"		//22aug11
+	display "First Name:" 	@5,3 // background
+    display "Last Name:" 	@6,4 // background
+	//box @8,3 to @19,65 title is " "		//rc 04jun09
+	box @8,3 to @19,80 title is " "		//22aug11
+
+detail
+
+	set ws-accountcode = spaces
+	set lf-counter = 0
+	// display "First Name:" @2, 3
+	// display "Last Name:" @3,4
+	// display "Account Code:" @5,1
+	// if get-param(1) != "-new"
+		accept ws-keyword-search @2,15
+			uppercase
+			optional
+		default user-store-id
+			on help-key
+				set lf-f2-pressed = true
+                do m1enqdeb-enquire-on-debtors
+                        parameters ws-accountcode //spaces spaces
+                        returning ws-accountcode
+                        set ws-keyword-search = ws-accountcode
+                reenter optional
+				// spl "rmd/deb/deblookup5" parameter is "-all"
+			endon
+			help "Enter a search word, press [F2] to show all customers or press [Enter] to begin creating a new account"
+		if strlen(ws-keyword-search) > 0
+			// if F2 search performed and account selected, pass it back to calling app
+			// user found what they were after.
+			// If F2 not pressed and default cash account still present, pass back to CA
+			if lf-f2-pressed
+				set lr-accountcode = ws-keyword-search
+				exit
+			else
+				if ws-keyword-search = user-store-id
+					set lr-accountcode = ws-keyword-search
+					get deb-master
+					on index accountcode
+					//key is so-cust-code
+					key is lr-accountcode
+					if ws-cash-not-allowed and (territory = accountcode)
+					// is a cash account for backorder qty's
+						message "You cannot use a Cash account for this sale. Please select a Customer Account"
+						set ws-keyword-search = SPACES
+						reenter ws-keyword-search
+					endif
+					exit
+				endif
+			endif
+			spl "pvi-snz/deb/deblookup"
+				parameter
+					ws-keyword-search
+				returning
+					lf-accountcode
+			// 11feb08, if nothing selected in deblookup5, autoacct2 errors
+			// assume user wants to search again
+			if lf-accountcode = SPACES
+				set lf-accountcode = "SEARCH"
+			endif
+			if lf-accountcode not in {"ADDNEW" "SEARCH"}
+				get deb-master
+				on index accountcode
+				key is lf-accountcode
+				if ws-cash-not-allowed and (territory = accountcode)
+					// is a cash account
+					message "You cannot use a Cash account for this sale. Please select a Customer Account"
+					set ws-keyword-search = SPACES
+					reenter ws-keyword-search
+				else
+					set lr-accountcode = lf-accountcode
+				endif
+            endif
+
+			// if strlen(lr-accountcode) > 0
+			if lf-accountcode = "SEARCH"
+				// no match found, user chose "Search Again" in deblookup5
+				reenter
+				optional
+			elseif lf-accountcode = "ADDNEW"
+				//message "adding new"
+				// user chose add new customer
+				// clear search objects??
+				// clear @1,1 to @3,60
+					//set lr-accountcode = SPACES
+					//exit
+				set lr-accountcode = SPACES
+				set ws-keyword-search = SPACES
+
+			else
+				if lr-accountcode = spaces
+					if not ws-cash-not-allowed
+						set lr-accountcode = user-whse
+					endif
+				endif
+				exit
+			endif
+		else
+    	endif
+	// endif
+
+
+		accept ws-name-1 @5,15
+			uppercase
+			help "Enter Customer's First Name"
+		accept ws-name-2 @6,15
+			uppercase
+			help "Enter Customer's Last Name"
+
+
+
+		//display "Account Code:" @8,1 background					//rc 09jun09
+		//display "  Sales Type:" @9,1 background					//rc 09jun09
+		display "Account Code:" @9,1 background					//rc 09jun09
+		display "  Sales Type:" @10,1 background					//rc 09jun09
+
+		set ws-shortname = substring(concat(strconcat(ws-name-1) " " strconcat(ws-name-2)),1,30)
+
+
+		open tmp-deb-master truncate temporary
+		extract deb-master
+		where substring(accountcode,1,6) = concat(substring(ws-name-2,1,4) substring(ws-name-1,1,2))
+		detail
+			set tdm-accountcode			= accountcode
+			set tdm-shortname			= shortname
+
+			get name-and-address-master
+			on index accountcode na-type
+			key is tdm-accountcode "C"
+			on error
+			else
+				set tdm-suburb = na-suburb
+				set tdm-phone = na-phone
+			endon
+			set lf-counter += 1
+			insert tmp-deb-master
+		endextract
+
+		// if get-param(1) != "-new"
+			if lf-counter > 0
+				do deb-search-result
+				set lf-counter = 0
+				if ws-accountcode = spaces
+				else
+					display ws-accountcode @9,15
+					display "Use Account?:" @10,1 background
+					accept ws-continue @10,15
+						uppercase
+						allowed 'Y' 'N'
+						default 'Y'
+
+					if ws-continue = 'Y'
+						set lr-accountcode = ws-accountcode
+						if lr-accountcode = SPACES
+							if not ws-cash-not-allowed
+								set lr-accountcode = user-whse
+							endif
+						endif
+							// message concat("lr-accountcode:" lr-accountcode)
+						exit
+					endif
+				endif
+			endif
+        //endif
+
+		set ws-suffix = 1
+		set ws-accountcode = concat(substring(ws-name-2,1,4) substring(ws-name-1,1,2) zstr(ws-suffix,2,0))
+
+		get deb-master lock
+		on index accountcode
+		key is ws-accountcode
+		on error
+			set ws-acct-exists = FALSE
+			set accountcode = ws-accountcode
+			// insert deb-master
+		else
+			set ws-acct-exists = TRUE
+			while ws-acct-exists = TRUE
+				set ws-suffix += 1
+				set ws-accountcode = concat(substring(ws-name-2,1,4) substring(ws-name-1,1,2) zstr(ws-suffix,2,0))
+				get deb-master
+				on index accountcode
+				key is ws-accountcode
+				on error
+					set ws-acct-exists = FALSE
+				endon
+			endwhile
+			set ws-accountcode = concat(substring(ws-name-2,1,4) substring(ws-name-1,1,2) zstr(ws-suffix,2,0))
+		endon
+
+		display ws-accountcode @9,15
+
+		//28oct08
+		// set territory = user-territory
+		if get-env("MULTISITE") = "1"
+			set territory = ws-user-store-id
+		else
+			set territory = ws-master-territory
+		endif
+		display territory @10,15
+		// 28oct08
+
+
+
+
+		// display "*** No matching Account ***" @6,2 background bold
+		display "Continue?:" @11,4 background
+		// display "Create New?:" @7,2 background
+		accept ws-continue @11,15 // title is "No match, create New Account?" //@7,15
+			uppercase
+			allowed 'Y' 'N'
+			default 'Y'
+
+		if ws-continue = 'Y'
+			clear @11,1 to @11,30
+
+			// display "Whse:" 			@11,9       background
+			// display "Terr:" 			@12,9      background
+			// display "Price Code:" 		@13,3      background
+			display "Name:" 			@12,9      background
+			display "Address 1:" 		@13,4      background
+			display "Address 2:" 		@14,4      background
+			display "Address 3:" 		@15,4      background
+			display "Suburb:" 			@16,7      background
+			display "State:" 			@17,8      background
+			display "Postcode:" 		@18,5      background
+
+			//box @20,3 to @26,65 title is "Contact Numbers:"			//rc 04jun09
+			box @20,3 to @26,80 title is "Contact Numbers:"			//22aug11
+			display "Name" @21,15 underline bold background
+			display "Number" @21,40 underline bold background
+
+
+			display "Mobile:" @22,6 background
+			display "Phone 1:" @23,5 background
+			display "Phone 2:" 	@24,5 background
+			display "Email:" 	@25,7 background
+			get name-and-address-master
+				on index accountcode na-type
+				key is ws-accountcode "C"
+			on error
+				initialise name-and-address-master
+			endon
+			/*
+			display "Phone 1:" 			@18,36      background
+			display "Contact 1:"		@18,4     background				//rc 04jun09
+			display "Phone 2:" 			@19,36      background
+			display "Contact 2:"		@19,4     background				//rc 04jun09
+			display "Mobile:" 			@20,7      background
+			display "Email:" 			@21,8      background
+			*/
+
+			// accept ws-warehouse       	@9,15
+			// accept ws-territory       	@10,15
+			// accept ws-price-code      	@11,15
+			// accept ws-na-name         	@12,15
+			// accept ws-na-company      	@13,15
+			// accept ws-na-street       	@14,15
+			// accept ws-na-suburb       	@15,15
+			// accept ws-na-country      	@16,15
+			// accept ws-postcode        	@17,15
+			// accept ws-na-phone        	@18,15
+			//accept warehouse       		@11,15
+			//	default user-whse
+			//	uppercase
+
+			//accept territory       		@12,15
+			//	default user-territory
+			//	uppercase
+            //
+			//accept price-code      		@13,15
+			//	uppercase
+			//	allowed "R" "M" // R = Metro M = Regional - honest!
+			//	// default "M"
+			//	default "R"
+			accept na-name         		@12,15
+				default ws-shortname
+				help "Customer's Full Name, edit if required"
+				showvalue
+				uppercase
+				//allow "A" to "Z"
+				disallow "0" to "9"
+			validation
+				set na-user-only-alpha30-1 = na-name
+			endvalidation
+			accept na-company      		@13,15
+				optional
+				uppercase
+				help "Enter Address Line 1"
+			accept na-street       		@14,15
+				optional
+				uppercase
+				help "Enter Address Line 2"
+			//07apr09
+			accept na-address-6       		@15,15
+				optional
+				uppercase
+				help "Enter Address Line 3"
+			accept na-suburb       		@16,15
+				optional
+				uppercase
+				help "Enter Suburb"
+			//save name-and-address-master
+			//restore name-and-address-master
+			accept na-country      		@17,15 pic x(3)
+				optional
+				uppercase
+				help "Enter State"
+				default ws-state
+				allowed "ACT" "NSW" "NT" "QLD" "SA" "TAS" "VIC" "WA" //"act" "nsw" "nt" "qld" "sa" "tas" "vic" "wa"
+			on help-key
+				do select-state
+				set na-country = ws-state
+				//reenter na-country optional
+				display na-country      		@17,15 pic x(3)
+			endon
+			//message na-suburb
+			//message na-country
+			//extract postcodes
+			//on index postcode-country postcode-desc postcode
+			//key is na-country na-suburb SPACES
+			//next same postcode-country postcode-desc
+			//detail
+			//	message postcode-state
+			//	//if postcode-state = substring(na-country,1,3)
+			//		set lf-postcode = postcode
+			//	//endif
+			//endextract
+			//24oct08 use the first postcode found not the last
+			set lf-postcode = SPACES //24oct08
+			extract postcodes
+			on index postcode-desc postcode
+			key is na-suburb SPACES
+			next same postcode-desc
+			detail
+			//	message postcode-state
+				if postcode-state = substring(na-country,1,3) and substring(postcode,1,1) not in {"1" "8" "9"} //24oct08 ignore multiple effect if 1xxx 8xxx 9xxx code
+					if lf-postcode = SPACES			//24oct08
+						set lf-postcode = postcode
+					else
+						// multiple postcodes exist, display the results so user can make a choice.
+						//set ws-display-suburb = na-suburb
+						do
+							multiple-postcode
+						parameters
+							na-suburb
+							substring(na-country,1,3)
+						returning
+							lf-postcode
+						// postocde selected move on to the next section
+						break
+					endif							//24oct08
+				endif
+			endextract
+			accept postcode        		@18,15
+				default lf-postcode
+				optional
+				help "Enter Postcode"
+			on help-key
+				do i85pcode-enquire-on-postcodes-by-pcode // i85pcode-postcode-search
+				parameters
+					//na-suburb
+					//na-country
+					postcode
+				returning
+					postcode
+				refresh postcode
+			endon
+			// 11feb08
+			validation
+				if strlen(postcode) = 0
+					message "Postcode required"
+					reenter postcode
+				endif
+				get postcodes
+					on index postcode
+					key is postcode
+				on error
+					message "Postcode does not exist."
+					reenter postcode
+				else
+					if postcode-state <> substring(na-country,1,3)
+						message "Postcode not assigned to the entered state."
+						reenter postcode
+					endif
+				endon
+			endvalidation
+			//start --------------------------------------------- //rc 05jun09
+			//display "Name" @19,23 underline bold background
+			//display "Number" @19,46
+			//display "Mobile 1:" @20,5 background
+			//display "Mobile 2:" @21,5 background
+			//display "Phone:" 	@22,8 background
+			//display "Email:" 	@23,8 background
+			accept na-user-only-alpha30-1 @22,15	pic x(20)
+				default na-user-only-alpha30-1
+				optional
+				uppercase
+				help "Contact for Mobile 1"
+				//allow "A" to "Z"
+				disallow "0" to "9"
+			//
+			accept na-fax-no @22,40
+				optional
+				default na-fax-no
+				help "Mobile Number 1"
+				//allow "0" to "9" SPACES "-"					//rc 09jul09
+			validation
+				if na-fax-no <> SPACES							//rc 09jul09
+					if strlen(na-fax-no) > 12
+					or strlen(na-fax-no) < 10
+	 		        	message "Invalid Mobile number."
+	 					reenter
+	 				endif
+					do validate-phone-number
+						parameter na-fax-no
+								"M"
+						returning lf-valid-ph-no
+					if lf-valid-ph-no = FALSE
+						message "Invalid Mobile Number"
+						reenter na-fax-no
+					endif
+				endif											//rc 09jul09
+// 				if not valid-number(na-fax-no)
+// 		        	message "The Mobile Number must consist of NUMBERS only."
+// 					reenter
+// 				endif
+//
+         	endvalidation
+			//
+			if na-user-only-alpha30-2 = SPACES
+				set na-user-only-alpha30-2 = "Contact Name"
+			endif
+			accept na-user-only-alpha30-2	@23,15	pic x(20)
+				optional
+				default na-user-only-alpha30-2
+				help "Contact for Phone 1"
+				showvalue
+				uppercase
+				//allow "A" to "Z" SPACES
+				disallow "0" to "9"
+			validation
+				if na-user-only-alpha30-2 in ("CONTACT NAME" "Contact Name")
+					set na-user-only-alpha30-2 = SPACES
+					refresh na-user-only-alpha30-2
+				endif
+			endvalidation
+			if na-phone	= SPACES
+				set na-phone = "Phone No 1"
+			endif
+			accept na-phone @23,40
+				optional
+				default na-phone
+				help "Phone Number 1; add the STD Code for land line numbers"
+				showvalue
+			validation
+				if na-phone = "Phone No 1"
+					set na-phone = SPACES
+					refresh na-phone
+				endif
+				if na-phone <> SPACES
+					if strlen(na-phone) > 12
+	 		        	message "Invalid Phone number."
+	 					reenter
+	 				endif
+					do validate-phone-number
+						parameter na-phone
+								"A"
+						returning lf-valid-ph-no
+					if lf-valid-ph-no = FALSE
+						message "Invalid Phone Number"
+						reenter na-phone
+					endif
+				endif
+         	endvalidation
+
+			accept na-spare-alpha20-1	@24,15      pic x(15)
+				optional
+				default na-spare-alpha20-1
+				help "Contact for Phone 2"
+				showvalue
+				uppercase
+				//allow "A" to "Z"
+				disallow "0" to "9"
+			validation
+				if na-spare-alpha20-1 = SPACES
+					set na-mobile-phone = SPACES
+				endif
+			endvalidation
+
+			accept na-mobile-phone @24,40
+				optional
+				default na-mobile-phone
+				help "Phone Number 2; add the STD Code for land line numbers"
+				showvalue
+			validation
+				if na-mobile-phone <> SPACES
+					if strlen(na-mobile-phone) > 12
+	 		        	message "Invalid Phone number."
+	 					reenter
+	 				endif
+					do validate-phone-number
+						parameter na-mobile-phone
+								"A"
+						returning lf-valid-ph-no
+					if lf-valid-ph-no = FALSE
+						message "Invalid Phone Number"
+						reenter na-mobile-phone
+					endif
+				endif
+         	endvalidation
+
+         	accept ws-email				@25,15
+				optional
+				default ws-email
+				help "Enter Email Address"
+			validation
+				if ws-email > SPACES
+					do validate-email-address
+						parameters ws-email
+						returning lf-reenter
+					if lf-reenter = TRUE
+						reenter
+					endif
+				endif
+			endvalidation
+			/*
+			accept na-user-only-alpha30-1 @18,15	pic x(20)		//rc 04jun09
+				optional
+				help "Contact for Phone Number 1"
+				disallow SPACES										//rc 05jun09
+
+			accept lf-phone-code @18,45
+				disallow SPACES
+				help "Enter STD Code for Phone Number 1"
+				default lf-phone-code
+			validation
+				if not valid-number(lf-phone-code)
+		        	message "The STD Code must consist of NUMBERS only."
+					reenter
+				else
+					set na-phone = lf-phone-code
+				endif
+         	endvalidation
+
+         	accept lf-phone-no @18,50
+         		//disallow SPACES
+				help "Enter Phone Number 1"
+				default lf-phone-no
+			validation
+				//message strlen(str(lf-phone-no))
+				if strlen(str(lf-phone-no)) <> 8
+		        	message "The Phone number should be 8 digits."
+					reenter
+				else
+					set na-phone = strconcat(na-phone,str(lf-phone-no))
+					message "na-phone " na-phone
+				endif
+         	endvalidation
+			//accept na-phone        		@18,43
+			//	optional
+			//	help "Enter Phone Number 1"
+			//	default na-phone
+			//	disallow SPACES										//rc 05jun09
+
+			//accept na-spare-alpha20-2	@19,35					//rc 04jun09
+			accept na-spare-alpha20-2	@19,15					//rc 04jun09
+				optional
+				help "Contact for Phone Number 2"
+				showvalue										//rc 04jun09
+				when na-spare-alpha20-1 <> SPACES				//rc 04jun09
+
+			//accept na-user-only-alpha30-1 @18,35	pic x(20)		//rc 04jun09
+			accept na-spare-alpha20-1	@19,43      pic x(15)
+				optional
+				help "Enter Phone Number 2"
+			validation
+				if na-spare-alpha20-1 = SPACES
+					set na-spare-alpha20-2 = SPACES
+				endif
+			endvalidation
+			accept na-fax-no        	@20,43
+				optional
+				help "Enter Mobile Phone Number"
+
+			accept na-user-only-alpha30-2 @20,15	pic x(20)
+				optional
+				help "Contact for Mobile Phone Number"
+			accept ws-email				@21,15
+				optional
+				help "Enter Email Address"
+			*/
+			//end ----------------------------------------------- //rc 05jun09
+			// non-user settings
+			set dr-clearflag = "O"
+			set shortname = na-name
+			set bill-to = ws-accountcode
+			set warehouse = ws-user-store-id
+			set rep-code = ws-rep-code
+			// 14aug08 setting all to R for now
+			//if uppercase(get-env("PRCREGION")) = "REGIONAL"
+			//	set price-code = "0"
+			//else
+			//	set price-code = "R"
+			//endif
+			set price-code = "R"
+			set na-name = ws-shortname
+			set credit-limit = "S" //"0"
+			set dr-date-created = today()
+			// 09mar08
+			set dr-cust-type = "C" // C = "National", not picking this up in XI
+			// holds the answer to the question "Why Snooze?" from 373, C seemed Generic
+			//18aug08
+			//if login-id() in {"robd" "robynb" "lionelvn" "robz" "roxanne"}
+				//display "Add Account?:" @22,1 background
+				//display   "Accept?:" @22,6 background
+				display 	"Different Delivery Address?:" @27,1 background
+				accept ws-da-address @27,30
+					uppercase
+					allowed 'Y' 'N'
+					default 'N'
+				if ws-da-address = "Y"
+					//message lf-accountcode
+					//message ws-accountcode
+					spl
+						//"rmd/so/setdeladd"
+						"pvi-snz/so/setdeladd"
+					parameters
+						ws-accountcode
+						"DA"
+				endif
+				display     "Continue?:" @28,33 background
+				accept ws-accept @28,44
+					uppercase
+					allowed 'Y' 'N'
+					default 'Y'
+			// 18aug08
+			//else
+			//	display     "Continue?:" @23,4 background
+			//	accept ws-accept @23,15
+			//		uppercase
+			//		allowed 'Y' 'N'
+			//		default 'Y'
+            //endif
+			if ws-accept = 'Y'
+				//02apr08
+				if na-phone = SPACES
+					set na-phone = "Not Supplied"
+				endif
+				get deb-master lock
+				on index accountcode
+				key is ws-accountcode
+				on error
+					set accountcode = ws-accountcode
+					insert deb-master
+					get name-and-address-master lock
+					on index accountcode na-type
+					key is ws-accountcode "C"
+					on error
+						insert name-and-address-master
+					else
+					endon
+					if strlen(ws-email) > 0
+						get name-and-address-master lock
+						on index accountcode na-type
+						key is ws-accountcode "E"
+						on error
+							initialise name-and-address-master
+							set accountcode = ws-accountcode
+							set na-type = "E"
+							//22aug11 --------------- start
+							//set na-name = ws-email
+							set na-name = substring(ws-email,1,30)
+							set na-company = substring(ws-email,31,60)
+							//22aug11 ----------------- end
+							insert name-and-address-master
+						else
+						endon
+					endif
+					// update/insert keywords 						// 01Jan08
+					spl "pvi-snz/deb/debkwupd"
+						parameters
+							ws-accountcode
+				else
+				endon
+				//message concat("Account created for " strconcat(ws-shortname) ".")
+				set lr-accountcode = ws-accountcode
+				// spl "lib/h1enqdeb"
+				// parameters
+				// 	ws-accountcode
+    	        //
+    	        if lr-accountcode = SPACES
+					set lr-accountcode = user-whse
+				endif
+					// message concat("lr-accountcode:" lr-accountcode)
+				exit
+			endif
+		endif
+confirm
+	auto
+confirmed
+endconfirm
+endscreen // main -------------------------------------------------------------
+
+procedure validate-phone-number				//rc 17jun09
+parameters
+	lp-input-string					pic x(20)
+	lp-type-of-no					pic x
+returning
+//	lr-mobile-no					pic x(10)
+	lr-valid-mobile					type boolean
+//
+local field
+	i								type numeric
+	c								pic x
+	lf-working-string				pic x(20)
+	//
+	set lf-working-string = SPACES
+	//
+	for i = 1 to strlen(lp-input-string)   // down to 1
+		set c = substring(lp-input-string,i,i)
+		//if (c = SPACES or c = "-")
+		if valid-number(c)
+			set lf-working-string = concat(strconcat(lf-working-string) c)
+		endif
+		//endif
+	endfor
+ 	set lr-valid-mobile	= FALSE
+ 	//message lf-working-string
+ 	if strlen(lf-working-string) = 10
+ 		set lr-valid-mobile	= TRUE
+ 	else
+ 		set lr-valid-mobile	= FALSE
+ 	endif
+	if lp-type-of-no = "M"
+		if substring(lf-working-string,1,2) = "04"
+			set lr-valid-mobile	= TRUE
+		else
+ 			set lr-valid-mobile	= FALSE
+		endif
+ 	endif
+endprocedure // validate-phone-number -------------------------------------------------
+
+procedure validate-email-address					//rc 16jun09
+    parameters
+        lp-email-address                pic x(60)    type string
+    returning
+        lr-reenter                      type boolean
+    local fields
+        lf-email-address                like lp-email-address
+        lf-byte-count                   pic 9(2)
+        lf-byte                         pic x
+        lf-i                            pic 9(2)
+        lf-dot-count                    pic 9(2)
+        lf-at-count                     pic 9(2)
+    //
+    set lf-email-address = lower-case(lp-email-address)
+    set lf-dot-count = ZERO
+    set lf-at-count = ZERO
+    set lr-reenter = FALSE
+    //
+    if lf-email-address = SPACES
+        exit
+    endif
+    //
+    set lf-byte-count = str-len(lf-email-address)
+    if lf-byte-count < 6
+        message "Email address cannot be less than 6 characters."
+        set lr-reenter = TRUE
+        exit
+    endif
+    for lf-i = 1 to str-len(lf-email-address)
+        set lf-byte = sub-string(lf-email-address,lf-i,lf-i + 1)
+        switch on lf-byte
+            case " "
+                message "Email address cannot have SPACES"
+                set lr-reenter = TRUE
+                break
+            case "."
+                set lf-dot-count += 1
+                if lf-i = lf-byte-count
+                    message "Email address cannot have . sign in last char"
+                    set lr-reenter = TRUE
+                    break
+                endif
+            case "@"
+                set lf-at-count += 1
+                if lf-at-count > 1
+                    message "Email address cannot have multiple @ signs."
+                    set lr-reenter = TRUE
+                    break
+                endif
+                if lf-i = 1
+                    message "Email address cannot contain @sign as the 1st Character."
+                    set lr-reenter = TRUE
+                    break
+                endif
+                if lf-i = lf-byte-count
+                    message "Email address cannot have @ sign in last char"
+                    set lr-reenter = TRUE
+                    break
+                endif
+            case "0" "1" "2" "3" "4" "5" "6" "7" "8" "9" "-" "_" "~"
+                //Legal
+            case "a" "b" "c" "d" "e" "f" "g" "h" "i" "j" "k" "l" "m"
+                //Legal - upper or lower case.
+            case "n" "o" "p" "q" "r" "s" "t" "u" "v" "w" "x" "y" "z"
+                //Legal - upper or lower case.
+            else
+                message concat("Email address contains Illegal character=", lf-byte)
+                set lr-reenter = TRUE
+                break
+        endswitch
+    endfor
+    if not lr-reenter
+        if lf-at-count = ZERO
+            message "Email address must contain @sign"
+            set lr-reenter = TRUE
+        endif
+        if lf-dot-count = ZERO
+            message "Email address requires '.' character"
+            set lr-reenter = TRUE
+        endif
+    endif
+    //
+endprocedure //validate-email-address
+
+
+screen deb-search-result
+	window @1,1 to @16,90 title is "Similar Names Found"
+
+	primary tmp-deb-master
+	// where substring(accountcode,1,6) = concat(substring(ws-name-2,1,4) substring(ws-name-1,1,2))
+
+	datagrid occurs 12
+	allowed md-select md-create-new md-enquiry md-correct search
+	review-from-start
+
+
+	// allowed md-select md-enquiry md-exit search
+
+	before
+		display "Select an Existing Account or Create New" @1,2 background bold
+		if not ws-account-pattern-search
+			exit
+		endif
+	detail
+		display tdm-accountcode @3,2 title is "Account Code"
+		display tdm-shortname @3,4 title is "Account Name"
+		display tdm-suburb  @3,6 title is "Suburb"
+		display tdm-phone   @3,8 title is "Phone"
+
+confirm
+	auto
+confirmed
+	if screen-mode() = md-select
+		set ws-accountcode = tdm-accountcode
+		exit
+	elseif screen-mode() = md-enquiry
+		spl
+			"deb/m10mast"
+		parameters
+			"-ec"
+			tdm-accountcode
+	// 30sep08
+	elseif screen-mode() = md-correct
+		spl
+			"deb/m10mast"
+		parameters
+			"-m"
+			tdm-accountcode
+	elseif screen-mode() = md-create-new
+		exit
+	endif
+endconfirm
+
+endscreen // deb-search-result ------------------------------------------------
+
+
+screen multiple-postcode
+	window @1,1 to @16,55 title is concat("Multiple Postcodes Found for " strconcat(na-suburb) ".")
+parameters
+	lp-postcode-desc						like postcode-desc
+	lp-postcode-state						like postcode-state
+
+returning
+	lr-postcode								like postcode
+
+	primary postcodes
+	// where substring(accountcode,1,6) = concat(substring(ws-name-2,1,4) substring(ws-name-1,1,2))
+	where
+		postcode-state = lp-postcode-state
+		and
+		postcode-desc = lp-postcode-desc
+		and
+		//postcode < "8000"
+		substring(postcode,1,1) not in {"1" "8" "9"}
+
+	datagrid occurs 12
+	allowed md-select search
+	review-from-start
+
+	detail
+		display postcode 		@3,2 title is "Postode"
+		display postcode-desc	@3,4 title is "Suburb"
+		display postcode-state  @3,6 title is "State"
+
+confirm
+	auto
+confirmed
+	if screen-mode() = md-select
+		set lr-postcode = postcode
+		exit
+	endif
+endconfirm
+
+endscreen // multiple-postcode ------------------------------------------------
+
+
+menu select-state
+	window @12,12 to @20,20 title is "Select State"
+
+	option "ACT" @13,15
+		set ws-state = "ACT"
+		exit
+
+	option "NSW" @14,15
+		set ws-state = "NSW"
+		exit
+
+	option "NT" @15,15
+		set ws-state = "NT"
+		exit
+
+	option "QLD" @16,15
+		set ws-state = "QLD"
+		exit
+
+	option "SA" @17,15
+		set ws-state = "SA"
+		exit
+
+	option "TAS" @18,15
+		set ws-state = "TAS"
+		exit
+
+	option "VIC" @19,15
+		set ws-state = "VIC"
+		exit
+
+	option "WA" @20,15
+		set ws-state = "WA"
+		exit
+
+endmenu // select-state -------------------------------------------------------
+// autoacct.spl

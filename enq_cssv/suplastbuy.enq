@@ -1,0 +1,54 @@
+// select
+// stock-code
+// cre-accountcode
+// sup-last-buy-price
+// stk-user-group
+// from
+// stock-supplier
+// stock-master
+// where
+// sup-last-buy-price = 0 
+// format is lst
+select
+	stock-code
+	cre-accountcode
+	sup-last-buy-price
+	stk-user-group
+from
+	stock-supplier
+	stock-master
+where
+	sup-last-buy-price = 0 
+format is rpt
+report header
+	page
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"stock-code" in col 13
+		"    cre" in col 43
+		"sup last" in col 68
+		" stk" in col 96
+		" stk" in col 114
+	print
+		"accountcode" in col 43
+		"buy price" in col 68
+		"user" in col 96
+		"user" in col 114
+	print
+		"group" in col 96
+		"group" in col 114
+	skip 1
+
+detail
+	print
+		stock-code in col 13
+		cre-accountcode in col 43
+		sup-last-buy-price in col 68
+		stk-user-group[1] in col 96
+		stk-user-group[2] in col 114
+report footer

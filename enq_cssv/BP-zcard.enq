@@ -1,0 +1,38 @@
+// BP aged Z-card report
+select
+	territory
+	accountcode
+//	balance
+//	open-bal
+	aged-balance
+	accountshort = substring (accountcode 1 4)
+	up_to_3per = aged-balance[1] + aged-balance[2] + aged-balance[3]
+	older_3_period = aged-balance[4] + aged-balance[5] + aged-balance[6] + aged-balance[7] + aged-balance[8]+ aged-balance[9]+ aged-balance[10]+ aged-balance[11]+ aged-balance[12]+ aged-balance[13]
+	future-bal
+from
+	deb-master
+where
+	dr-cust-type = "P" and accountshort <> "ZCSM" and territory = "660"
+order by territory
+format is lst
+suppress aged-balance[1]
+suppress aged-balance[2]
+suppress aged-balance[3]
+suppress aged-balance[4]
+suppress aged-balance[5]
+suppress aged-balance[6]
+suppress aged-balance[7]
+suppress aged-balance[8]
+suppress aged-balance[9]
+suppress aged-balance[10]
+suppress aged-balance[11]
+suppress aged-balance[12]
+suppress aged-balance[13]
+suppress accountshort
+subtotal on future-bal
+	with breaks on territory
+subtotal on up_to_3per
+	with breaks on territory
+subtotal on older_3_period
+	with breaks on territory
+

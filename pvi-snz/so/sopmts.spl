@@ -1,0 +1,44 @@
+// sopmts.spl
+// 21Sep07	rmd	record accumulative payments taken on a sales order as it is being entered
+//				need to know if we are going to suppress the non payment paperwork produced
+//				by PICKSLIP, if no payment made, let it print, else suppress it.
+
+field
+	ws-so-order-no						like so-order-no 
+	ws-so-bo-suffix                     like so-bo-suffix
+	ws-payment-text						like so-note-text
+
+	
+procedure main
+	if strlen(get-param(1)) = 0
+		exit
+	else	
+		set ws-so-order-no = num(get-param(1))
+		set ws-so-bo-suffix = get-param(2)
+		set ws-payment-text = get-param(3)
+		do write-sopmt
+	endif
+endprocedure // main ----------------------------------------------------------
+
+procedure write-sopmt
+local field
+	lf-payment-amount					type numeric	
+	get sales-order-notes lock
+	on index so-order-no so-bo-suffix so-note-type so-user-code so-note-sequence-no
+	key is ws-so-order-no ws-so-bo-suffix "~" "SOPMT" 1
+	on error
+		set so-order-no					= ws-so-order-no
+		set so-bo-suffix            	= ws-so-bo-suffix
+		set so-note-type            	= "~"
+		set so-user-code            	= "SOPMT"
+		set so-note-sequence-no     	= 1
+		set so-note-text				= ws-payment-text
+		insert sales-order-notes    	
+	else                            	
+		set lf-payment-amount 			= num(so-note-text)
+		set lf-payment-amount 			+= num(ws-payment-text)
+		set so-note-text				= str(lf-payment-amount)
+		update sales-order-notes
+	endon
+endprocedure // write-sodisc ---------------------------------------------------
+// sopmts.spl

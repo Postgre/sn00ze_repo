@@ -1,0 +1,868 @@
+//Program		: saleslogtrig.spl
+//Written By	: Ranjith
+//Written on 	: May 2009
+//Custom Object	: snooze-sales-log
+//Description 	: Called by sol dictionary trigger
+//				 	to insert values into the custom object
+// 		values referenced for
+//			ssl-log-type = 	2 	insert
+// 				   			8   update
+//				   			32 	delete
+// 20feb14	{9}	rmd - upgrade to 710, only record entries where old and new values have changed
+//					replacement for prc-sales-tax-code lookup
+// 12jun13	{8} rmd don't touch sol-user-only-num1 on "DN" lines - they hold inc GST old price for SYCAS and possibly disc reports
+// 05may13	{7} rmd be aware of wholesale sales orders so-price-code = "0"
+// 04may13	{6} rmd - store original unit value ex in sol-user-only-num1
+// 20mar13	{5}	rmd write date-time to so-user-only-date1 on insert
+//					will use as part of record selection in swm/214/excelr8
+//			THIS HAD TO BE UNDONE -	NEED ANOTHER METHOD OF CAPTURING SO CREATION DATE
+// 06mar13	{4} rmd	write date-time to sol-user-only-date1 on insert
+//					will use as part of record selection in swm/214/excelr8
+// 16sep09	rmd	gl codes crept into output (153 s/o 29595) need to be ignored
+// 29jul09	rc	commented the exit statements
+// 28may09 	rmd	when bosplit runs suffixed line can be written before suffixed sales-order header exists
+// 08jun09	rmd	to-do: if movements are due to bo-split or so-update, ignore
+
+version-number "CUSTOM LIVE pvi-snz/so/saleslogtrig 20140220"
+
+/*
+object snooze-sales-log-defect
+type i-sam
+file "SNZSLOGDEF"
+	record
+		ssld-log-date                    		type date
+		ssld-log-time                    		type time
+		ssld-gmt								type date-time
+		ssld-log-type            				like ordlog-type
+		ssld-dataset 							like sys-consolidation-division
+		ssld-so-order-no                 		like so-order-no
+		ssld-so-bo-suffix                		like so-bo-suffix
+		ssld-sol-line-seq                		like sol-line-seq
+		ssld-reason								type string
+	endrecord
+	key is ssld-log-date ssld-log-time
+	key is ssld-so-order-no ssld-so-bo-suffix ssld-sol-line-seq
+	key is ssld-so-order-no ssld-so-bo-suffix ssld-sol-line-seq ssld-log-type
+*/
+
+/*
+object snooze-sales-log
+type i-sam
+file "SNZSLOG"
+	record
+		ssl-log-date                    		type date
+		ssl-log-time                    		type time
+		ssl-gmt									type date-time
+		ssl-log-type            				like ordlog-type
+		ssl-so-order-no                 		like so-order-no
+		ssl-so-bo-suffix                		like so-bo-suffix
+		ssl-sol-line-seq                		like sol-line-seq
+		ssl-so-order-date               		like so-order-date
+		ssl-so-order-status             		like so-order-status
+		ssl-so-territory-code           		like so-territory-code
+		ssl-so-rep-code                 		like so-rep-code
+		ssl-rep-name							like rep-description
+		ssl-so-cust-code                		like so-cust-code
+		ssl-so-whse-code                		like so-whse-code
+		ssl-sol-line-type               		like sol-line-type
+		ssl-stock-code                  		like stock-code
+		ssl-stk-description             		like stk-description
+		ssl-stk-desc-line-2						like stk-desc-line-2
+		ssl-stk-desc-line-3						like stk-desc-line-3
+		ssl-sol-disc-rate						like sol-disc-rate
+		//
+		ssl-old-sol-ordered-qty               	like sol-ordered-qty
+		ssl-old-sol-item-cost                 	like sol-item-cost
+		ssl-old-sol-line-amount               	like sol-line-amount
+		ssl-old-sol-ordered-sales-tax-amt     	like sol-ordered-sales-tax-amt
+		ssl-old-sol-disc-rate                 	like sol-disc-rate
+		ssl-old-sol-item-price                	like sol-item-price
+		ssl-new-sol-ordered-qty               	like sol-ordered-qty
+		ssl-new-sol-item-cost                 	like sol-item-cost
+		ssl-new-sol-line-amount               	like sol-line-amount
+		ssl-new-sol-ordered-sales-tax-amt     	like sol-ordered-sales-tax-amt
+		ssl-new-sol-disc-rate                 	like sol-disc-rate
+		ssl-new-sol-item-price                	like sol-item-price
+		//
+		ssl-qty                         		type numeric		//ordered qty
+		ssl-item-rrp-inc	            		type numeric		//sales inc gst
+		ssl-item-value-ex               		type numeric		//sales ex gst
+		ssl-item-cost-ex                		type numeric		//cost ex gst
+		ssl-changed-value						type boolean occurs 6 	// 1 - discount, 2 - qty,
+														// 3 - item value, 4 - item cost 5 - item price 6 - remove
+	endrecord
+	key is ssl-log-date ssl-log-time
+	key is ssl-so-order-no ssl-so-bo-suffix ssl-sol-line-seq
+	key is ssl-so-order-no ssl-so-bo-suffix ssl-sol-line-seq ssl-log-type
+*/
+//procedure sol-trigger export
+//   	parameters
+//   		oldrow.* 				like sales-order-line.*
+//     	newrow.* 				like sales-order-line.*
+//     	trigger-type 			pic 9(4)
+//   	returning
+//   		newrow.*
+//   	report "sol-trigger"
+//   		spool-only
+//   	print
+//   		today()
+//   		tod()
+//   		newrow.so-order-no
+//   		newrow.so-bo-suffix
+//   		newrow.sol-line-seq
+//   		login-id()
+//   	report finished
+//endprocedure sol-trigger ------------------------------------------------------
+
+procedure sol-trigger export
+   	parameters
+   		oldrow.* 				like sales-order-line.*
+     	newrow.* 				like sales-order-line.*
+     	trigger-type 			pic 9(4)
+   	returning
+   		newrow.*
+    //
+    // 01jun09
+//message "trigger type: " trigger-type
+    get system-control first
+   // if sys-consolidation-division not in {"312", "VIC", "183"}
+  //  	exit
+  //  endif
+    // 01jun09
+	do sales-log
+    	parameters
+	    	oldrow.*
+	     	newrow.*
+	     	trigger-type
+	//<{4}
+	if trigger-type = 2	//insert
+		get sales-order-line lock
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is newrow.so-order-no newrow.so-bo-suffix newrow.sol-line-seq
+		on error
+		else
+			if sol-user-only-date1 = 0
+				set sol-user-only-date1 = gmt()
+				update sales-order-line
+				on error
+				endon
+			endif
+			//<{6}
+			//if login-id() = "robd"
+				//<{7}
+				get sales-order
+					on index so-order-no so-bo-suffix
+					key is newrow.so-order-no newrow.so-bo-suffix
+				on error
+					set so-price-code = "R"
+				endon
+				//>{7}
+				//<{9}
+				//get stock-price
+				//	on index stock-code prc-region-code
+				//	key is newrow.stock-code SPACES
+				//on error
+				//	set prc-sales-tax-code = 1
+				//endon
+				set tsod-tax-code = "1"
+				extract tax-stock-output-defaults
+				     on index tsod-stock-code tsod-cust-type tsod-tax-group tsod-tax-code
+				     key is stock-code SPACES SPACES SPACES
+				detail
+				     break
+				endextract
+				//>{9}
+				//if sol-item-price > 0 and prc-sales-tax-code = 1							//{7}
+				//if sol-item-price > 0 and prc-sales-tax-code = 1 and so-price-code != "0"   //{7}					//{8}
+				//if sol-item-price > 0 and prc-sales-tax-code = 1 and so-price-code != "0" and sol-line-type != "DN" //{8}     //{9}
+				if sol-item-price > 0 and tsod-tax-code = "1" and so-price-code != "0" and sol-line-type != "DN" //{8}			//{9}
+					set sol-user-only-num1 = sol-item-price / 1.1
+				//else                       //{8}
+				elseif sol-line-type != "DN" //{8}
+					set sol-user-only-num1 = sol-item-price
+				endif
+				//ex tax unit price - may have been overridden
+				//following check will search for override and update this to original (full) price
+				//want the first price override (type 1)
+				//message newrow.so-order-no newrow.so-bo-suffix newrow.sol-line-seq
+				extract sales-audit-file
+					on index so-order-no so-bo-suffix sol-line-seq order-log-date order-log-time saf-dedup-seq
+					key is newrow.so-order-no newrow.so-bo-suffix newrow.sol-line-seq 0 0 0
+					next same so-order-no so-bo-suffix sol-line-seq
+				detail
+					if ordlog-type = 1
+						//message newrow.sol-line-seq ":" ordlog-old-value
+						//this logic was in place at AMG where ordlog-old-value held the value INC tax
+						//at Snooze ordlog-old-value appears to be ex tax
+						//-- turned out I was testing with a wholesale account (TEST on TN1)
+						//set sol-user-only-num1 = ordlog-old-value
+						//<{9}
+						//get stock-price
+						//	on index stock-code prc-region-code
+						//	key is ordlog-old-info SPACES
+						//on error
+						//	set prc-sales-tax-code = 1
+						//endon
+						set tsod-tax-code = "1"
+						extract tax-stock-output-defaults
+						     on index tsod-stock-code tsod-cust-type tsod-tax-group tsod-tax-code
+						     key is stock-code SPACES SPACES SPACES
+						detail
+						     break
+						endextract
+						//>{9}
+						//if ordlog-old-value > 0 and prc-sales-tax-code = 1						//{7}
+						//if ordlog-old-value > 0 and prc-sales-tax-code = 1 and so-price-code != "0"	//{7}                   //{8}
+						//if ordlog-old-value > 0 and prc-sales-tax-code = 1 and so-price-code != "0"	and sol-line-type != "DN"	//{8}
+						if ordlog-old-value > 0 and tsod-tax-code = "1" and so-price-code != "0"	and sol-line-type != "DN"	//{8}
+							set sol-user-only-num1	= ordlog-old-value / 1.1
+						//else                          //{8}
+						elseif sol-line-type != "DN"	//{8}
+							set sol-user-only-num1	= ordlog-old-value
+						endif
+						break
+					endif
+				endextract
+				update sales-order-line
+				on error
+				endon
+			//endif
+			//>{6}
+		endon
+		////<{5}
+		//get sales-order lock
+		//	on index so-order-no so-bo-suffix
+		//	key is newrow.so-order-no newrow.so-bo-suffix
+		//on error
+		//else
+		//	if so-user-only-date1 = 0
+		//		set so-user-only-date1 = gmt() //creation date of order set
+		//		update sales-order
+		//	elseif newrow.so-bo-suffix != SPACES and so-user-only-date2 = 0
+		//		set so-user-only-date2 = gmt() //creation date of suffixed order
+		//		update sales-order
+		//	endif
+		//endon
+		////>{5}
+	endif
+	//>{4}
+endprocedure // sol-trigger -------------------------------------------------------------------
+
+
+procedure sales-log
+parameters
+	oldrow.* 				like sales-order-line.*
+ 	newrow.* 				like sales-order-line.*
+ 	trigger-type 			pic 9(4)
+	//
+local fields
+	lf-old-item-value		like ssl-item-value-ex
+	lf-new-item-value		like ssl-item-value-ex
+	lf-so-no-exists			type boolean
+	lf-valid-stock-code		type boolean			//16sep09
+	//
+	get snooze-sales-log first
+	on error
+		do create-snooze-sales-log
+	endon
+	//
+	/*
+	get snooze-sales-log-defect first
+	on error
+		open snooze-sales-log-defect create permanent
+	endon
+	*/
+	//
+	get system-control first
+	//
+	if newrow.sol-line-type in {"SN" "KN" "WN"}
+		// type 32 can have no changes, need to let them pass, only want to test updates
+		//if trigger-type <> 2
+		if trigger-type = 8
+			if 	newrow.sol-ordered-qty  = oldrow.sol-ordered-qty
+			and	newrow.sol-disc-rate    = oldrow.sol-disc-rate
+			and	newrow.sol-item-price   = oldrow.sol-item-price
+			and	newrow.sol-item-cost	= oldrow.sol-item-cost
+				//message "No change in the Old & New values"
+				//set ssld-log-date           = today()
+				//set ssld-log-time           = tod()
+				//set ssld-gmt				= gmt()
+				//set ssld-dataset 			= sys-consolidation-division
+				//set ssld-log-type  			= trigger-type
+				//set ssld-so-order-no        = newrow.so-order-no
+				//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+				//set ssld-reason	= "No change in the Old & New values"
+				exit											//rc29jul09	//{9} restored
+			endif
+		endif
+		//
+		if trigger-type = 32
+		and num(so-order-status) = 90
+			//message "32 line removals that you will need to be aware of"
+			//set ssld-log-date           = today()
+			//set ssld-log-time           = tod()
+			//set ssld-gmt				= gmt()
+			//set ssld-dataset 			= sys-consolidation-division
+			//set ssld-log-type  			= trigger-type
+			//set ssld-so-order-no        = newrow.so-order-no
+			//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+			//set ssld-reason	= "Auto generated line"
+			// need to keep these, they offset simultaneous inserts into the sol-archive
+			//exit
+		endif
+		//
+		if trigger-type = 32
+		and newrow.sol-ordered-qty = ZERO
+		and oldrow.sol-ordered-qty = ZERO
+			//message "both qty zero"
+			//set ssld-log-date           = today()
+			//set ssld-log-time           = tod()
+			//set ssld-gmt				= gmt()
+			//set ssld-dataset 			= sys-consolidation-division
+			//set ssld-log-type  			= trigger-type
+			//set ssld-so-order-no        = newrow.so-order-no
+			//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+			//set ssld-reason	= "Old & New Qty are Zero"
+			//exit										//rc29jul09
+		endif
+		get sales-order
+			on index so-order-no so-bo-suffix
+			key is newrow.so-order-no newrow.so-bo-suffix
+		// 28may09 rmd
+		on error // the relevant info should be the same on the 'orginal' so header
+			get sales-order
+				on index so-order-no so-bo-suffix
+				key is newrow.so-order-no SPACES
+			on error // which may have been archived by this stage
+				get sales-order-archive
+					on index so-order-no so-bo-suffix
+					key is newrow.so-order-no SPACES
+				on error
+					// if it's not here we won't be able to find this header - bail out clause?
+					//set ssld-log-date           = today()
+					//set ssld-log-time           = tod()
+					//set ssld-gmt				= gmt()
+					//set ssld-dataset 			= sys-consolidation-division
+					//set ssld-log-type  			= trigger-type
+					//set ssld-so-order-no        = newrow.so-order-no
+					//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+					//set ssld-reason	= "SALES ORDER not found"
+					//
+					//command
+					//	"/usr/bin/sendemailfile"
+					//parameters
+					//	"ranjithc@snooze.com.au"
+					//	"SSL:No SO"
+					//	concat(str(trigger-type) ":" login-id() ":" sys-consolidation-division ":" str(newrow.so-order-no) ":" newrow.so-bo-suffix) // rc29jul09
+					exit
+				endon
+			endon
+		endon
+		// 26may09 rmd
+		//
+		set lf-valid-stock-code = FALSE								//rmd16sep09
+		get stock-master
+			on index stock-code
+			key is newrow.stock-code
+		on error
+			//set ssld-log-date           = today()
+			//set ssld-log-time           = tod()
+			//set ssld-gmt				= gmt()
+			//set ssld-dataset 			= sys-consolidation-division
+			//set ssld-log-type  			= trigger-type
+			//set ssld-so-order-no        = newrow.so-order-no
+			//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+			//set ssld-reason	= "STOCK CODE not found"
+			//exit													//rc19aug09
+			set stk-description 	= "STOCK CODE not found"		//rc19aug09
+			// start ---------------------------------------------- //rmd16sep09
+			if sol-line-type = "SC"
+				set lf-valid-stock-code = TRUE
+			else
+				set lf-valid-stock-code = FALSE
+			endif
+		else
+			set lf-valid-stock-code = TRUE
+			// end ------------------------------------------------ //rmd16sep09
+		endon
+		if not lf-valid-stock-code									//rmd16sep09
+			exit	                                                //rmd16sep09
+		endif                                                       //rmd16sep09
+		//
+		//start --------------------------------------------- //rc19aug09
+// 		get stock-price
+// 			on index stock-code prc-region-code
+// 			key is newrow.stock-code SPACES
+// 		on error
+// 			//set ssld-log-date           = today()
+// 			//set ssld-log-time           = tod()
+// 			//set ssld-gmt				= gmt()
+// 			//set ssld-dataset 			= sys-consolidation-division
+// 			//set ssld-log-type  			= trigger-type
+// 			//set ssld-so-order-no        = newrow.so-order-no
+// 			//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+// 			//set ssld-reason	= "STOCK PRICE not found"
+// 			exit
+// 		endon
+		//end --------------------------------------------- //rc19aug09
+		//
+		/*
+		set lf-so-no-exists	= FALSE
+
+		if ssl-log-type = 2
+			extract snooze-sales-log
+				on index ssl-so-order-no ssl-so-bo-suffix ssl-sol-line-seq
+				key is newrow.so-order-no SPACES ZERO
+				next same ssl-so-order-no
+			detail
+				set lf-so-no-exists = TRUE
+				set ssl-log-type = 1000
+				break
+			endextract
+			//
+			if lf-so-no-exists	= FALSE
+				set ssl-log-type = 1002
+			endif
+		elseif ssl-log-type = 32
+		and num(so-order-status) = 99
+			set lf-so-no-exists	= FALSE
+			extract snooze-sales-log
+				on index ssl-so-order-no ssl-so-bo-suffix ssl-sol-line-seq // ssl-log-type
+				key is newrow.so-order-no SPACES ZERO
+			detail
+				if ssl-log-type = 1003
+					set lf-so-no-exists = TRUE
+				endif
+				break
+			endextract
+			if lf-so-no-exists	= FALSE
+				extract sales-order
+					on index so-order-no so-bo-suffix
+					key is newrow.so-order-no SPACES
+
+
+
+				set ssl-log-type = 1003
+			endif
+		endif
+
+		*/
+
+		// ssl-log-type = 1000   1st entry
+		// ssl-log-type = 1001   cancellation
+
+//		message trigger-type " " newrow.so-order-no " " so-order-status
+
+		if trigger-type = 2
+		and num(so-order-status) = 00
+			get snooze-sales-log
+				on index ssl-so-order-no ssl-log-type
+				key is newrow.so-order-no 1000
+			on error
+				set ssl-log-type = 1000
+			else
+				set ssl-log-type = trigger-type
+			endon
+		else
+			set ssl-log-type = trigger-type
+		endif
+
+
+
+
+		set ssl-log-date                    = today()
+		set ssl-log-time                    = tod()
+		set ssl-gmt							= gmt()
+		set ssl-dataset 					= sys-consolidation-division
+		//set ssl-log-type  					= trigger-type    //ordlog-type
+
+
+
+
+		set ssl-so-order-no                 = newrow.so-order-no
+		set ssl-so-bo-suffix                = newrow.so-bo-suffix
+		set ssl-so-order-date               = so-order-date
+		set ssl-so-order-status             = so-order-status
+		//rc 18jun09
+		// included this check as there were few "C" terr code
+		if valid-number(so-territory-code)
+			set ssl-so-territory-code  = so-territory-code
+		else
+			set ssl-so-territory-code  = so-whse-code
+		endif
+
+		set ssl-so-rep-code                 = so-rep-code
+		get rep-master
+			on index rep-code
+			key is ssl-so-rep-code
+		on error
+			set ssl-rep-name = SPACES
+		else
+		   	set ssl-rep-name = rep-description
+		endon
+		set ssl-so-cust-code                = so-cust-code
+		set ssl-so-whse-code                = so-whse-code
+		set ssl-sol-line-seq                = newrow.sol-line-seq
+		set ssl-sol-line-type               = newrow.sol-line-type
+		set ssl-stock-code                  = newrow.stock-code
+		set ssl-stk-description             = stk-description
+		set ssl-stk-desc-line-2				= stk-desc-line-2
+		set ssl-stk-desc-line-3				= stk-desc-line-3
+		//
+		// calculate based on conditions - see below
+		//set ssl-qty  						= newrow.sol-ordered-qty
+		//set ssl-sol-disc-rate				= newrow.sol-disc-rate
+		//set ssl-item-rrp-inc                = newrow.sol-item-price * ssl-qty
+		//set ssl-item-cost-ex                = (newrow.sol-item-cost - oldrow.sol-item-cost) * ssl-qty
+		//
+		set ssl-old-sol-ordered-qty               = oldrow.sol-ordered-qty
+		set ssl-old-sol-item-cost                 = oldrow.sol-item-cost
+		set ssl-old-sol-line-amount               = oldrow.sol-line-amount
+		set ssl-old-sol-order-sale-tax-amt    	  = oldrow.sol-ordered-sales-tax-amt
+		set ssl-old-sol-disc-rate                 = oldrow.sol-disc-rate
+		set ssl-old-sol-item-price                = oldrow.sol-item-price
+		set ssl-new-sol-ordered-qty               = newrow.sol-ordered-qty
+		set ssl-new-sol-item-cost                 = newrow.sol-item-cost
+		set ssl-new-sol-line-amount               = newrow.sol-line-amount
+		set ssl-new-sol-order-sale-tax-amt        = newrow.sol-ordered-sales-tax-amt
+		set ssl-new-sol-disc-rate                 = newrow.sol-disc-rate
+		set ssl-new-sol-item-price                = newrow.sol-item-price
+		// 28may09 zero divide errors
+		//08jun09 want total values now, not item (item-value field now contains line value)
+
+		//08jun09
+		// 28may09 zero divide errors
+		//if trigger-type = 2
+		//	set ssl-item-value-ex = lf-new-item-value
+		//elseif trigger-type = 32
+		//	set ssl-item-value-ex = lf-old-item-value * -1
+		//else
+		//	set ssl-item-value-ex = lf-new-item-value - lf-old-item-value
+		//endif
+
+
+		// 1 - discount
+		// 2 - qty
+		// 3 - item value
+		// 4 - item cost
+		// 5 - item price
+		// 6 - remove
+		set ssl-changed-value[1] = FALSE
+		set ssl-changed-value[2] = FALSE
+		set ssl-changed-value[3] = FALSE
+		set ssl-changed-value[4] = FALSE
+		set ssl-changed-value[5] = FALSE
+		set ssl-changed-value[6] = FALSE
+		//
+		//if newrow.sol-line-amount <> oldrow.sol-line-amount
+		// 08jun09 calculate values for cube
+		// calculate extended old/new values used for comparisons within logic
+		if newrow.sol-ordered-qty <> 0
+			set lf-new-item-value = (newrow.sol-line-amount / (1 + (newrow.sol-tax-rate / 100))) // / newrow.sol-ordered-qty
+		else
+			set lf-new-item-value = 0
+		endif
+		if oldrow.sol-ordered-qty <> 0
+			set lf-old-item-value = (oldrow.sol-line-amount / (1 + (oldrow.sol-tax-rate / 100))) // / oldrow.sol-ordered-qty
+		else
+			set lf-old-item-value = 0
+		endif
+		//
+		if trigger-type = 2 // insert
+			set ssl-qty 			= newrow.sol-ordered-qty
+			set ssl-sol-disc-rate 	= newrow.sol-disc-rate
+			set ssl-item-cost-ex 	= newrow.sol-item-cost * newrow.sol-ordered-qty
+			set ssl-item-value-ex 	= lf-new-item-value
+			set ssl-item-rrp-inc 	= newrow.sol-item-price * newrow.sol-ordered-qty
+		elseif trigger-type = 8 // update
+			set ssl-qty 			= newrow.sol-ordered-qty - oldrow.sol-ordered-qty
+			set ssl-sol-disc-rate 	= newrow.sol-disc-rate - oldrow.sol-disc-rate
+			set ssl-item-cost-ex 	= newrow.sol-item-cost * ssl-qty // newrow.sol-item-cost	- oldrow.sol-item-cost
+			set ssl-item-value-ex 	= lf-new-item-value - lf-old-item-value
+			set ssl-item-rrp-inc 	= newrow.sol-item-price * ssl-qty // newrow.sol-item-price - oldrow.sol-item-price
+			//
+			if newrow.sol-disc-rate <> oldrow.sol-disc-rate
+				set ssl-changed-value[1] = TRUE
+			endif
+			if newrow.sol-ordered-qty <> oldrow.sol-ordered-qty
+				set ssl-changed-value[2] = TRUE
+			endif
+			if newrow.sol-line-amount <> oldrow.sol-line-amount
+				set ssl-changed-value[3] = TRUE
+			endif
+			if newrow.sol-item-cost	<> oldrow.sol-item-cost
+				set ssl-changed-value[4] = TRUE
+				// if cost has changed need to calculate the output cost differently to above (where cost = newrow.sol-item-cost * ssl-qty)
+				set ssl-item-cost-ex     = (newrow.sol-item-cost - oldrow.sol-item-cost) * newrow.sol-ordered-qty
+				//message "NC:" newrow.sol-item-cost " OC:" oldrow.sol-item-cost " NQ:" newrow.sol-ordered-qty " CC:" ssl-item-cost-ex
+			endif
+			if newrow.sol-item-price	<> oldrow.sol-item-price
+				set ssl-changed-value[5] = TRUE
+			endif
+		elseif trigger-type = 32
+			set ssl-changed-value[6] = TRUE
+			set ssl-qty 			= oldrow.sol-ordered-qty 	* -1
+			set ssl-item-cost-ex 	= oldrow.sol-item-cost 		* ssl-qty	// -1
+			set ssl-item-value-ex 	= lf-old-item-value 		* -1
+			set ssl-item-rrp-inc 	= oldrow.sol-item-price 	* ssl-qty   // -1
+			set ssl-sol-disc-rate 	= oldrow.sol-disc-rate // #| ??
+		endif
+		//
+		//message "SO:" newrow.so-order-no newrow.so-bo-suffix ":" ssl-so-order-status " T" trigger-type "Q" ssl-qty "C" ssl-item-cost-ex "V" ssl-item-value-ex
+		insert snooze-sales-log
+	endif
+endprocedure //sales-log ----------------------------------------------------------
+
+
+//procedure sales-log-old
+//parameters
+//	oldrow.* 				like sales-order-line.*
+// 	newrow.* 				like sales-order-line.*
+// 	trigger-type 			pic 9(4)
+//	//
+//local fields
+//	lf-old-item-value		like ssl-item-value-ex
+//	lf-new-item-value		like ssl-item-value-ex
+//	//
+//	get snooze-sales-log first
+//	on error
+//		do create-snooze-sales-log
+//	endon
+//	//
+//	get snooze-sales-log-defect first
+//	on error
+//		open snooze-sales-log-defect create permanent
+//	endon
+//	//
+//	get system-control first
+//	//
+//	if newrow.sol-line-type in {"SN" "KN" "WN"}
+//		if trigger-type <> 2
+//			if 	newrow.sol-ordered-qty  = oldrow.sol-ordered-qty
+//			and	newrow.sol-disc-rate    = oldrow.sol-disc-rate
+//			and	newrow.sol-item-price   = oldrow.sol-item-price
+//			and	newrow.sol-item-cost	= oldrow.sol-item-cost
+//				//message "No change in the Old & New values"
+//				//set ssld-log-date           = today()
+//				//set ssld-log-time           = tod()
+//				//set ssld-gmt				= gmt()
+//				//set ssld-dataset 			= sys-consolidation-division
+//				//set ssld-log-type  			= trigger-type
+//				//set ssld-so-order-no        = newrow.so-order-no
+//				//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+//				//set ssld-reason	= "No change in the Old & New values"
+//				exit
+//			endif
+//		endif
+//		//
+//		if trigger-type = 32
+//		and num(so-order-status) = 90
+//			//message "32 line removals that you will need to be aware of"
+//			//set ssld-log-date           = today()
+//			//set ssld-log-time           = tod()
+//			//set ssld-gmt				= gmt()
+//			//set ssld-dataset 			= sys-consolidation-division
+//			//set ssld-log-type  			= trigger-type
+//			//set ssld-so-order-no        = newrow.so-order-no
+//			//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+//			//set ssld-reason	= "Auto generated line"
+//			exit
+//		endif
+//		//
+//		if trigger-type = 32
+//		and newrow.sol-ordered-qty = ZERO
+//		and oldrow.sol-ordered-qty = ZERO
+//			//message "both qty zero"
+//			//set ssld-log-date           = today()
+//			//set ssld-log-time           = tod()
+//			//set ssld-gmt				= gmt()
+//			//set ssld-dataset 			= sys-consolidation-division
+//			//set ssld-log-type  			= trigger-type
+//			//set ssld-so-order-no        = newrow.so-order-no
+//			//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+//			//set ssld-reason	= "Old & New Qty are Zero"
+//			exit
+//		endif
+//
+//		get sales-order
+//			on index so-order-no so-bo-suffix
+//			key is newrow.so-order-no newrow.so-bo-suffix
+//		// 28may09 rmd
+//		on error // the relevant info should be the same on the 'orginal' so header
+//			get sales-order
+//				on index so-order-no so-bo-suffix
+//				key is newrow.so-order-no SPACES
+//			on error // which may have been archived by this stage
+//				get sales-order-archive
+//					on index so-order-no so-bo-suffix
+//					key is newrow.so-order-no SPACES
+//				on error
+//					// if it's not here we won't be able to find this header - bail out clause?
+//					//set ssld-log-date           = today()
+//					//set ssld-log-time           = tod()
+//					//set ssld-gmt				= gmt()
+//					//set ssld-dataset 			= sys-consolidation-division
+//					//set ssld-log-type  			= trigger-type
+//					//set ssld-so-order-no        = newrow.so-order-no
+//					//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+//					//set ssld-reason	= "SALES ORDER not found"
+//					exit
+//				endon
+//			endon
+//		endon
+//		// 26may09 rmd
+//		//
+//		get stock-master
+//			on index stock-code
+//			key is newrow.stock-code
+//		on error
+//			//set ssld-log-date           = today()
+//			//set ssld-log-time           = tod()
+//			//set ssld-gmt				= gmt()
+//			//set ssld-dataset 			= sys-consolidation-division
+//			//set ssld-log-type  			= trigger-type
+//			//set ssld-so-order-no        = newrow.so-order-no
+//			//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+//			//set ssld-reason	= "STOCK CODE not found"
+//			exit
+//		endon
+//		//
+//		get stock-price
+//			on index stock-code prc-region-code
+//			key is newrow.stock-code SPACES
+//		on error
+//			//set ssld-log-date           = today()
+//			//set ssld-log-time           = tod()
+//			//set ssld-gmt				= gmt()
+//			//set ssld-dataset 			= sys-consolidation-division
+//			//set ssld-log-type  			= trigger-type
+//			//set ssld-so-order-no        = newrow.so-order-no
+//			//set ssld-so-bo-suffix       = newrow.so-bo-suffix
+//			//set ssld-reason	= "STOCK PRICE not found"
+//			exit
+//		endon
+//		//
+//		set ssl-log-date                    = today()
+//		set ssl-log-time                    = tod()
+//		set ssl-gmt							= gmt()
+//		set ssl-dataset 					= sys-consolidation-division
+//		set ssl-log-type  					= trigger-type    //ordlog-type
+//		set ssl-so-order-no                 = newrow.so-order-no
+//		set ssl-so-bo-suffix                = newrow.so-bo-suffix
+//		set ssl-so-order-date               = so-order-date
+//		set ssl-so-order-status             = so-order-status
+//		set ssl-so-territory-code           = so-territory-code
+//		set ssl-so-rep-code                 = so-rep-code
+//		get rep-master
+//			on index rep-code
+//			key is ssl-so-rep-code
+//		on error
+//			set ssl-rep-name = SPACES
+//		else
+//		   	set ssl-rep-name = rep-description
+//		endon
+//		set ssl-so-cust-code                = so-cust-code
+//		set ssl-so-whse-code                = so-whse-code
+//		set ssl-sol-line-seq                = newrow.sol-line-seq
+//		set ssl-sol-line-type               = newrow.sol-line-type
+//		set ssl-stock-code                  = newrow.stock-code
+//		set ssl-stk-description             = stk-description
+//		set ssl-stk-desc-line-2				= stk-desc-line-2
+//		set ssl-stk-desc-line-3				= stk-desc-line-3
+//		//
+//		set ssl-qty  						= newrow.sol-ordered-qty
+//		set ssl-sol-disc-rate				= newrow.sol-disc-rate
+//		set ssl-item-rrp-inc                = newrow.sol-item-price
+//		set ssl-item-cost-ex                = newrow.sol-item-cost
+//		//
+//		set ssl-old-sol-ordered-qty               = oldrow.sol-ordered-qty
+//		set ssl-old-sol-item-cost                 = oldrow.sol-item-cost
+//		set ssl-old-sol-line-amount               = oldrow.sol-line-amount
+//		set ssl-old-sol-order-sale-tax-amt    	  = oldrow.sol-ordered-sales-tax-amt
+//		set ssl-old-sol-disc-rate                 = oldrow.sol-disc-rate
+//		set ssl-old-sol-item-price                = oldrow.sol-item-price
+//		set ssl-new-sol-ordered-qty               = newrow.sol-ordered-qty
+//		set ssl-new-sol-item-cost                 = newrow.sol-item-cost
+//		set ssl-new-sol-line-amount               = newrow.sol-line-amount
+//		set ssl-new-sol-order-sale-tax-amt        = newrow.sol-ordered-sales-tax-amt
+//		set ssl-new-sol-disc-rate                 = newrow.sol-disc-rate
+//		set ssl-new-sol-item-price                = newrow.sol-item-price
+//		// 28may09 zero divide errors
+//		if newrow.sol-ordered-qty <> 0
+//			set lf-new-item-value = (newrow.sol-line-amount / (1 + (newrow.sol-tax-rate / 100))) / newrow.sol-ordered-qty
+//		else
+//			set lf-new-item-value = 0
+//		endif
+//		if oldrow.sol-ordered-qty <> 0
+//			set lf-old-item-value = (oldrow.sol-line-amount / (1 + (oldrow.sol-tax-rate / 100))) / oldrow.sol-ordered-qty
+//		else
+//			set lf-old-item-value = 0
+//		endif
+//		// 28may09 zero divide errors
+//		if trigger-type = 2
+//			set ssl-item-value-ex = lf-new-item-value
+//		else
+//			set ssl-item-value-ex = lf-new-item-value - lf-old-item-value
+//		endif
+//		/*
+//		if trigger-type in {2, 32}
+//			set ssl-item-value-ex = (newrow.sol-line-amount / (1 + (newrow.sol-tax-rate / 100))) / newrow.sol-ordered-qty
+//		elseif trigger-type = 8
+//			if (newrow.sol-ordered-qty - oldrow.sol-ordered-qty) <> 0
+//				set ssl-qty  = newrow.sol-ordered-qty - oldrow.sol-ordered-qty
+//				//set ssl-item-value-ex = ((newrow.sol-line-amount - oldrow.sol-line-amount)/ (1 + ((newrow.sol-tax-rate - oldrow.sol-tax-rate)/ 100)))
+//				//							/ (newrow.sol-ordered-qty - oldrow.sol-ordered-qty)
+//			else
+//				set ssl-qty  = newrow.sol-ordered-qty
+//				set ssl-item-value-ex = ((newrow.sol-line-amount - oldrow.sol-line-amount)/ (1 + ((newrow.sol-tax-rate - oldrow.sol-tax-rate)/ 100))) / newrow.sol-ordered-qty
+//			endif
+//		endif
+//		*/
+//		// 1 - discount
+//		// 2 - qty
+//		// 3 - item value
+//		// 4 - item cost
+//		// 5 - item price
+//		// 6 - remove
+//		set ssl-changed-value[1] = FALSE
+//		set ssl-changed-value[2] = FALSE
+//		set ssl-changed-value[3] = FALSE
+//		set ssl-changed-value[4] = FALSE
+//		set ssl-changed-value[5] = FALSE
+//		set ssl-changed-value[6] = FALSE
+//		//
+//		//if newrow.sol-line-amount <> oldrow.sol-line-amount
+//		if trigger-type = 8
+//			set ssl-qty = newrow.sol-ordered-qty - oldrow.sol-ordered-qty
+//			set ssl-sol-disc-rate = newrow.sol-disc-rate - oldrow.sol-disc-rate
+//			set ssl-item-cost-ex = newrow.sol-item-cost	- oldrow.sol-item-cost
+//			set ssl-item-rrp-inc = newrow.sol-item-price - oldrow.sol-item-price
+//			//
+//			if newrow.sol-disc-rate <> oldrow.sol-disc-rate
+//				set ssl-changed-value[1] = TRUE
+//			endif
+//			if newrow.sol-ordered-qty <> oldrow.sol-ordered-qty
+//				set ssl-changed-value[2] = TRUE
+//			endif
+//			if newrow.sol-line-amount <> oldrow.sol-line-amount
+//				set ssl-changed-value[3] = TRUE
+//			endif
+//			if newrow.sol-item-cost	<> oldrow.sol-item-cost
+//				set ssl-changed-value[4] = TRUE
+//			endif
+//			if newrow.sol-item-price	<> oldrow.sol-item-price
+//				set ssl-changed-value[5] = TRUE
+//			endif
+//		endif
+//		//
+//		if trigger-type = 32
+//			set ssl-changed-value[6] = TRUE
+//		endif
+//		//
+//		insert snooze-sales-log
+//	endif
+//endprocedure //sales-log-old --------------------------------------------------
+
+procedure create-snooze-sales-log
+	open snooze-sales-log create permanent
+endprocedure // create-snooze-sales-log ---------------------------------------

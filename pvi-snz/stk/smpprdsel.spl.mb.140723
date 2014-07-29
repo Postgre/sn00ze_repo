@@ -1,0 +1,5557 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/stk/smpprdsel.spl
+//  Program Desc:	simplify Product Selector
+//  Requested By:	Rob Dexter
+//  Request Date:	30nov12
+//
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	15may14	rmd	{10}	upgrade to 710.3
+//	02dec13	rmd	{9}		print line break ------ after kit compoenents on next
+//						whole number seq
+//	27nov13	rmd	{8}		write component desc lines as sales-order-line notes
+//						so they display in snzinvprnt output
+//	25nov13	rmd	{7}		write fabric notes to sales-order-line
+//	01nov13	rmd	{6}		insert qty field for storage, may need multiple drawers
+//						within ensemble
+//	21oct13	rmd	{5}		don't throw errors for missing matrix files
+//						(1,2 and 5 don't currently appear)
+//	10jul13	rmd	{4}		accept validations
+//	23jan13	rmd			silent matrix import with -rebuildmatrix arg
+//				{2}		remove child notes if item deleted from order
+//				{3}		up/down arrows to choose prev/next items in lookup //supress for now
+//	30nov12	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+//03dec12 Kit table
+//ParentCode|HeadboardStockCode|HeadboardDescription|BedBaseStockCode|BedBaseDescription|StorageStockCode|StorageProductDescription|LegStockCode|LegProductDescription|CombinationStyleID|CombinationName|HasStorage|ShapeID|ShapeName|ShapeCode|MaterialStyleName|MaterialStyleCode|BedBaseTypeID|BedBaseCode|BedBaseType|LegTypeID|BedBaseLegType|StorageTypeID|StorageTypeName
+
+object snz-combo-style	//combo type *
+	type isam file "snz-combo-style"
+	record
+		scs-id				type numeric
+		scs-description		pic x(90)
+	endrecord
+	key is scs-id unique
+	key is scs-description unique
+
+object tmp-snz-combo-style like snz-combo-style type memory
+//object tmp-prod-sel-level-1 like snz-prod-sel-level-1 type memory
+
+object snz-head-style	//headboard shape *
+	type isam file "snz-head-style"
+	record
+		scs-id
+		shs-id				type numeric
+		shs-description		pic x(90)
+	endrecord
+	key is scs-id shs-id unique
+
+object tmp-snz-head-style like snz-head-style type memory
+
+object snz-material-style	//timber headboard type - e.g grooved or plain	//11dec12
+	type isam file "snz-material-style"
+	record
+		scs-id
+		sms-id				type numeric
+		sms-description		pic x(90)
+	endrecord
+	key is scs-id sms-id unique
+
+object tmp-snz-material-style like snz-material-style type memory
+
+object snz-base-type	//base type
+	type isam file "snz-base-type"
+	record
+		scs-id
+		sbt-id				type numeric
+		sbt-description		pic x(90)
+	endrecord
+	key is scs-id sbt-id unique
+
+object tmp-snz-base-type like snz-base-type type memory
+
+object snz-leg-type	//leg type
+	type isam file "snz-leg-type"
+	record
+		scs-id
+		sbt-id
+		slt-id				type numeric
+		slt-description		pic x(90)
+	endrecord
+	key is scs-id sbt-id slt-id unique
+
+object tmp-snz-leg-type like snz-leg-type type memory
+
+object snz-storage-type	//storage type
+	type isam file "snz-storage-type"
+	record
+		scs-id
+		sbt-id
+		sst-id				type numeric
+		sst-description		pic x(90)
+	endrecord
+	key is scs-id sbt-id sst-id unique
+
+object tmp-snz-storage-type like snz-storage-type type memory
+
+object snz-head-band	//headboard priceband //11dec12
+	type isam file "snz-head-band"
+	record
+		scs-id
+		shb-id				type numeric
+		shb-description		pic x(90)
+	endrecord
+	key is scs-id shb-id unique
+
+object tmp-snz-head-band like snz-head-band type memory
+
+object snz-base-band	//base priceband //11dec12
+	type isam file "snz-base-band"
+	record
+		scs-id
+		sbb-id				type numeric
+		sbb-description		pic x(90)
+	endrecord
+	key is scs-id sbb-id unique
+
+object tmp-snz-base-band like snz-base-band type memory
+
+object snz-pronto-size	//11dec12
+	type isam file "snz-pronto-size"
+	record
+		scs-id
+		sps-description		pic x(20)
+	endrecord
+	key is scs-id sps-description unique
+
+object tmp-snz-pronto-size like snz-pronto-size type memory
+
+object snz-fabric-look	//11dec12
+	type isam file "snz-fabric-look"
+	record
+		sfl-description		pic x(20)
+	endrecord
+	key is sfl-description unique
+
+object tmp-snz-fabric-look like snz-fabric-look type memory
+
+object snz-head-colour	//11dec12
+	type isam file "snz-head-colour"
+	record
+		shc-description		pic x(20)
+	endrecord
+	key is shc-description unique
+
+object tmp-snz-head-colour like snz-head-colour type memory
+
+object snz-base-colour	//11dec12
+	type isam file "snz-base-colour"
+	record
+		sbc-description		pic x(20)
+	endrecord
+	key is sbc-description unique
+
+object tmp-snz-base-colour like snz-base-colour type memory
+
+
+//object snz-prod-sel-level-3	//base
+//	type isam file "snz-prod-sel-level-3"
+//	record
+//		pl1-id
+//		pl3-id			like stock-code
+//		pl3-description		pic x(90)
+//	endrecord
+//	key is pl1-id pl3-id unique
+//
+//
+//object snz-prod-sel-level-4	//base option 1
+//	type isam file "snz-prod-sel-level-4"
+//	record
+//		pl1-id
+//		pl3-id
+//		pl4-code			like stock-code
+//		pl4-description		pic x(90)
+//	endrecord
+//	key is pl1-id pl3-id pl4-code unique
+
+
+//object snz-prod-sel-level-5	//base option 2
+//	type isam file "snz-prod-sel-level-5"
+//	record
+//		pl1-id
+//		pl2-code
+//		pl3-code
+//		pl5-code			like stock-code
+//		pl5-description		pic x(90)
+//	endrecord
+//	key is pl1-id pl2-code pl3-code unique
+
+
+//object tmp-prod-sel-level-1 like snz-prod-sel-level-1 type memory
+
+//object tmp-kit-components
+//	type memory
+//	record
+//		tkc-stock-code		like stock-code
+//		tkc-qty				type numeric
+//	endrecord
+//	key is tkc-stock-code
+
+
+//v4
+//ParentCode
+//CombinationStyleID
+//CombinationStyleName
+//ShapeID
+//ShapeCode
+//ShapeName
+//HeadboardProductID
+//HeadboardStockCode
+//HeadboardDescription
+//HeadboardPriceBandID
+//HeadboardPriceBandName
+//BedBaseTypeID
+//BedBaseCode
+//BedBaseType
+//BedBaseID
+//BedBaseStockCode
+//BedBaseDescription
+//BedBasePriceBandID
+//BedBasePriceBandName
+//LegTypeID
+//BedBaseLegType
+//LegID
+//LegStockCode
+//LegProductDescription
+//HasStorage
+//StorageTypeID
+//StorageTypeName
+//StorageID
+//StorageStockCode
+//StorageProductDescription
+//MaterialStyleID
+//MaterialStyleCode
+//MaterialStyleName
+
+
+//v5
+//ParentCode
+//CombinationStyleID
+//CombinationStyleName
+//HeadboardShapeOptionID
+//ShapeCode
+//HeadboardShapeOptionName
+//HeadboardProductID
+//HeadboardStockCode
+//HeadboardDescription
+//HeadboardPriceBandID
+//HeadboardPriceBandName
+//BedBaseTypeID
+//BedBaseCode
+//BedBaseType
+//BedBaseID
+//BedBaseStockCode
+//BedBaseDescription
+//BedBasePriceBandID
+//BedBasePriceBandName
+//LegTypeID
+//BedBaseLegType
+//LegID
+//LegStockCode
+//LegProductDescription
+//StorageTypeID
+//StorageTypeName
+//StorageID
+//StorageStockCode
+//StorageProductDescription
+//MaterialStyleID
+//MaterialStyleCode
+//MaterialStyleName
+//IsHeadboardUphostered
+//IsBedbaseUpholstered
+//ProntoSize
+//FabricLookID
+//FabricCode
+//FabricName
+//HeadboardColourID
+//HeadboardColourCode
+//HeadboardColourName
+//BedBaseColourID
+//BedBaseColourCode
+//BedBaseColourName
+//HasBedBase
+//HasPriceBand
+//RangeName
+
+/*
+object snz-simplify-kit	//v5
+	type external
+	file "/data/common/bigmatrix.txt"
+	record
+		ssk-parent-code						pic x(16)                                         			//ParentCode
+		ssk-combination-style-id            type numeric                                                //CombinationStyleID
+		ssk-combination-style-desc          pic x(50)                                                   //CombinationStyleName
+		ssk-shape-id                        type numeric                                                //HeadboardShapeOptionID
+		ssk-shape-code                      pic x(16)                                                   //ShapeCode
+		ssk-shape-desc                      pic x(50)                                                   //HeadboardShapeOptionName
+		ssk-headboard-id            		type numeric                                                //HeadboardProductID
+		ssk-headboard-code            		pic x(16)                                                   //HeadboardStockCode
+		ssk-headboard-desc           		pic x(50)                                                   //HeadboardDescription
+		ssk-headboard-price-band-id         type numeric                                                //HeadboardPriceBandID
+		ssk-headboard-price-band-desc       pic x(50)                                                   //HeadboardPriceBandName
+		ssk-bed-base-type-id                type numeric                                                //BedBaseTypeID
+		ssk-bed-base-type-code              pic x(16)                                                   //BedBaseCode
+		ssk-bed-base-type-desc              pic x(50)                                                   //BedBaseType
+		ssk-bed-base-id						type numeric                                                //BedBaseID
+		ssk-bed-base-code   	          	pic x(16)                                                   //BedBaseStockCode
+		ssk-bed-base-desc	            	pic x(50)                                                   //BedBaseDescription
+		ssk-bed-base-price-band-id          type numeric                                                //BedBasePriceBandID
+		ssk-bed-base-price-band-desc  		pic x(50)                                                   //BedBasePriceBandName
+		ssk-leg-type-id                     type numeric                                                //LegTypeID
+		ssk-leg-type-desc               	pic x(50)                                                   //BedBaseLegType
+		ssk-leg-id							type numeric                                                //LegID
+		ssk-leg-code                  		pic x(16)                                                   //LegStockCode
+		ssk-leg-desc                 		pic x(50)                                                   //LegProductDescription
+		ssk-has-storage                     type boolean
+		ssk-storage-type-id                 type numeric                                                //StorageTypeID
+		ssk-storage-type-desc	            pic x(50)                                                   //StorageTypeName
+		ssk-storage-id              		type numeric                                                //StorageID
+		ssk-storage-code              		pic x(16)                                                   //StorageStockCode
+		ssk-storage-desc	             	pic x(50)                                                   //StorageProductDescription
+		ssk-material-style-id				type numeric	//only valid for timber headboard           //MaterialStyleID
+		ssk-material-style-code             pic x(16)		//options: grooved/plain                    //MaterialStyleCode
+		ssk-material-style-desc             pic x(40)                                                   //MaterialStyleName
+		ssk-head-uph						type boolean	//11dec12 - new fields v5                   //IsHeadboardUphostered
+		ssk-base-uph						type boolean                                                //IsBedbaseUpholstered
+		ssk-pronto-size						pic x(16) 		//sps-description                           //ProntoSize
+		ssk-fabric-look-id					type numeric   	//ws-sfl-id                                 //FabricLookID
+		ssk-fabric-look-code                pic x(16)                                                   //FabricCode
+		ssk-fabric-look-desc                pic x(40)      //ws-sfl-description                         //FabricName
+		ssk-head-colour-id					type numeric	//ws-shc-id                                 //HeadboardColourID
+		ssk-head-colour-code                pic x(16)                                                   //HeadboardColourCode
+		ssk-head-colour-desc                pic x(40)		//ws-shc-description ws-shc-description     //HeadboardColourName
+		ssk-base-colour-id					type numeric    //ws-sbc-id                                 //BedBaseColourID
+		ssk-base-colour-code                pic x(16)                                                   //BedBaseColourCode
+		ssk-base-colour-desc                pic x(40)      //ws-sbc-description                         //BedBaseColourName
+		ssk-has-base						type boolean	//if FALSE = headboard only                 //HasBedBase
+		ssk-has-price-band					type boolean                                                //HasPriceBand
+		ssk-combination-style-desc2			pic x(40)                                                   //RangeName
+	endrecord
+*/
+//neater way to display the whole thing
+object snz-simplify-kit	//v5
+	type external
+	file "/data/common/bigmatrix.txt"
+	record
+		ssk-parent-code						pic x(16)   	//01 ParentCode
+		ssk-combination-style-id            type numeric	//02 CombinationStyleID
+		ssk-combination-style-desc          pic x(50)   	//03 CombinationStyleName
+		ssk-shape-id                        type numeric	//04 HeadboardShapeOptionID
+		ssk-shape-code                      pic x(16)   	//05 ShapeCode
+		ssk-shape-desc                      pic x(50)   	//06 HeadboardShapeOptionName
+		ssk-headboard-id            		type numeric	//07 HeadboardProductID
+		ssk-headboard-code            		pic x(16)   	//08 HeadboardStockCode
+		ssk-headboard-desc           		pic x(50)   	//09 HeadboardDescription
+		ssk-headboard-price-band-id         type numeric	//10 HeadboardPriceBandID
+		ssk-headboard-price-band-desc       pic x(50)   	//11 HeadboardPriceBandName
+		ssk-bed-base-type-id                type numeric	//12 BedBaseTypeID
+		ssk-bed-base-type-code              pic x(16)   	//13 BedBaseCode
+		ssk-bed-base-type-desc              pic x(50)   	//14 BedBaseType
+		ssk-bed-base-id						type numeric	//15 BedBaseID
+		ssk-bed-base-code   	          	pic x(16)   	//16 BedBaseStockCode
+		ssk-bed-base-desc	            	pic x(50)   	//17 BedBaseDescription
+		ssk-bed-base-price-band-id          type numeric	//18 BedBasePriceBandID
+		ssk-bed-base-price-band-desc  		pic x(50)   	//19 BedBasePriceBandName
+		ssk-leg-type-id                     type numeric	//20 LegTypeID
+		ssk-leg-type-desc               	pic x(50)   	//21 BedBaseLegType
+		ssk-leg-id							type numeric	//22 LegID
+		ssk-leg-code                  		pic x(16)   	//23 LegStockCode
+		ssk-leg-desc                 		pic x(50)   	//24 LegProductDescription
+		ssk-has-storage                     type boolean	//25
+		ssk-storage-type-id                 type numeric	//26 StorageTypeID
+		ssk-storage-type-desc	            pic x(50)   	//27 StorageTypeName
+		ssk-storage-id              		type numeric	//28 StorageID
+		ssk-storage-code              		pic x(16)   	//29 StorageStockCode
+		ssk-storage-desc	             	pic x(50)   	//30 StorageProductDescription
+		ssk-storage-qty						type numeric	//31 {6}
+		ssk-material-style-id				type numeric	//32 MaterialStyleID		//only valid for timber headboard
+		ssk-material-style-code             pic x(16)		//33 MaterialStyleCode      //options: grooved/plain
+		ssk-material-style-desc             pic x(40)   	//34 MaterialStyleName
+		ssk-head-uph						type boolean	//35 IsHeadboardUphostered  //11dec12 - new fields v5
+		ssk-base-uph						type boolean	//36 IsBedbaseUpholstered
+		ssk-pronto-size						pic x(16) 		//37 ProntoSize             //sps-description
+		ssk-fabric-look-id					type numeric	//38 FabricLookID           //ws-sfl-id
+		ssk-fabric-look-code                pic x(16)   	//39 FabricCode
+		ssk-fabric-look-desc                pic x(40)   	//40 FabricName             //ws-sfl-description
+		ssk-head-colour-id					type numeric	//41 HeadboardColourID      //ws-shc-id
+		ssk-head-colour-code                pic x(16)   	//42 HeadboardColourCode
+		ssk-head-colour-desc                pic x(40)		//43 HeadboardColourName    //ws-shc-description ws-shc-description
+		ssk-base-colour-id					type numeric	//44 BedBaseColourID        //ws-sbc-id
+		ssk-base-colour-code                pic x(16)   	//45 BedBaseColourCode
+		ssk-base-colour-desc                pic x(40)   	//46 BedBaseColourName      //ws-sbc-description
+		ssk-has-base						type boolean	//47 HasBedBase             //if FALSE = headboard only
+		ssk-has-price-band					type boolean	//48 HasPriceBand
+		ssk-combination-style-desc2			pic x(40)   	//49 RangeName
+	endrecord
+
+object tmp-flt-snz-simplify-kit like snz-simplify-kit type memory
+	key is ssk-parent-code unique
+
+object ism-snz-simplify-kit like snz-simplify-kit type isam file "ism-snz-simplify-kit"	//13dec12
+	key is ssk-parent-code unique
+	//tim/tim index headboard index (need material-style in place of uph fabric look)
+	key is ssk-combination-style-id ssk-pronto-size ssk-shape-id ssk-material-style-id ssk-head-colour-desc
+	//uph/tim index
+	//head
+	key is ssk-combination-style-id ssk-pronto-size ssk-shape-id ssk-fabric-look-desc ssk-head-colour-desc
+	//base
+	key is ssk-combination-style-id ssk-pronto-size ssk-bed-base-type-id ssk-base-colour-desc ssk-storage-type-id ssk-leg-type-id
+
+
+//ParentCode
+//MaterialStyleID
+//HeadboardStockCode
+//HeadboardProductID
+//HeadboardDescription
+//BedBaseID
+//BedBaseStockCode
+//BedBaseDescription
+//StorageStockCode
+//StorageProductDescription
+//LegID
+//LegStockCode
+//LegProductDescription
+//CombinationStyleID
+//CombinationStyleName
+//HasStorage
+//ShapeID
+//ShapeName
+//ShapeCode
+//MaterialStyleName
+//MaterialStyleCode
+//BedBaseTypeID
+//BedBaseCode
+//BedBaseType
+//LegTypeID
+//BedBaseLegType
+//StorageTypeID
+//StorageTypeName
+//HeadboardPriceBandID
+//HeadboardPriceBandName
+//BedBasePriceBandID
+//BedBasePriceBandName
+/*
+object snz-simplify-kit	//v3
+	type external
+	file "/data/common/bigmatrix.txt"
+	record
+		ssk-parent-code						pic x(16)
+		ssk-material-style-id				type numeric
+		ssk-headboard-stock-code            pic x(16)
+		ssk-headboard-id            		type numeric
+		ssk-headboard-description           pic x(180)
+		ssk-bed-base-id						type numeric
+		ssk-bed-base-stock-code             pic x(16)
+		ssk-bed-base-description            pic x(180)
+		ssk-storage-stock-code              pic x(16)
+		ssk-storage-description             pic x(180)
+		ssk-leg-id							type numeric
+		ssk-leg-stock-code                  pic x(16)
+		ssk-leg-description                 pic x(180)
+		ssk-combination-style-id            type numeric
+		ssk-combination-name                pic x(180)
+		ssk-has-storage                     type boolean
+		ssk-shape-id                        type numeric
+		ssk-shape-name                      pic x(180)
+		ssk-shape-code                      pic x(16)
+		ssk-material-style-name             pic x(180)
+		ssk-material-style-code             pic x(16)
+		ssk-bed-base-type-id                type numeric
+		ssk-bed-base-code                   pic x(16)
+		ssk-bed-base-type                   pic x(16)
+		ssk-leg-type-id                     type numeric
+		ssk-bed-base-leg-type               pic x(16)
+		ssk-storage-type-id                 type numeric
+		ssk-storage-type-name	            pic x(180)
+		ssk-headboard-price-band-id         type numeric
+		ssk-headboard-price-band-name       pic x(180)
+		ssk-bed-base-price-band-id          type numeric
+		ssk-bed-base-price-band-name  		pic x(180)
+	endrecord
+*/
+
+/*
+object snz-simplify-kit	//v2
+	type external
+	file "/data/common/bigmatrix.txt"
+	record
+		ssk-parent-code						pic x(16)
+		ssk-headboard-stock-code            pic x(16)
+		ssk-headboard-id            		type numeric	//new field inserted
+		ssk-headboard-description           pic x(180)
+		ssk-bed-base-stock-code             pic x(16)
+		ssk-bed-base-description            pic x(180)
+		ssk-storage-stock-code              pic x(16)
+		ssk-storage-description             pic x(180)
+		ssk-leg-stock-code                  pic x(16)
+		ssk-leg-description                 pic x(180)
+		ssk-combination-style-id            type numeric
+		ssk-combination-name                pic x(180)
+		ssk-has-storage                     type boolean
+		ssk-shape-id                        type numeric
+		ssk-shape-name                      pic x(180)
+		ssk-shape-code                      pic x(16)
+		ssk-material-style-name             pic x(180)
+		ssk-material-style-code             pic x(16)
+		ssk-bed-base-type-id                type numeric
+		ssk-bed-base-code                   pic x(16)
+		ssk-bed-base-type                   pic x(16)
+		ssk-leg-type-id                     type numeric
+		ssk-bed-base-leg-type               pic x(16)
+		ssk-storage-type-id                 type numeric
+		ssk-storage-type-name	            pic x(180)
+	endrecord
+*/
+
+/* v1
+object snz-simplify-kit
+	type external
+	file "/data/common/bigmatrix.txt"
+	record
+		ssk-parent-code						pic x(16)
+		ssk-headboard-stock-code            pic x(16)
+		ssk-headboard-description           pic x(180)
+		ssk-bed-base-stock-code             pic x(16)
+		ssk-bed-base-description            pic x(180)
+		ssk-storage-stock-code              pic x(16)
+		ssk-storage-description             pic x(180)
+		ssk-leg-stock-code                  pic x(16)
+		ssk-leg-description                 pic x(180)
+		ssk-combination-style-id            type numeric
+		ssk-combination-name                pic x(180)
+		ssk-has-storage                     type boolean
+		ssk-shape-id                        type numeric
+		ssk-shape-name                      pic x(180)
+		ssk-shape-code                      pic x(16)
+		ssk-material-style-name             pic x(180)
+		ssk-material-style-code             pic x(16)
+		ssk-bed-base-type-id                type numeric
+		ssk-bed-base-code                   pic x(16)
+		ssk-bed-base-type                   pic x(16)
+		ssk-leg-type-id                     type numeric
+		ssk-bed-base-leg-type               pic x(16)
+		ssk-storage-type-id                 type numeric
+		ssk-storage-type-name	            pic x(180)
+	endrecord
+*/
+
+object tmp-snz-simplify-kit like snz-simplify-kit
+	type memory
+	key is ssk-parent-code
+	//uph/tim sort //13dec12
+//ZMOD1598CSN0FWN0|MOD1598CSN|Curved Headboard (Navy)|MOD1570FW|Single Bed Base (Full Panel Foot)|MOD1590|Bed Box Large|||1|Upholstered with Timber - My Design|1|3|Curved|C|||0|F|Full Panel Base|0||0|1 Drawer
+
+mode md-select
+	prompt "Select"
+	help "Select this item"
+
+field
+	ws-stock-code				like stock-code
+	//ws-option-1				type numeric //combination style
+	//ws-option-1-description	like sys-description
+	//ws-option-2				pic xx
+	//ws-option-2-description	like sys-description
+	//ws-option-3				pic xx
+	//ws-option-3-description	like sys-description
+	//ws-option-4				pic xx
+	//ws-option-4-description	like sys-description
+	//wizard specific ws
+	//http://sandpit.dev.wip.gs/snooze/simplify/index.html#
+	ws-scs-id				like scs-id
+	ws-scs-description		like scs-description
+	ws-shs-id				like shs-id
+	ws-shs-description		like shs-description
+	ws-sbt-id				like sbt-id
+	ws-sbt-description		like sbt-description
+	ws-slt-id				like slt-id
+	ws-slt-description		like slt-description
+	ws-sst-id				like sst-id
+	ws-sst-description		like sst-description
+    //11dec12
+	ws-sms-id				like sms-id
+    ws-sms-description		like sms-description
+    ws-shb-id				like shb-id
+    ws-shb-description		like shb-description
+    ws-shb-range-1			pic x(30) //stores price band range - base
+    ws-shb-range-2			pic x(30) //stores price band range - base
+    ws-sbb-range-1			pic x(30) //stores price band range - head
+    ws-sbb-range-2			pic x(30) //stores price band range - head
+    ws-sbb-id				like sbb-id
+    ws-sbb-description		like sbb-description
+	//
+    ws-sps-description		like ssk-pronto-size
+	ws-sfl-description		like ssk-fabric-look-desc
+	ws-shc-description		like ssk-head-colour-desc
+	ws-sbc-description      like ssk-base-colour-desc
+	ws-so-order-no          like so-order-no
+	ws-so-bo-suffix         like so-bo-suffix
+	ws-sol-line-seq			like sol-line-seq
+	ws-legs-exist			type boolean
+	ws-storage-exists		type boolean
+
+procedure main
+returning
+	lr-stock-code			like stock-code
+	if get-param(1) in {"-kit-exit" "-stklookup"}
+		//message "0.06"
+		set ws-so-order-no      = num(get-param(2))
+	    set ws-so-bo-suffix     = get-param(3)
+	    set ws-sol-line-seq 	= num(get-param(4))
+		do reset-options
+		do product-selector-1 entry-once
+		set lr-stock-code = ws-stock-code
+		//only build note lines if something selected
+		if ws-stock-code != SPACES
+			//do price-band-note-lines
+			do comp-desc-note-lines	//{8}
+				parameters
+					ws-stock-code	//pass the parent code so we can clean up its description
+			do price-band-note-lines
+		endif
+		//message "final return: " lr-stock-code
+	elseif get-param(1) in {"-matrixrebuild"}	//23jan13
+		do reload-matrix
+		do reload-options
+		exit
+	else
+		do main-menu
+	endif
+endprocedure // main ----------------------------------------------------------
+
+menu main-menu
+	option "Reload Matrix" @1,12
+		//do rebuild-isam //ism-snz-simplify-kit
+		do reload-matrix
+	option "Reload Options" @2,12
+		do reload-options
+	option "Product Selector" @3,12
+		//do build-temps
+		//set ws-option-1 = 0
+		//get snz-prod-sel-level-1 first
+		do reset-options
+		//do rebuild-isam //ism-snz-simplify-kit
+		do product-selector-1 entry-once
+	option "Load and Review Big Matrix" @4,12
+		do build-list
+		do dig-snz-simplify-kit
+	//do return-kit-code
+	//do inject-bom-header
+endmenu // main-menu ----------------------------------------------------------
+
+//procedure rebuild-isam //ism-snz-simplify-kit
+procedure reload-matrix
+local field
+	lf-rec-count			type numeric
+	lf-dir-path				pic x(100)
+	lf-file-name            pic x(100)
+	report "reload matrix"
+		spool-only
+	print
+		today()
+		tod()
+		login-id()
+		"start load"
+	set lf-rec-count = 0
+	open ism-snz-simplify-kit truncate permanent
+	open snz-simplify-kit read-only
+		file "/p7branch/matrix/bigmatrix-0.csv"
+	on error
+	else
+		extract snz-simplify-kit
+		detail
+			if ssk-parent-code != SPACES
+				insert ism-snz-simplify-kit
+				on error
+				else
+					set lf-rec-count += 1
+				endon
+			endif
+		endextract
+		set lf-file-name = file-name(snz-simplify-kit)
+		print
+			today()
+			tod()
+			login-id()
+			strconcat(lf-file-name)
+			date-from-date-time(modification-time(lf-file-name),0)
+			time-from-date-time(modification-time(lf-file-name),0)
+			"records:"
+			lf-rec-count
+		set lf-rec-count = 0
+	endon
+	open snz-simplify-kit read-only
+		file "/p7branch/matrix/bigmatrix-1.csv"
+	on error
+	else
+		extract snz-simplify-kit
+		detail
+			if ssk-parent-code != SPACES
+				insert ism-snz-simplify-kit
+				on error
+				else
+					set lf-rec-count += 1
+				endon
+			endif
+		endextract
+		set lf-file-name = file-name(snz-simplify-kit)
+		print
+			today()
+			tod()
+			login-id()
+			strconcat(lf-file-name)
+			date-from-date-time(modification-time(lf-file-name),0)
+			time-from-date-time(modification-time(lf-file-name),0)
+			"records:"
+			lf-rec-count
+		set lf-rec-count = 0
+	endon
+	open snz-simplify-kit read-only
+		file "/p7branch/matrix/bigmatrix-2.csv"
+	on error
+	else
+		extract snz-simplify-kit
+		detail
+			if ssk-parent-code != SPACES
+				insert ism-snz-simplify-kit
+				on error
+				else
+					set lf-rec-count += 1
+				endon
+			endif
+		endextract
+		set lf-file-name = file-name(snz-simplify-kit)
+		print
+			today()
+			tod()
+			login-id()
+			strconcat(lf-file-name)
+			date-from-date-time(modification-time(lf-file-name),0)
+			time-from-date-time(modification-time(lf-file-name),0)
+			"records:"
+			lf-rec-count
+		set lf-rec-count = 0
+	endon
+	open snz-simplify-kit read-only
+		file "/p7branch/matrix/bigmatrix-3.csv"
+	on error
+	else
+		extract snz-simplify-kit
+		detail
+			if ssk-parent-code != SPACES
+				insert ism-snz-simplify-kit
+				on error
+				else
+					set lf-rec-count += 1
+				endon
+			endif
+		endextract
+		set lf-file-name = file-name(snz-simplify-kit)
+		print
+			today()
+			tod()
+			login-id()
+			strconcat(lf-file-name)
+			date-from-date-time(modification-time(lf-file-name),0)
+			time-from-date-time(modification-time(lf-file-name),0)
+			"records:"
+			lf-rec-count
+		set lf-rec-count = 0
+	endon
+	open snz-simplify-kit read-only
+		file "/p7branch/matrix/bigmatrix-4.csv"
+	on error
+	else
+		extract snz-simplify-kit
+		detail
+			if ssk-parent-code != SPACES
+				insert ism-snz-simplify-kit
+				on error
+				else
+					set lf-rec-count += 1
+				endon
+			endif
+		endextract
+		set lf-file-name = file-name(snz-simplify-kit)
+		print
+			today()
+			tod()
+			login-id()
+			strconcat(lf-file-name)
+			date-from-date-time(modification-time(lf-file-name),0)
+			time-from-date-time(modification-time(lf-file-name),0)
+			"records:"
+			lf-rec-count
+		set lf-rec-count = 0
+	endon
+	open snz-simplify-kit read-only
+		file "/p7branch/matrix/bigmatrix-5.csv"
+	on error
+	else
+		extract snz-simplify-kit
+		detail
+			if ssk-parent-code != SPACES
+				insert ism-snz-simplify-kit
+				on error
+				else
+					set lf-rec-count += 1
+				endon
+			endif
+		endextract
+		set lf-file-name = file-name(snz-simplify-kit)
+		print
+			today()
+			tod()
+			login-id()
+			strconcat(lf-file-name)
+			date-from-date-time(modification-time(lf-file-name),0)
+			time-from-date-time(modification-time(lf-file-name),0)
+			"records:"
+			lf-rec-count
+		set lf-rec-count = 0
+	endon
+	open snz-simplify-kit read-only
+		file "/p7branch/matrix/bigmatrix-9.csv"
+	on error
+	else
+		extract snz-simplify-kit
+		detail
+			if ssk-parent-code != SPACES
+				insert ism-snz-simplify-kit
+				on error
+				else
+					set lf-rec-count += 1
+				endon
+			endif
+		endextract
+		set lf-file-name = file-name(snz-simplify-kit)
+		print
+			today()
+			tod()
+			login-id()
+			strconcat(lf-file-name)
+			date-from-date-time(modification-time(lf-file-name),0)
+			time-from-date-time(modification-time(lf-file-name),0)
+			"records:"
+			lf-rec-count
+	endon
+	print
+		today()
+		tod()
+		login-id()
+		"load complete"
+	report finished
+	//message "dbg: rebuild isam complete"
+//endprocedure // rebuild-isam --------------------------------------------------
+endprocedure // reload-matrix -------------------------------------------------
+
+procedure rebuild-isam-old//single matrix mode //ism-snz-simplify-kit
+	message "dbg: rebuild isam"
+	open snz-simplify-kit read-only
+	open ism-snz-simplify-kit truncate permanent
+	extract snz-simplify-kit
+	detail
+		insert ism-snz-simplify-kit
+	endextract
+	message "dbg: rebuild isam complete"
+endprocedure // rebuild-isam --------------------------------------------------
+
+procedure reset-options
+	//set ws-scs-id				= 0
+	//set ws-scs-description		= SPACES
+	set ws-shs-id				= 0
+	set ws-shs-description		= SPACES
+	set ws-sbt-id				= 0
+	set ws-sbt-description		= SPACES
+	set ws-slt-id				= 0
+	set ws-slt-description		= SPACES
+	set ws-sst-id				= 0
+	set ws-sst-description		= SPACES
+	set ws-sms-id				= 0
+	set ws-sms-description		= SPACES
+	set ws-shb-id		        = 0
+	set ws-shb-description      = SPACES
+	set ws-shb-range-1			= SPACES
+	set ws-shb-range-2			= SPACES
+	set ws-sbb-range-1			= SPACES
+	set ws-sbb-range-2			= SPACES
+	set ws-sbb-id		        = 0
+	set ws-sbb-description		= SPACES
+	set ws-sps-description		= SPACES
+	//set ws-sfl-id				= 0
+	set ws-sfl-description		= SPACES
+	//set ws-shc-id				= 0
+	set ws-shc-description		= SPACES
+	//set ws-sbc-id				= 0
+	set ws-sbc-description		= SPACES
+	set ws-legs-exist			= FALSE
+	set ws-storage-exists		= FALSE
+endprocedure // reset-options -------------------------------------------------
+
+procedure reload-options
+	open snz-simplify-kit read-only
+	open snz-combo-style truncate permanent
+	open snz-head-style truncate permanent
+	open snz-base-type truncate permanent
+	open snz-leg-type truncate permanent
+	open snz-storage-type truncate permanent
+	open snz-material-style truncate permanent
+	open snz-head-band truncate permanent
+	open snz-base-band truncate permanent
+	open snz-pronto-size truncate permanent
+	open snz-fabric-look truncate permanent
+	open snz-head-colour truncate permanent
+	open snz-base-colour truncate permanent
+	extract ism-snz-simplify-kit
+	detail
+		get snz-combo-style
+			on index scs-id
+			key is ssk-combination-style-id
+		on error
+			//if ssk-combination-style-desc in {"Timber" "Upholstered with Timber" "Upholstered"}
+				//if ssk-combination-style-desc = "Upholstered"
+				//	set ssk-combination-style-desc = "Upholstered (Not Yet Available)"
+				//endif
+				set scs-id			= ssk-combination-style-id
+				set scs-description	= ssk-combination-style-desc
+				insert snz-combo-style
+				//message "Insert: " ssk-combination-style-desc
+			//endif
+		endon
+		get snz-head-style
+			on index scs-id shs-id
+			key is ssk-combination-style-id ssk-shape-id
+		on error
+			set scs-id			= ssk-combination-style-id
+			set shs-id			= ssk-shape-id
+			set shs-description	= ssk-shape-desc
+			insert snz-head-style
+		endon
+		get snz-material-style	//11dec12
+			on index scs-id sms-id
+			key is ssk-combination-style-id ssk-material-style-id
+		on error
+			set scs-id			= ssk-combination-style-id
+			set sms-id			= ssk-material-style-id
+			set sms-description	= ssk-material-style-desc
+			insert snz-material-style
+		endon
+		get snz-base-type
+			on index scs-id sbt-id
+			key is ssk-combination-style-id ssk-bed-base-type-id
+		on error
+			set scs-id         	= ssk-combination-style-id
+			set sbt-id		   	= ssk-bed-base-type-id
+			set sbt-description	= ssk-bed-base-type-desc
+			insert snz-base-type
+		endon
+		get snz-leg-type
+			on index scs-id sbt-id slt-id
+			key is ssk-combination-style-id ssk-bed-base-type-id ssk-leg-type-id
+		on error
+			set scs-id         	= ssk-combination-style-id
+			set sbt-id		   	= ssk-bed-base-type-id
+			set slt-id			= ssk-leg-type-id
+			set slt-description	= ssk-leg-type-desc
+			insert snz-leg-type
+		endon
+		get snz-storage-type
+			on index scs-id sbt-id sst-id
+			key is ssk-combination-style-id ssk-bed-base-type-id ssk-storage-type-id
+		on error
+			set scs-id         	= ssk-combination-style-id
+			set sbt-id		   	= ssk-bed-base-type-id
+			set sst-id			= ssk-storage-type-id
+			set sst-description	= ssk-storage-type-desc
+			insert snz-storage-type
+		endon
+		get snz-head-band
+			on index scs-id shb-id
+			key is ssk-combination-style-id ssk-headboard-price-band-id
+		on error
+			set scs-id			= ssk-combination-style-id
+			set shb-id			= ssk-headboard-price-band-id
+			set shb-description	= ssk-headboard-price-band-desc
+			insert snz-head-band
+		endon
+		get snz-base-band
+			on index scs-id sbb-id
+			key is ssk-combination-style-id ssk-bed-base-price-band-id
+		on error
+			set scs-id			= ssk-combination-style-id
+			set sbb-id			= ssk-bed-base-price-band-id
+			set sbb-description	= ssk-bed-base-price-band-desc
+			insert snz-base-band
+		endon
+		get snz-pronto-size
+			on index scs-id sps-description
+			key is ssk-combination-style-id ssk-pronto-size
+		on error
+			set sps-description = ssk-pronto-size
+			insert snz-pronto-size
+		endon
+		//
+		get snz-fabric-look
+			on index sfl-description
+			key is ssk-fabric-look-desc
+		on error
+			set sfl-description = ssk-fabric-look-desc
+			insert snz-fabric-look
+		endon
+		get snz-head-colour
+			on index shc-description
+			key is ssk-head-colour-desc
+		on error
+			set shc-description = ssk-head-colour-desc
+			insert snz-head-colour
+		endon
+		get snz-base-colour
+			on index sbc-description
+			key is ssk-base-colour-desc
+		on error
+			set sbc-description = ssk-base-colour-desc
+			insert snz-base-colour
+		endon
+	endextract
+endprocedure // reload-options ------------------------------------------------
+
+procedure reload-size
+	//message ws-scs-id
+	open ism-snz-simplify-kit
+	open snz-pronto-size truncate permanent
+	extract ism-snz-simplify-kit
+		on index ssk-combination-style-id ssk-pronto-size ssk-shape-id ssk-fabric-look-desc ssk-head-colour-desc
+		key is ws-scs-id SPACES 0 SPACES SPACES// ws-sfl-description ws-shc-description
+		next same ssk-combination-style-id
+	detail
+		get snz-pronto-size
+			on index scs-id sps-description
+			key is ssk-combination-style-id ssk-pronto-size
+		on error
+			set sps-description = ssk-pronto-size
+			insert snz-pronto-size
+		endon
+	endextract
+endprocedure // reload-size ---------------------------------------------------
+
+procedure reload-fabric
+local field
+	lf-start				type date-time
+	lf-finish				type date-time
+	open ism-snz-simplify-kit
+	open snz-fabric-look truncate permanent
+	set lf-start = gmt()
+	extract ism-snz-simplify-kit
+		on index ssk-combination-style-id ssk-pronto-size ssk-shape-id ssk-fabric-look-desc ssk-head-colour-desc
+		key is ws-scs-id ws-sps-description ws-shs-id SPACES SPACES// ws-sfl-description ws-shc-description
+		next same ssk-combination-style-id ssk-pronto-size ssk-shape-id
+	detail
+		get snz-fabric-look
+			on index sfl-description
+			key is ssk-fabric-look-desc
+		on error
+			set sfl-description = ssk-fabric-look-desc
+			insert snz-fabric-look
+		endon
+	endextract
+	set lf-finish = gmt()
+	//message "duration: " str(lf-finish - lf-start)
+endprocedure // reload-fabric ------------------------------------------------
+
+procedure reload-head-colour
+local field
+	lf-start				type date-time
+	lf-finish				type date-time
+	open ism-snz-simplify-kit
+	open snz-head-colour truncate permanent
+	set lf-start = gmt()
+	extract ism-snz-simplify-kit
+		on index ssk-combination-style-id ssk-pronto-size ssk-shape-id ssk-fabric-look-desc ssk-head-colour-desc
+		key is ws-scs-id ws-sps-description ws-shs-id ws-sfl-description SPACES// ws-sfl-description ws-shc-description
+		next same ssk-combination-style-id ssk-pronto-size ssk-shape-id ssk-fabric-look-desc
+	detail
+		get snz-head-colour
+			on index shc-description
+			key is ssk-head-colour-desc
+		on error
+			set shc-description = ssk-head-colour-desc
+			insert snz-head-colour
+		endon
+	endextract
+	set lf-finish = gmt()
+	//message "duration: " str(lf-finish - lf-start)
+endprocedure // reload-head-colour --------------------------------------------
+
+procedure reload-head-colour-leather-look
+local field
+	lf-start				type date-time
+	lf-finish				type date-time
+	open ism-snz-simplify-kit
+	open snz-head-colour truncate permanent
+	set lf-start = gmt()
+	extract ism-snz-simplify-kit
+		on index ssk-combination-style-id ssk-pronto-size ssk-shape-id ssk-fabric-look-desc ssk-head-colour-desc
+		key is ws-scs-id ws-sps-description ws-shs-id SPACES SPACES// ws-sfl-description ws-shc-description
+		next same ssk-combination-style-id ssk-pronto-size ssk-shape-id
+	detail
+		get snz-head-colour
+			on index shc-description
+			key is ssk-head-colour-desc
+		on error
+			set shc-description = ssk-head-colour-desc
+			insert snz-head-colour
+		endon
+	endextract
+	set lf-finish = gmt()
+	//message "duration: " str(lf-finish - lf-start)
+endprocedure // reload-head-colour-leather-look -------------------------------
+
+procedure reload-material-style
+local field
+	lf-start				type date-time
+	lf-finish				type date-time
+	//lf-count				type numeric
+	//message "dbg: ws-scs-id ws-sps-description ws-shs-id"
+	//message ws-scs-id ws-sps-description ws-shs-id
+	open ism-snz-simplify-kit
+	open snz-material-style truncate permanent
+	set lf-start = gmt()
+	extract ism-snz-simplify-kit
+		on index ssk-combination-style-id ssk-pronto-size ssk-shape-id ssk-material-style-id ssk-head-colour-desc
+		key is ws-scs-id ws-sps-description ws-shs-id 0 SPACES
+		next same ssk-combination-style-id ssk-pronto-size ssk-shape-id
+	detail
+		get snz-material-style
+			on index scs-id sms-id
+			key is ssk-combination-style-id ssk-material-style-id
+		on error
+			set scs-id			= ssk-combination-style-id
+			set sms-id			= ssk-material-style-id
+			set sms-description	= ssk-material-style-desc
+			insert snz-material-style
+		endon
+	endextract
+	set lf-finish = gmt()
+	//message "duration: " str(lf-finish - lf-start)
+endprocedure // reload-material-style -----------------------------------------
+
+procedure reload-base-type
+local field
+	lf-start				type date-time
+	lf-finish				type date-time
+	open ism-snz-simplify-kit
+	open snz-base-type truncate permanent
+	set lf-start = gmt()
+	extract ism-snz-simplify-kit
+		on index ssk-combination-style-id ssk-pronto-size ssk-bed-base-type-id ssk-base-colour-desc ssk-storage-type-id ssk-leg-type-id
+		key is ws-scs-id ws-sps-description 0 SPACES 0 0
+		next same ssk-combination-style-id ssk-pronto-size
+	detail
+		get snz-base-type
+			on index scs-id sbt-id
+			key is ssk-combination-style-id ssk-bed-base-type-id
+		on error
+			set scs-id         	= ssk-combination-style-id
+			set sbt-id		   	= ssk-bed-base-type-id
+			set sbt-description	= ssk-bed-base-type-desc
+			insert snz-base-type
+		endon
+	endextract
+	set lf-finish = gmt()
+	//message "duration: " str(lf-finish - lf-start)
+endprocedure // reload-base-type ----------------------------------------------
+
+procedure reload-base-colour
+local field
+	lf-start				type date-time
+	lf-finish				type date-time
+	open ism-snz-simplify-kit
+	open snz-base-colour truncate permanent
+	set lf-start = gmt()
+	report "reload-base-colour"
+		spool-only
+	extract ism-snz-simplify-kit
+		on index ssk-combination-style-id ssk-pronto-size ssk-bed-base-type-id ssk-base-colour-desc ssk-storage-type-id ssk-leg-type-id
+		key is ws-scs-id ws-sps-description ws-sbt-id SPACES 0 0
+		next same ssk-combination-style-id ssk-pronto-size ssk-bed-base-type-id
+	detail
+		get snz-base-colour
+			on index sbc-description
+			key is ssk-base-colour-desc
+		on error
+			print
+				ssk-parent-code
+				ssk-combination-style-desc	in col 20
+				ssk-pronto-size             in col 40
+				ssk-bed-base-type-desc      in col 60
+				ssk-base-colour-desc        in col 80
+				ssk-head-colour-desc		in col 100
+			set sbc-description = ssk-base-colour-desc
+			insert snz-base-colour
+		endon
+	endextract
+	set lf-finish = gmt()
+	//message "duration: " str(lf-finish - lf-start)
+	report finished
+endprocedure // reload-base-colour --------------------------------------------
+
+procedure reload-storage-type
+local field
+	lf-start				type date-time
+	lf-finish				type date-time
+	open ism-snz-simplify-kit
+	open snz-storage-type truncate permanent
+	//message "ws-scs-id:" ws-scs-id " ws-sps-description:" ws-sps-description " ws-sbt-id:" ws-sbt-id
+	set lf-start = gmt()
+	set ws-storage-exists = FALSE
+	extract ism-snz-simplify-kit
+		on index ssk-combination-style-id ssk-pronto-size ssk-bed-base-type-id ssk-base-colour-desc ssk-storage-type-id ssk-leg-type-id
+		//key is ws-scs-id ws-sps-description ws-sbb-id ws-sbc-description 0 0
+		//next same ssk-combination-style-id ssk-pronto-size
+		key is ws-scs-id ws-sps-description ws-sbt-id SPACES 0 0
+		next same ssk-combination-style-id ssk-pronto-size ssk-bed-base-type-id
+	detail
+		get snz-storage-type
+			on index scs-id sbt-id sst-id
+			key is ssk-combination-style-id ssk-bed-base-type-id ssk-storage-type-id
+		on error
+			if ssk-storage-type-desc != SPACES
+				set scs-id         	= ssk-combination-style-id
+				set sbt-id		   	= ssk-bed-base-type-id
+				set sst-id			= ssk-storage-type-id
+				set sst-description	= ssk-storage-type-desc
+				insert snz-storage-type
+				set ws-storage-exists = TRUE
+			endif
+		endon
+	endextract
+	set lf-finish = gmt()
+	//message "duration: " str(lf-finish - lf-start)
+endprocedure // reload-storage-type -------------------------------------------
+
+procedure reload-leg-type
+local field
+	lf-start				type date-time
+	lf-finish				type date-time
+	open ism-snz-simplify-kit
+	open snz-leg-type truncate permanent
+	set lf-start = gmt()
+	set ws-legs-exist = FALSE
+	extract ism-snz-simplify-kit
+		on index ssk-combination-style-id ssk-pronto-size ssk-bed-base-type-id ssk-base-colour-desc ssk-storage-type-id ssk-leg-type-id
+		//key is ws-scs-id ws-sps-description ws-sbb-id ws-sbc-description 0 0
+		key is ws-scs-id ws-sps-description ws-sbt-id SPACES 0 0
+		next same ssk-combination-style-id ssk-pronto-size ssk-bed-base-type-id
+	detail
+		get snz-leg-type
+			on index scs-id sbt-id slt-id
+			key is ssk-combination-style-id ssk-bed-base-type-id ssk-leg-type-id
+		on error
+			if ssk-leg-type-desc != SPACES
+				set scs-id         	= ssk-combination-style-id
+				set sbt-id		   	= ssk-bed-base-type-id
+				set slt-id			= ssk-leg-type-id
+				set slt-description	= ssk-leg-type-desc
+				insert snz-leg-type
+				set ws-legs-exist 	= TRUE
+			endif
+		endon
+	endextract
+	set lf-finish = gmt()
+	//message "reload-leg-type: " ws-legs-exist
+	//message "duration: " str(lf-finish - lf-start)
+endprocedure // reload-leg-type -----------------------------------------------
+
+//procedure sync-option-1
+//	open snz-prod-sel-level-1 truncate permanent
+//	extract tmp-prod-sel-level-1
+//	detail
+//		insert snz-prod-sel-level-1
+//	endextract
+//endprocedure // sync-option-1 -------------------------------------------------
+//
+//procedure sync-option-1-old
+//	extract snz-prod-sel-level-1
+//	detail
+//		get tmp-prod-sel-level-1
+//		on error
+//			message "Will delete: " pl1-seq pl1-id pl1-description
+//			delete snz-prod-sel-level-1
+//		endon
+//	endextract
+//	extract tmp-prod-sel-level-1
+//	detail
+//		push tmp-prod-sel-level-1
+//		get snz-prod-sel-level-1
+//		on error
+//			message "WIll insert: " pl1-seq pl1-id pl1-description
+//			insert snz-prod-sel-level-1
+//		else
+//			message "WIll update: " pl1-seq pl1-id pl1-description
+//			pop tmp-prod-sel-level-1
+//			update snz-prod-sel-level-1
+//		endon
+//		pop tmp-prod-sel-level-1
+//	endextract
+//endprocedure // sync-option-1 -------------------------------------------------
+
+	//open tmp-kit-components truncate temporary
+	//set tkc-qty = 1
+	//set tkc-stock-code = "BAM0484"
+	//insert tmp-kit-components
+	//set tkc-stock-code = "BTX0095"
+	//insert tmp-kit-components
+	//set tkc-stock-code = "CSM3110"
+	//insert tmp-kit-components
+	//set tkc-stock-code = "CSM3219"
+	//insert tmp-kit-components
+	//set tkc-stock-code = "DES0419"
+	//insert tmp-kit-components
+
+screen product-selector-1
+local field
+	lf-first-arrow			type boolean
+window @1,1 to @4,60 title "Select Range" //"Select Headboard"
+	//open snz-prod-sel-level-1 create permanent
+before
+	set ws-scs-id				= 0
+    set ws-scs-description		= SPACES
+	do reset-options
+	open tmp-snz-combo-style truncate temporary
+	extract snz-combo-style
+	detail
+		insert tmp-snz-combo-style
+	endextract
+	get tmp-snz-combo-style on index scs-id first
+detail
+	set lf-first-arrow = TRUE
+	accept ws-scs-description @2,12 title "Range:" pic x(32)
+		default ws-scs-description
+		help "Enter Range"
+		//on up-arrow //{3}
+		//	//message "up"
+		//	if lf-first-arrow
+		//		get tmp-snz-combo-style first
+		//		on error
+		//			message "At Start"
+		//		else
+		//			set ws-scs-description = scs-description
+		//		endon
+		//		set lf-first-arrow = FALSE
+		//	else
+		//		get tmp-snz-combo-style previous
+		//		on error
+		//			get tmp-snz-combo-style first
+		//			on error
+		//				message "At Start"
+		//			else
+		//				set ws-scs-description = scs-description
+		//			endon
+		//		else
+		//			set ws-scs-description = scs-description
+		//			//refresh
+		//		endon
+		//	endif
+		//	display ws-scs-description @2,12
+		//	reenter optional
+		//endon
+		//on down-arrow
+		//	//message "down"
+		//	if lf-first-arrow
+		//		get tmp-snz-combo-style first
+		//		on error
+		//			message "At Start"
+		//		else
+		//			set ws-scs-description = scs-description
+		//		endon
+		//		set lf-first-arrow = FALSE
+		//	else
+		//		get tmp-snz-combo-style next
+		//		on error
+		//			get tmp-snz-combo-style last
+		//			on error
+		//				message "At End"
+		//			else
+		//				set ws-scs-description = scs-description
+		//			endon
+		//		else
+		//			set ws-scs-description = scs-description
+		//			//refresh
+		//		endon
+		//	endif
+		//	display ws-scs-description @2,12
+		//	reenter optional
+		//endon
+		on help-key
+			do select-combo
+				returning
+					ws-scs-id
+					ws-scs-description
+			//reenter ws-scs-description optional
+			refresh ws-scs-description
+		endon
+		//on down-arrow
+		//	get snz-prod-sel-level-1 next
+		//	on error
+		//	else
+		//		set ws-option-1 = pl1-id
+		//		get snz-prod-sel-level-1
+		//			on index pl1-id
+		//			key is ws-option-1
+		//		on error
+		//			//message "Invalid option " ws-option-1
+		//			//reenter
+		//		else
+		//			display pl1-description @2,19 background prompt
+		//		endon
+		//		reenter ws-option-1 optional
+		//	endon
+		//endon
+		//on up-arrow
+		//	get snz-prod-sel-level-1 previous
+		//	on error
+		//	else
+		//		set ws-option-1 = pl1-id
+		//		get snz-prod-sel-level-1
+		//			on index pl1-id
+		//			key is ws-option-1
+		//		on error
+		//			//message "Invalid option " ws-option-1
+		//			//reenter
+		//		else
+		//			display pl1-description @2,19 background prompt
+		//		endon
+		//		reenter ws-option-1 optional
+		//	endon
+		//endon
+		//validation
+		//	get snz-prod-sel-level-1
+		//		on index pl1-id
+		//		key is ws-option-1
+		//	on error
+		//		message "Invalid option " ws-option-1
+		//		reenter
+		//	else
+		//		display ws-option-1-description @2,19 background prompt
+		//	endon
+		//endvalidation
+confirm
+	auto
+confirmed
+	//message ws-scs-id
+	switch on ws-scs-description
+		case "Upholstered"
+			do reset-options
+			do prod-sel-head-uph entry-once
+				returning
+					ws-stock-code
+		case "Upholstered Bedframe"
+			do reset-options
+			do prod-sel-head-uph entry-once
+				returning
+					ws-stock-code
+		case "Upholstered with Timber"
+			//do prod-sel-head-ut entry-once
+			do reset-options
+			do prod-sel-head-ut entry-once
+				returning
+					ws-stock-code
+		case "Upholstered + Timber Bedframe"
+			//do prod-sel-head-ut entry-once
+			do reset-options
+			do prod-sel-head-ut entry-once
+				returning
+					ws-stock-code
+		case "Timber"
+			do reset-options
+			do prod-sel-head-tim entry-once
+				returning
+					ws-stock-code
+		case "Timber Bedframe"
+			do reset-options
+			do prod-sel-head-tim entry-once
+				returning
+					ws-stock-code
+		case "Plain Timber No Legs"	//15oct13
+			do reset-options
+			do prod-sel-head-tim-no-legs entry-once
+				returning
+					ws-stock-code
+		case "Upholstered Headboards"
+			do reset-options
+			do prod-sel-head-uph-head entry-once
+				returning
+					ws-stock-code
+	case "Leather Look Headboards"
+		do reset-options
+		do prod-sel-leather-head entry-once
+				returning
+					ws-stock-code
+	case "Timber Headboards"
+		do reset-options
+		do prod-sel-tim-head entry-once
+				returning
+					ws-stock-code
+	endswitch
+endconfirm
+//after
+//	back-to-detail
+endscreen // product-selector-1 -----------------------------------------------
+
+
+
+screen prod-sel-head-uph
+local field
+	lf-valid				type boolean	//{4}
+returning
+	lr-ssk-parent-code			like ssk-parent-code
+window @1,1 to @13,60 title ws-scs-description //"Upholstered Headboard and Base" //"Select Headboard"
+	//open snz-prod-sel-level-1 create permanent
+	//do reset-options
+	//set lf-legs-exist = FALSE
+	accept ws-sps-description @2,24 title "Size:"
+		uppercase
+		default ws-sps-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do reload-size
+			do select-pronto-size
+				returning
+					ws-sps-description
+			//reenter ws-sps-description optional
+			if ws-sps-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sps-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-size
+				do validate-sps-description
+					parameters
+						ws-sps-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sps-description
+					reenter ws-sps-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shs-description @3,24 title "Headboard:" pic x(32)
+		default ws-shs-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do select-head
+				returning
+					ws-shs-id
+					ws-shs-description
+			//reenter ws-shs-description optional
+			if ws-shs-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shs-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do validate-shs-description
+					parameters
+						ws-shs-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shs-description
+					reenter ws-shs-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shb-description @4,24 title "Headboard Fabric:" pic x(32) //price band for upholstered only
+		default ws-shb-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do select-head-band
+				returning
+					ws-shb-id
+					ws-shb-description
+			//reenter ws-shb-description optional
+			if ws-shb-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shb-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do validate-shb-description
+					parameters
+						ws-shb-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shb-description
+					reenter ws-shb-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shb-range-1 @5,24 title "Fabric Supplier:" pic x(30)
+		default ws-shb-range-1
+	accept ws-shb-range-2 @6,24 title "Fabric Range Name & Colour:" pic x(30)
+		default ws-shb-range-2
+	//accept ws-sfl-description @4,20 title "Fabric:" pic x(32)
+	//	default ws-sfl-description
+	//	on help-key
+	//		do reload-fabric
+	//		do select-fabric-look
+	//			returning
+	//				ws-sfl-description
+	//		reenter ws-sfl-description optional
+	//	endon
+	//	validation
+	//		if ws-sfl-description = SPACES
+	//			message "Please select a Fabric"
+	//			reenter ws-sfl-description
+	//		endif
+	//		get tmp-snz-fabric-look
+	//			on index sfl-description
+	//			key is ws-sfl-description
+	//		on error
+	//			message "Cannot Find Fabric:" ws-sfl-description
+	//			reenter ws-sfl-description
+	//		endon
+	//	endvalidation
+	//accept ws-shc-description @5,20 title "Colour" pic x(32) //"Head Colour:" pic x(32)
+	//	default ws-shc-description
+	//	on help-key
+	//		do reload-head-colour
+	//		do select-head-colour
+	//			returning
+	//				ws-shc-description
+	//		reenter ws-shc-description optional
+	//	endon
+	accept ws-sbt-description @7,24 title "Base:" pic x(32)
+		default ws-sbt-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do reload-base-type
+			do select-base-type
+				returning
+					ws-sbt-id
+					ws-sbt-description
+			//reenter ws-sbt-description optional
+			if ws-sbt-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+			//do reload-leg-type
+		endon
+		validation
+			if ws-sbt-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-base-type
+				do validate-sbt-description
+					parameters
+						ws-sbt-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sbt-description
+					reenter ws-sbt-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	//14dec12 for time being leave base colour out - it's currently fixed at the same as the head colour (same as web rule)
+	//accept ws-sbc-description @7,20 title "Base Colour:" pic x(32)
+	//	default ws-sbc-description
+	//	on help-key
+	//		do reload-base-colour
+	//		do select-base-colour
+	//			returning
+	//				ws-sbc-description
+	//		reenter ws-sbc-description optional
+	//	endon
+	//storage is not an 'option' with upholstered bases
+	//accept ws-sst-description @7,20 title "Storage:" pic x(32)
+	//	default ws-sst-description
+	//	on help-key
+	//		do reload-storage-type
+	//		do select-storage-type
+	//			returning
+	//				ws-sst-id
+	//				ws-sst-description
+	//		reenter ws-sst-description optional
+	//	endon
+	//accept ws-sst-description @7,20 title "Storage:" pic x(32)
+	//	default ws-sst-description
+	//	on help-key
+	//		do reload-storage-type
+	//		do select-storage-type
+	//			returning
+	//				ws-sst-id
+	//				ws-sst-description
+	//		reenter ws-sst-description optional
+	//	endon
+	accept ws-sbb-description @8,24 title "Base Fabric:" pic x(32)
+		default ws-sbb-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do select-base-band
+				returning
+					ws-sbb-id
+					ws-sbb-description
+			//reenter ws-sbb-description optional
+			if ws-sbb-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sbb-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do validate-sbb-description
+					parameters
+						ws-sbb-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sbb-description
+					reenter ws-sbb-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-sbb-range-1 @9,24 title "Fabric Supplier:" pic x(30)
+		default ws-sbb-range-1
+	accept ws-sbb-range-2 @10,24 title "Fabric Range Name & Colour:" pic x(30)
+		default ws-sbb-range-2
+	//
+	//message "here i go"
+	if ws-sbt-description != SPACES
+		do reload-leg-type
+	endif
+	if ws-legs-exist
+		display "Legs:" @11,18 prompt right
+		//accept ws-slt-description @11,24 title "Legs:" pic x(32)
+		accept ws-slt-description @11,24 pic x(32)
+			default ws-slt-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+			on help-key
+				//do reload-leg-type
+				do select-leg-type
+					returning
+						ws-slt-id
+						ws-slt-description
+				//reenter ws-slt-description optional
+				if ws-slt-description != SPACES	//{4}
+					set lf-valid = TRUE			//{4}
+				endif							//{4}
+				refresh
+			endon
+			validation
+				if ws-slt-description = SPACES
+					message "Please make a selection"
+					reenter
+				//<{4}
+				elseif not lf-valid
+					do validate-slt-description
+						parameters
+							ws-slt-description
+						returning
+							lf-valid
+					if not lf-valid
+						message "Invalid Selection: " ws-slt-description
+						reenter ws-slt-description
+					endif
+				//>{4}
+				endif
+			endvalidation
+	else
+		clear @11,1 to @11,60
+	endif
+	//set lf-valid = FALSE
+confirm
+	//auto
+confirmed
+	do build-results
+	do dig-filtered-results
+		returning
+			lr-ssk-parent-code
+	//message "Returned Code: " lr-ssk-parent-code
+	do check-kit
+		parameters
+			lr-ssk-parent-code
+	//exit
+notconfirmed
+	do product-selector-1 entry-once
+	//exit
+endconfirm
+endscreen // prod-sel-head-uph ------------------------------------------------
+
+screen prod-sel-head-ut
+local field
+	lf-valid				type boolean	//{4}
+returning
+	lr-ssk-parent-code				like ssk-parent-code
+window @1,1 to @12,60 title ws-scs-description //"Upholstered Headboard / Timber Base" //"Select Headboard"
+	//open snz-prod-sel-level-1 create permanent
+	//do reset-options
+	accept ws-sps-description @2,24 title "Size:"
+		default ws-sps-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			//do reload-pronto-size - need all sizes as this is starting question
+			do reload-size
+			do select-pronto-size
+				returning
+					ws-sps-description
+			//reenter ws-sps-description optional
+			if ws-sps-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sps-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-size
+				do validate-sps-description
+					parameters
+						ws-sps-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sps-description
+					reenter ws-sps-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shs-description @3,24 title "Headboard:" pic x(32)
+		default ws-shs-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			//do reload-head - reload built in
+			do select-head
+				returning
+					ws-shs-id
+					ws-shs-description
+			//reenter ws-shs-description optional
+			if ws-shs-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shs-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do validate-shs-description
+					parameters
+						ws-shs-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shs-description
+					reenter ws-shs-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shb-description @4,24 title "Headboard Fabric:" pic x(32) //price band for upholstered only
+		default ws-shb-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do select-head-band //no reload required
+				returning
+					ws-shb-id
+					ws-shb-description
+			//reenter ws-shb-description optional
+			if ws-shb-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shb-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do validate-shb-description
+					parameters
+						ws-shb-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shb-description
+					reenter ws-shb-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shb-range-1 @5,24 title "Fabric Supplier:" pic x(30)
+		default ws-shb-range-1
+	accept ws-shb-range-2 @6,24 title "Fabric Range Name & Colour:" pic x(30)
+		default ws-shb-range-2
+	accept ws-sbt-description @7,24 title "Base:" pic x(32)
+		default ws-sbt-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do reload-base-type
+			do select-base-type
+				returning
+					ws-sbt-id
+					ws-sbt-description
+			//reenter ws-sbt-description optional
+			if ws-sbt-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sbt-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-base-type
+				do validate-sbt-description
+					parameters
+						ws-sbt-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sbt-description
+					reenter ws-sbt-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-sbc-description @8,24 title "Base Colour/Stain:" pic x(32)
+		default ws-sbc-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do reload-base-colour
+			do select-base-colour
+				returning
+					ws-sbc-description
+			//reenter ws-sbc-description optional
+			if ws-sbc-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sbc-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				//do reload-size
+				do validate-sbc-description
+					parameters
+						ws-sbc-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sbc-description
+					reenter ws-sbc-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	//storage is not an 'option' with upholstered bases
+	//accept ws-sst-description @9,24 title "Storage:" pic x(32)
+	//	default ws-sst-description
+	//	on help-key
+	//		do reload-storage-type
+	//		do select-storage-type
+	//			returning
+	//				ws-sst-id
+	//				ws-sst-description
+	//		//reenter ws-sst-description optional
+	//		refresh
+	//	endon
+	if ws-sbt-description != SPACES
+		do reload-storage-type
+	endif
+	if ws-storage-exists
+		display "Storage:" @9,15 prompt right
+		accept ws-sst-description @9,24 pic x(32)
+			default ws-sst-description
+			//<{4}
+			before-accept
+				set lf-valid = FALSE
+			end-before-accept
+			//>{4}
+			on help-key
+				do select-storage-type
+					returning
+						ws-sst-id
+						ws-sst-description
+				//reenter ws-sst-description optional
+				if ws-sst-description != SPACES	//{4}
+					set lf-valid = TRUE			//{4}
+				endif							//{4}
+				refresh
+			endon
+			validation
+				if ws-sst-description = SPACES
+					message "Please make a selection"
+					reenter
+				//<{4}
+				elseif not lf-valid
+					do reload-size
+					do validate-sst-description
+						parameters
+							ws-sst-description
+						returning
+							lf-valid
+					if not lf-valid
+						message "Invalid Selection: " ws-sst-description
+						reenter ws-sst-description
+					endif
+				//>{4}
+				endif
+			endvalidation
+	else
+		clear @9,1 to @9,60
+	endif
+	//accept ws-slt-description @10,24 title "Legs:" pic x(32)
+	//	default ws-slt-description
+	//	on help-key
+	//		//do reload-leg-type
+	//		do select-leg-type
+	//			returning
+	//				ws-slt-id
+	//				ws-slt-description
+	//		//reenter ws-slt-description optional
+	//		refresh
+	//	endon
+	if ws-sbt-description != SPACES
+		do reload-leg-type
+	endif
+	if ws-legs-exist
+		display "Legs:" @10,18 prompt right
+		//accept ws-slt-description @11,24 title "Legs:" pic x(32)
+		accept ws-slt-description @10,24 pic x(32)
+			default ws-slt-description
+			//<{4}
+			before-accept
+				set lf-valid = FALSE
+			end-before-accept
+			//>{4}
+			on help-key
+				//do reload-leg-type
+				do select-leg-type
+					returning
+						ws-slt-id
+						ws-slt-description
+				//reenter ws-slt-description optional
+				if ws-slt-description != SPACES	//{4}
+					set lf-valid = TRUE			//{4}
+				endif							//{4}
+				refresh
+			endon
+			validation
+				if ws-slt-description = SPACES
+					message "Please make a selection"
+					reenter
+				//<{4}
+				elseif not lf-valid
+					do reload-size
+					do validate-slt-description
+						parameters
+							ws-slt-description
+						returning
+							lf-valid
+					if not lf-valid
+						message "Invalid Selection: " ws-slt-description
+						reenter ws-slt-description
+					endif
+				//>{4}
+				endif
+			endvalidation
+	else
+		clear @10,1 to @10,60
+	endif
+	//accept ws-sbb-description @9,20 title "Base Price Band:" pic x(32)
+	//	default ws-sbb-description
+	//	on help-key
+	//		do select-base-band
+	//			returning
+	//				ws-sbb-id
+	//				ws-sbb-description
+	//		reenter ws-sbb-description optional
+	//	endon
+	set lf-valid = FALSE
+confirm
+	//auto
+confirmed
+	do build-results
+	do dig-filtered-results
+		returning
+			lr-ssk-parent-code
+	//message "Returned Code: " lr-ssk-parent-code
+	do check-kit
+		parameters
+			lr-ssk-parent-code
+notconfirmed
+	do product-selector-1 entry-once
+endconfirm
+endscreen // prod-sel-head-ut -------------------------------------------------
+
+screen prod-sel-head-tim
+local field
+	lf-valid			type boolean	//{4}
+returning
+	lr-ssk-parent-code				like ssk-parent-code
+window @1,1 to @10,60 title ws-scs-description //"Timber Bedframe" //"Select Headboard"
+	//open snz-prod-sel-level-1 create permanent
+	//do reset-options
+	accept ws-sps-description @2,24 title "Size:"
+		uppercase
+		default ws-sps-description
+		//<{4}
+		before-accept
+			do reload-size
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			//do reload-size
+			do select-pronto-size
+				returning
+					ws-sps-description
+			//reenter ws-sps-description optional
+			if ws-sps-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sps-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-size
+				do validate-sps-description
+					parameters
+						ws-sps-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sps-description
+					reenter ws-sps-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shs-description @3,24 title "Headboard:" pic x(32)
+		default ws-shs-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do select-head
+				returning
+					ws-shs-id
+					ws-shs-description
+			//reenter ws-shs-description optional
+			if ws-shs-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shs-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				//do reload-size
+				do validate-shs-description
+					parameters
+						ws-shs-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shs-description
+					reenter ws-shs-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-sms-description @4,24 title "Headboard Wood Style:" pic x(32)
+		default ws-sms-description
+		//<{4}
+		before-accept
+			do reload-material-style
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			//do reload-material-style
+			do select-material-style
+				returning
+					ws-sms-id
+					ws-sms-description
+			//reenter ws-sms-description optional
+			if ws-sms-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sms-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-material-style
+				do validate-sms-description
+					parameters
+						ws-sms-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sms-description
+					reenter ws-sms-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	//accept ws-shb-description @3,20 title "Head Price Band:" pic x(32) //price band for upholstered only
+	//	default ws-shb-description
+	//	on help-key
+	//		do select-head-band
+	//			returning
+	//				ws-shb-id
+	//				ws-shb-description
+	//		reenter ws-shb-description optional
+	//	endon
+	//accept ws-sfl-description @4,20 title "Fabric Look:" pic x(32)
+	//	default ws-sfl-description
+	//	on help-key
+	//		do reload-fabric
+	//		do select-fabric-look
+	//			returning
+	//				ws-sfl-description
+	//		reenter ws-sfl-description optional
+	//	endon
+	accept ws-shc-description @5,24 title "Headboard Colour:" pic x(32)
+		default ws-shc-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+
+		on help-key
+			do reload-head-colour
+			do select-head-colour
+				returning
+					ws-shc-description
+			//reenter ws-shc-description optional
+			if ws-shc-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shc-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-head-colour
+				do validate-shc-description
+					parameters
+						ws-shc-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shc-description
+					reenter ws-shc-description
+				endif
+			//>{4}
+			else
+				//with timber headboard/timber base combinations colours need to be the same for headboard and base
+				set ws-sbc-description = ws-shc-description
+			endif
+		endvalidation
+	accept ws-sbt-description @6,24 title "Base:" pic x(32)
+		default ws-sbt-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do reload-base-type
+			do select-base-type
+				returning
+					ws-sbt-id
+					ws-sbt-description
+			//reenter ws-sbt-description optional
+			if ws-sbt-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sbt-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-base-type
+				do validate-sbt-description
+					parameters
+						ws-sbt-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sbt-description
+					reenter ws-sbt-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	//accept ws-sbc-description @7,20 title "Base Colour:" pic x(32)
+	//	default ws-sbc-description
+	//	on help-key
+	//		do reload-base-colour
+	//		do select-base-colour
+	//			returning
+	//				ws-sbc-description
+	//		reenter ws-sbc-description optional
+	//	endon
+	//no storage for timber/timber base
+	//accept ws-sst-description @7,24 title "Storage:" pic x(32)
+	//	default ws-sst-description
+	//	on help-key
+	//		do reload-storage-type
+	//		do select-storage-type
+	//			returning
+	//				ws-sst-id
+	//				ws-sst-description
+	//		//reenter ws-sst-description optional
+	//		refresh
+	//	endon
+	if ws-sbt-description != SPACES
+		do reload-storage-type
+	endif
+	if ws-storage-exists
+		display "Storage:" @7,15 prompt right
+		accept ws-sst-description @7,24 pic x(32)
+			default ws-sst-description
+			//<{4}
+			before-accept
+				set lf-valid = FALSE
+			end-before-accept
+			//>{4}
+			on help-key
+				do select-storage-type
+					returning
+						ws-sst-id
+						ws-sst-description
+				//reenter ws-sst-description optional
+				if ws-sst-description != SPACES	//{4}
+					set lf-valid = TRUE			//{4}
+				endif							//{4}
+				refresh
+			endon
+			validation
+				if ws-sst-description = SPACES
+					message "Please make a selection"
+					reenter
+				//<{4}
+				elseif not lf-valid
+					do validate-sst-description
+						parameters
+							ws-sst-description
+						returning
+							lf-valid
+					if not lf-valid
+						message "Invalid Selection: " ws-sst-description
+						reenter ws-sst-description
+					endif
+				//>{4}
+				endif
+			endvalidation
+	else
+		clear @7,1 to @7,60
+	endif
+	//accept ws-slt-description @8,24 title "Legs:" pic x(32)
+	//	default ws-slt-description
+	//	on help-key
+	//		//do reload-leg-type
+	//		do select-leg-type
+	//			returning
+	//				ws-slt-id
+	//				ws-slt-description
+	//		//reenter ws-slt-description optional
+	//		refresh
+	//	endon
+	if ws-sbt-description != SPACES
+		do reload-leg-type
+	endif
+	if ws-legs-exist
+		display "Legs:" @8,18 prompt right
+		//accept ws-slt-description @11,24 title "Legs:" pic x(32)
+		accept ws-slt-description @8,24 pic x(32)
+			default ws-slt-description
+			//<{4}
+			before-accept
+				set lf-valid = FALSE
+			end-before-accept
+			//>{4}
+			on help-key
+				//do reload-leg-type
+				do select-leg-type
+					returning
+						ws-slt-id
+						ws-slt-description
+				//reenter ws-slt-description optional
+				if ws-slt-description != SPACES	//{4}
+					set lf-valid = TRUE			//{4}
+				endif							//{4}
+				refresh
+			endon
+			validation
+				if ws-slt-description = SPACES
+					message "Please make a selection"
+					reenter
+				//<{4}
+				elseif not lf-valid
+					do validate-slt-description
+						parameters
+							ws-slt-description
+						returning
+							lf-valid
+					if not lf-valid
+						message "Invalid Selection: " ws-slt-description
+						reenter ws-slt-description
+					endif
+				//>{4}
+				endif
+			endvalidation
+	else
+		clear @8,1 to @8,60
+	endif
+	//accept ws-sbb-description @9,20 title "Base Price Band:" pic x(32)
+	//	default ws-sbb-description
+	//	on help-key
+	//		do select-base-band
+	//			returning
+	//				ws-sbb-id
+	//				ws-sbb-description
+	//		reenter ws-sbb-description optional
+	//	endon
+	set lf-valid = FALSE
+confirm
+	//auto
+confirmed
+	do build-results
+	do dig-filtered-results
+		returning
+			lr-ssk-parent-code
+	//message "Returned Code: " lr-ssk-parent-code
+	do check-kit
+		parameters
+			lr-ssk-parent-code
+notconfirmed
+	do product-selector-1 entry-once
+endconfirm
+endscreen // prod-sel-head-tim ------------------------------------------------
+
+screen prod-sel-head-tim-no-legs	//15oct13
+local field
+	lf-valid			type boolean	//{4}
+returning
+	lr-ssk-parent-code				like ssk-parent-code
+window @1,1 to @10,60 title ws-scs-description //"Timber Bedframe" //"Select Headboard"
+	//open snz-prod-sel-level-1 create permanent
+	//do reset-options
+	accept ws-sps-description @2,24 title "Size:"
+		uppercase
+		default ws-sps-description
+		//<{4}
+		before-accept
+			do reload-size
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			//do reload-size
+			do select-pronto-size
+				returning
+					ws-sps-description
+			//reenter ws-sps-description optional
+			if ws-sps-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sps-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-size
+				do validate-sps-description
+					parameters
+						ws-sps-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sps-description
+					reenter ws-sps-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shs-description @3,24 title "Headboard:" pic x(32)
+		default ws-shs-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do select-head
+				returning
+					ws-shs-id
+					ws-shs-description
+			//reenter ws-shs-description optional
+			if ws-shs-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shs-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				//do reload-size
+				do validate-shs-description
+					parameters
+						ws-shs-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shs-description
+					reenter ws-shs-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-sms-description @4,24 title "Headboard Wood Style:" pic x(32)
+		default ws-sms-description
+		//<{4}
+		before-accept
+			do reload-material-style
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			//do reload-material-style
+			do select-material-style
+				returning
+					ws-sms-id
+					ws-sms-description
+			//reenter ws-sms-description optional
+			if ws-sms-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sms-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-material-style
+				do validate-sms-description
+					parameters
+						ws-sms-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sms-description
+					reenter ws-sms-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	//accept ws-shb-description @3,20 title "Head Price Band:" pic x(32) //price band for upholstered only
+	//	default ws-shb-description
+	//	on help-key
+	//		do select-head-band
+	//			returning
+	//				ws-shb-id
+	//				ws-shb-description
+	//		reenter ws-shb-description optional
+	//	endon
+	//accept ws-sfl-description @4,20 title "Fabric Look:" pic x(32)
+	//	default ws-sfl-description
+	//	on help-key
+	//		do reload-fabric
+	//		do select-fabric-look
+	//			returning
+	//				ws-sfl-description
+	//		reenter ws-sfl-description optional
+	//	endon
+	accept ws-shc-description @5,24 title "Headboard Colour:" pic x(32)
+		default ws-shc-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+
+		on help-key
+			do reload-head-colour
+			do select-head-colour
+				returning
+					ws-shc-description
+			//reenter ws-shc-description optional
+			if ws-shc-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shc-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-head-colour
+				do validate-shc-description
+					parameters
+						ws-shc-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shc-description
+					reenter ws-shc-description
+				endif
+			//>{4}
+			else
+				//with timber headboard/timber base combinations colours need to be the same for headboard and base
+				set ws-sbc-description = ws-shc-description
+			endif
+		endvalidation
+	accept ws-sbt-description @6,24 title "Base:" pic x(32)
+		default ws-sbt-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do reload-base-type
+			do select-base-type
+				returning
+					ws-sbt-id
+					ws-sbt-description
+			//reenter ws-sbt-description optional
+			if ws-sbt-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sbt-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-base-type
+				do validate-sbt-description
+					parameters
+						ws-sbt-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sbt-description
+					reenter ws-sbt-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	//accept ws-sbc-description @7,20 title "Base Colour:" pic x(32)
+	//	default ws-sbc-description
+	//	on help-key
+	//		do reload-base-colour
+	//		do select-base-colour
+	//			returning
+	//				ws-sbc-description
+	//		reenter ws-sbc-description optional
+	//	endon
+	//no storage for timber/timber base
+	//accept ws-sst-description @7,24 title "Storage:" pic x(32)
+	//	default ws-sst-description
+	//	on help-key
+	//		do reload-storage-type
+	//		do select-storage-type
+	//			returning
+	//				ws-sst-id
+	//				ws-sst-description
+	//		//reenter ws-sst-description optional
+	//		refresh
+	//	endon
+	if ws-sbt-description != SPACES
+		do reload-storage-type
+	endif
+	if ws-storage-exists
+		display "Storage:" @7,15 prompt right
+		accept ws-sst-description @7,24 pic x(32)
+			default ws-sst-description
+			//<{4}
+			before-accept
+				set lf-valid = FALSE
+			end-before-accept
+			//>{4}
+			on help-key
+				do select-storage-type
+					returning
+						ws-sst-id
+						ws-sst-description
+				//reenter ws-sst-description optional
+				if ws-sst-description != SPACES	//{4}
+					set lf-valid = TRUE			//{4}
+				endif							//{4}
+				refresh
+			endon
+			validation
+				if ws-sst-description = SPACES
+					message "Please make a selection"
+					reenter
+				//<{4}
+				elseif not lf-valid
+					do validate-sst-description
+						parameters
+							ws-sst-description
+						returning
+							lf-valid
+					if not lf-valid
+						message "Invalid Selection: " ws-sst-description
+						reenter ws-sst-description
+					endif
+				//>{4}
+				endif
+			endvalidation
+	else
+		clear @7,1 to @7,60
+	endif
+	//accept ws-slt-description @8,24 title "Legs:" pic x(32)
+	//	default ws-slt-description
+	//	on help-key
+	//		//do reload-leg-type
+	//		do select-leg-type
+	//			returning
+	//				ws-slt-id
+	//				ws-slt-description
+	//		//reenter ws-slt-description optional
+	//		refresh
+	//	endon
+	if ws-sbt-description != SPACES
+		do reload-leg-type
+	endif
+	if ws-legs-exist
+		display "Legs:" @8,18 prompt right
+		//accept ws-slt-description @11,24 title "Legs:" pic x(32)
+		accept ws-slt-description @8,24 pic x(32)
+			default ws-slt-description
+			//<{4}
+			before-accept
+				set lf-valid = FALSE
+			end-before-accept
+			//>{4}
+			on help-key
+				//do reload-leg-type
+				do select-leg-type
+					returning
+						ws-slt-id
+						ws-slt-description
+				//reenter ws-slt-description optional
+				if ws-slt-description != SPACES	//{4}
+					set lf-valid = TRUE			//{4}
+				endif							//{4}
+				refresh
+			endon
+			validation
+				if ws-slt-description = SPACES
+					message "Please make a selection"
+					reenter
+				//<{4}
+				elseif not lf-valid
+					do validate-slt-description
+						parameters
+							ws-slt-description
+						returning
+							lf-valid
+					if not lf-valid
+						message "Invalid Selection: " ws-slt-description
+						reenter ws-slt-description
+					endif
+				//>{4}
+				endif
+			endvalidation
+	else
+		clear @8,1 to @8,60
+	endif
+	//accept ws-sbb-description @9,20 title "Base Price Band:" pic x(32)
+	//	default ws-sbb-description
+	//	on help-key
+	//		do select-base-band
+	//			returning
+	//				ws-sbb-id
+	//				ws-sbb-description
+	//		reenter ws-sbb-description optional
+	//	endon
+	set lf-valid = FALSE
+confirm
+	//auto
+confirmed
+	do build-results
+	do dig-filtered-results
+		returning
+			lr-ssk-parent-code
+	//message "Returned Code: " lr-ssk-parent-code
+	do check-kit
+		parameters
+			lr-ssk-parent-code
+notconfirmed
+	do product-selector-1 entry-once
+endconfirm
+endscreen // prod-sel-head-tim-no-legs ----------------------------------------
+
+screen prod-sel-head-uph-head
+local field
+	lf-first-arrow					type boolean
+	lf-valid						type boolean	//{4}
+returning
+	lr-ssk-parent-code				like ssk-parent-code
+window @1,1 to @8,60 title ws-scs-description
+	//open snz-prod-sel-level-1 create permanent
+	//do reset-options
+before
+	//{3} suppressed
+	//do reload-size
+	//open tmp-snz-pronto-size truncate temporary
+	//extract snz-pronto-size
+	//detail
+	//	insert tmp-snz-pronto-size
+	//endextract
+	//get tmp-snz-pronto-size on index scs-id sps-description first
+	//on error
+	//endon
+detail
+	set lf-first-arrow = TRUE
+	accept ws-sps-description @2,24 title "Size:"
+		uppercase
+		default ws-sps-description
+		help "Select Size"
+		//on up-arrow //{3}
+		//	//message "up"
+		//	if lf-first-arrow
+		//		get tmp-snz-pronto-size first
+		//		on error
+		//			message "At Start"
+		//		else
+		//			set ws-sps-description = sps-description
+		//		endon
+		//		set lf-first-arrow = FALSE
+		//	else
+		//		get tmp-snz-pronto-size previous
+		//		on error
+		//			get tmp-snz-pronto-size first
+		//			on error
+		//				message "At Start"
+		//			else
+		//				set ws-sps-description = sps-description
+		//			endon
+		//		else
+		//			set ws-sps-description = sps-description
+		//			//refresh
+		//		endon
+		//	endif
+		//	display ws-sps-description @2,24
+		//	reenter optional
+		//endon
+		//on down-arrow
+		//	//message "down"
+		//	if lf-first-arrow
+		//		get tmp-snz-pronto-size first
+		//		on error
+		//			message "At Start"
+		//		else
+		//			set ws-sps-description = sps-description
+		//		endon
+		//		set lf-first-arrow = FALSE
+		//	else
+		//		get tmp-snz-pronto-size next
+		//		on error
+		//			get tmp-snz-pronto-size last
+		//			on error
+		//				message "At End"
+		//			else
+		//				set ws-sps-description = sps-description
+		//			endon
+		//		else
+		//			set ws-sps-description = sps-description
+		//			//refresh
+		//		endon
+		//	endif
+		//	display ws-sps-description @2,24
+		//	reenter optional
+		//endon
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			//do reload-pronto-size - need all sizes as this is starting question
+			do reload-size
+			do select-pronto-size
+				returning
+					ws-sps-description
+			//reenter ws-sps-description optional
+			if ws-sps-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sps-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-size
+				do validate-sps-description
+					parameters
+						ws-sps-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sps-description
+					reenter ws-sps-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shs-description @3,24 title "Headboard:" pic x(32)
+		default ws-shs-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			//do reload-head - reload built in
+			do select-head
+				returning
+					ws-shs-id
+					ws-shs-description
+			//reenter ws-shs-description optional
+			if ws-shs-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shs-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do validate-shs-description
+					parameters
+						ws-shs-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shs-description
+					reenter ws-shs-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shb-description @4,24 title "Headboard Fabric:" pic x(32) //price band for upholstered only
+		default ws-shb-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do select-head-band //no reload required
+				returning
+					ws-shb-id
+					ws-shb-description
+			//reenter ws-shb-description optional
+			if ws-shb-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shb-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do validate-shb-description
+					parameters
+						ws-shb-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shb-description
+					reenter ws-shb-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shb-range-1 @5,24 title "Fabric Supplier:" pic x(30)
+		default ws-shb-range-1
+	accept ws-shb-range-2 @6,24 title "Fabric Range Name & Colour:" pic x(30)
+		default ws-shb-range-2
+	set lf-valid = FALSE
+confirm
+	//auto
+confirmed
+	do build-results
+	do dig-filtered-results
+		returning
+			lr-ssk-parent-code
+	//message "Returned Code: " lr-ssk-parent-code
+	do check-kit
+		parameters
+			lr-ssk-parent-code
+notconfirmed
+	do product-selector-1 entry-once
+endconfirm
+endscreen // prod-sel-head-uph-head -------------------------------------------
+
+screen prod-sel-leather-head
+returning
+	lr-ssk-parent-code				like ssk-parent-code
+window @1,1 to @6,60 title ws-scs-description //"Upholstered Headboard / Timber Base" //"Select Headboard"
+	//open snz-prod-sel-level-1 create permanent
+	//do reset-options
+	accept ws-sps-description @2,24 title "Size:"
+		default ws-sps-description
+		on help-key
+			//do reload-pronto-size - need all sizes as this is starting question
+			do reload-size
+			do select-pronto-size
+				returning
+					ws-sps-description
+			//reenter ws-sps-description optional
+			refresh
+		endon
+		validation
+			if ws-sps-description = SPACES
+				message "Please make a selection"
+				reenter
+			endif
+		endvalidation
+	accept ws-shs-description @3,24 title "Headboard:" pic x(32)
+		default ws-shs-description
+		on help-key
+			//do reload-head - reload built in
+			do select-head
+				returning
+					ws-shs-id
+					ws-shs-description
+			//reenter ws-shs-description optional
+			refresh
+		endon
+		validation
+			if ws-shs-description = SPACES
+				message "Please make a selection"
+				reenter
+			endif
+		endvalidation
+	//accept ws-sfl-description @4,24 title "Stitching:" pic x(32)
+	//	default ws-sfl-description
+	//	optional
+	//	on help-key
+	//		do reload-fabric
+	//		do select-fabric-look
+	//			returning
+	//				ws-sfl-description
+	//		//reenter ws-sfl-description optional
+	//		refresh
+	//	endon
+	//	validation
+	//		if ws-sfl-description != SPACES
+	//			get tmp-snz-fabric-look
+	//				on index sfl-description
+	//				key is ws-sfl-description
+	//			on error
+	//				message "Cannot Find Stitching Option:" ws-sfl-description
+	//				reenter ws-sfl-description
+	//			endon
+	//		endif
+	//	endvalidation
+	accept ws-shc-description @4,24 title "Headboard Colour:" pic x(32)
+		default ws-shc-description
+		on help-key
+			do reload-head-colour-leather-look
+			do select-head-colour
+				returning
+					ws-shc-description
+			//reenter ws-shc-description optional
+			refresh
+		endon
+		validation
+			if ws-shc-description = SPACES
+				message "Please make a selection"
+				reenter
+			else
+				//with timber headboard/timber base combinations colours need to be the same for headboard and base
+				set ws-sbc-description = ws-shc-description
+			endif
+		endvalidation
+confirm
+	//auto
+confirmed
+	do build-results
+	do dig-filtered-results
+		returning
+			lr-ssk-parent-code
+	//message "Returned Code: " lr-ssk-parent-code
+	do check-kit
+		parameters
+			lr-ssk-parent-code
+notconfirmed
+	do product-selector-1 entry-once
+endconfirm
+endscreen // prod-sel-leather-head --------------------------------------------
+
+screen prod-sel-tim-head
+local field
+	lf-valid			type boolean	//{4}
+returning
+	lr-ssk-parent-code				like ssk-parent-code
+window @1,1 to @7,60 title ws-scs-description
+	//open snz-prod-sel-level-1 create permanent
+	//do reset-options
+	set lf-valid = FALSE	//{4}
+	accept ws-sps-description @2,24 title "Size:"
+		uppercase
+		default ws-sps-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do reload-size
+			do select-pronto-size
+				returning
+					ws-sps-description
+			//reenter ws-sps-description optional
+			if ws-sps-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sps-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-size
+				do validate-sps-description
+					parameters
+						ws-sps-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sps-description
+					reenter ws-sps-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shs-description @3,24 title "Headboard:" pic x(32)
+		default ws-shs-description
+		//<{4}
+		before-accept
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do select-head
+				returning
+					ws-shs-id
+					ws-shs-description
+			//reenter ws-shs-description optional
+			if ws-shs-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shs-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do validate-shs-description
+					parameters
+						ws-shs-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shs-description
+					reenter ws-shs-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-sms-description @4,24 title "Headboard Wood Style:" pic x(32)
+		default ws-sms-description
+		//<{4}
+		before-accept
+			//message "before ws-sms-description  "
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do reload-material-style
+			do select-material-style
+				returning
+					ws-sms-id
+					ws-sms-description
+			//reenter ws-sms-description optional
+			if ws-sms-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-sms-description = SPACES
+				message "Please make a selection"
+				reenter
+			//<{4}
+			elseif not lf-valid
+				do reload-material-style
+				do validate-sms-description
+					parameters
+						ws-sms-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-sms-description
+					reenter ws-sms-description
+				endif
+			//>{4}
+			endif
+		endvalidation
+	accept ws-shc-description @5,24 title "Headboard Colour:" pic x(32)
+		default ws-shc-description
+		//<{4}
+		before-accept
+			//message "before ws-shc-description  "
+			set lf-valid = FALSE
+		end-before-accept
+		//>{4}
+		on help-key
+			do reload-head-colour
+			do select-head-colour
+				returning
+					ws-shc-description
+			//reenter ws-shc-description optional
+			if ws-shc-description != SPACES	//{4}
+				set lf-valid = TRUE			//{4}
+			endif							//{4}
+			refresh
+		endon
+		validation
+			if ws-shc-description = SPACES
+				message "Please make a selection"
+				reenter ws-shc-description
+			//<{4}
+			elseif not lf-valid
+				do reload-head-colour
+				do validate-shc-description
+					parameters
+						ws-shc-description
+					returning
+						lf-valid
+				if not lf-valid
+					message "Invalid Selection: " ws-shc-description
+					reenter ws-shc-description
+				endif
+			//>{4}
+			else
+				//with timber headboard/timber base combinations colours need to be the same for headboard and base
+				set ws-sbc-description = ws-shc-description
+			endif
+		endvalidation
+		//message "the-end"
+		set lf-valid = FALSE
+confirm
+	//auto
+confirmed
+	do build-results
+	do dig-filtered-results
+		returning
+			lr-ssk-parent-code
+	//message "Returned Code: " lr-ssk-parent-code
+	do check-kit
+		parameters
+			lr-ssk-parent-code
+notconfirmed
+	do product-selector-1 entry-once
+endconfirm
+endscreen // prod-sel-tim-head ------------------------------------------------
+
+
+procedure check-kit
+local field
+	lf-full-desc			pic x(180)
+	lf-desc-line			pic x(30) occurs 6
+	i						type numeric
+	st-prc-wholesale-price  like prc-wholesale-price
+	st-prc-recommend-retail	like prc-recommend-retail
+parameters
+	lp-ssk-parent-code		like ssk-parent-code
+	//message "check-kit routine"
+	report "check-kit"
+		spool-only
+	get ism-snz-simplify-kit
+		on index ssk-parent-code
+		key is ssk-parent-code
+	on error
+		message "Kit does not exist:" ssk-parent-code
+		exit
+	endon
+	//<{8}
+	//set lf-full-desc = strconcat(ssk-combination-style-desc)
+	//set lf-full-desc = concat(strconcat(lf-full-desc) " " ssk-pronto-size)
+	//set lf-full-desc = concat(strconcat(lf-full-desc) " " ssk-headboard-desc)
+	//set lf-full-desc = concat(strconcat(lf-full-desc) " " ssk-head-colour-desc)
+	//set lf-full-desc = concat(strconcat(lf-full-desc) " " ssk-material-style-desc)
+	//set lf-full-desc = concat(strconcat(lf-full-desc) " " ssk-bed-base-desc)
+	//set lf-full-desc = concat(strconcat(lf-full-desc) " " ssk-base-colour-desc)
+	//set lf-full-desc = concat(strconcat(lf-full-desc) " " ssk-storage-desc)
+	//set lf-full-desc = concat(strconcat(lf-full-desc) " " ssk-leg-desc)
+    ////message lf-full-desc
+	//do desc-splitter
+	//	parameters
+	//		lf-full-desc
+	//	returning
+	//		lf-desc-line[1]
+	//		lf-desc-line[2]
+	//		lf-desc-line[3]
+	//		lf-desc-line[4]
+	//		lf-desc-line[5]
+	//		lf-desc-line[6]
+	////message "1:" lf-desc-line[1]
+	////message "2:" lf-desc-line[2]
+	////message "3:" lf-desc-line[3]
+	////message "4:" lf-desc-line[4]
+	////message "5:" lf-desc-line[5]
+	////message "6:" lf-desc-line[6]
+	for i = 1 to 6
+		set lf-desc-line[i] = SPACES
+	endfor
+	if ssk-headboard-code != SPACES
+		get stock-master
+			on index stock-code
+			key is ssk-headboard-code
+		on error
+		else
+			set lf-desc-line[1] = stk-description
+		    set lf-desc-line[2] = stk-desc-line-2
+		endon
+		if ssk-bed-base-code != SPACES
+			get stock-master
+				on index stock-code
+				key is ssk-bed-base-code
+			on error
+			else
+				set lf-desc-line[3] = stk-description
+			endon
+		endif
+	else
+		//no headboard, may be a base only
+		if ssk-bed-base-code != SPACES
+			get stock-master
+				on index stock-code
+				key is ssk-bed-base-code
+			on error
+			else
+				set lf-desc-line[1] = stk-description
+			    set lf-desc-line[2] = stk-desc-line-2
+			endon
+		endif
+	endif
+	//>{8}
+	print
+		ssk-parent-code
+	print
+		lf-full-desc
+	print
+		lf-desc-line[1]
+	print
+	    lf-desc-line[2]
+	print
+	    lf-desc-line[3]
+	print
+	    lf-desc-line[4]
+	print
+		lf-desc-line[5]
+	print
+		lf-desc-line[6]
+	print
+		"headboard:"
+		ssk-headboard-code in col 12
+	print
+		"base:"
+		ssk-bed-base-code in col 12
+	print
+		"leg:"
+		ssk-leg-code in col 12
+	print
+	    "storage:"
+		ssk-storage-code in col 12
+	print
+		"---------------------------------------------------------"
+	get stock-master
+		on index stock-code
+		key is ssk-parent-code
+	on error
+		print
+			"insert stock-master:"
+			ssk-parent-code
+		set stock-code 				= ssk-parent-code
+		set stk-description 		= lf-desc-line[1]
+		set stk-desc-line-2			= lf-desc-line[2]
+		set stk-desc-line-3 		= lf-desc-line[3]
+		set stock-group				= "CB"
+		set stk-stock-status		= "K"
+		set stk-condition-code		= SPACES
+		set stk-unit-desc 			= ssk-pronto-size
+		set stk-user-only-alpha4-4 	= "CUSK"
+		set stk-creation-date 		= today()
+		set stk-price-per 			= 1
+		insert stock-master
+		for i = 1 to 6
+			if lf-desc-line[i] != SPACES
+				set stock-code			=  ssk-parent-code
+			    set stock-note-type		=  "XD" //extended description
+				set stock-note-sequence	= i
+				get stock-notes
+				on error
+					set stock-note 			= lf-desc-line[i]
+					insert stock-notes
+				else
+					set stock-note 			= lf-desc-line[i]
+					update stock-notes
+				endon
+			endif
+		endfor
+	endon
+	//insert component codes
+	//ssk-headboard-code
+	//ssk-bed-base-code
+	//ssk-leg-code
+	//ssk-storage-code
+	set st-prc-wholesale-price  = 0
+	set st-prc-recommend-retail	= 0
+	extract bill-of-materials-header
+		on index stock-code bomh-factory-code bomh-id
+		key is ssk-parent-code SPACES 0
+		next same stock-code
+	detail
+		extract bill-of-materials-detail
+			//on index bom-parent-code bom-seq-no comp-code
+			//key is ssk-parent-code 0 SPACES
+			//next same bom-parent-code
+			on index bomh-id bom-seq-no comp-code
+			key is bomh-id 0 SPACES
+			next same bomh-id
+		detail
+			print
+				"deleting bill-of-materials-detail"
+				//bom-parent-code
+				stock-code
+				comp-code
+			delete bill-of-materials-detail
+		endextract
+	//
+	if ssk-headboard-code != SPACES
+		get stock-master
+			on index stock-code
+			key is ssk-headboard-code
+		on error
+			print
+				"no stock-master for headboard:"
+				ssk-headboard-code
+			//validation
+		else
+			set bom-parent-code = ssk-parent-code
+			set comp-code = ssk-headboard-code
+			set bom-quantity = 1
+			insert bill-of-materials-detail
+			get stock-price
+				on index stock-code prc-region-code
+				key is ssk-headboard-code SPACES
+			on error
+			else
+				set st-prc-wholesale-price  += prc-wholesale-price
+				set st-prc-recommend-retail	+= prc-recommend-retail
+			endon
+		endon
+	endif
+	if ssk-bed-base-code != SPACES
+		get stock-master
+			on index stock-code
+			key is ssk-bed-base-code
+		on error
+			print
+				"no stock-master for base:"
+				ssk-bed-base-code
+			//validation
+		else
+			set bom-parent-code = ssk-parent-code
+			set comp-code = ssk-bed-base-code
+			set bom-quantity = 1
+			insert bill-of-materials-detail
+			get stock-price
+				on index stock-code prc-region-code
+				key is ssk-bed-base-code SPACES
+			on error
+			else
+				set st-prc-wholesale-price  += prc-wholesale-price
+				set st-prc-recommend-retail	+= prc-recommend-retail
+			endon
+		endon
+	endif
+	if ssk-leg-code != SPACES
+		get stock-master
+			on index stock-code
+			key is ssk-leg-code
+		on error
+			print
+				"no stock-master for leg:"
+				ssk-leg-code
+			//validation
+		endon
+		set bom-parent-code = ssk-parent-code
+		set comp-code = ssk-leg-code
+		set bom-quantity = 1
+		insert bill-of-materials-detail
+	endif
+	if ssk-storage-code != SPACES
+		get stock-master
+			on index stock-code
+			key is ssk-storage-code
+		on error
+			print
+				"no stock-master for storage:"
+				ssk-storage-code
+			//validation
+		else
+			set bom-parent-code = ssk-parent-code
+			set comp-code = ssk-storage-code
+			set bom-quantity = 1
+			insert bill-of-materials-detail
+			get stock-price
+				on index stock-code prc-region-code
+				key is ssk-storage-code SPACES
+			on error
+			else
+				set st-prc-wholesale-price  += prc-wholesale-price
+				set st-prc-recommend-retail	+= prc-recommend-retail
+			endon
+		endon
+	endif
+	if st-prc-wholesale-price <> 0 or st-prc-recommend-retail <> 0
+		get stock-price
+			on index stock-code prc-region-code
+			key is ssk-parent-code SPACES
+		on error
+			set stock-code				= ssk-parent-code
+			set prc-region-code			= SPACES
+			set prc-sales-tax-code 		= 1
+			set prc-wholesale-price 	= st-prc-wholesale-price
+			set prc-recommend-retail	= st-prc-recommend-retail
+			if prc-sales-tax-code = 1
+				set prc-recommend-retail-inc-tax = prc-recommend-retail * 1.1
+			else
+				set prc-recommend-retail-inc-tax = prc-recommend-retail
+			endif
+			insert stock-price
+			print
+				ssk-parent-code
+				"stock-price inserted"
+				"R:" prc-wholesale-price
+				"M:" prc-recommend-retail
+				"G:" prc-recommend-retail-inc-tax
+		else
+			set prc-wholesale-price 	= st-prc-wholesale-price
+			set prc-recommend-retail	= st-prc-recommend-retail
+			if prc-sales-tax-code = 1
+				set prc-recommend-retail-inc-tax = prc-recommend-retail * 1.1
+			else
+				set prc-recommend-retail-inc-tax = prc-recommend-retail
+			endif
+			update stock-price
+			print
+				ssk-parent-code
+				"stock-price updated"
+				"R:" prc-wholesale-price
+				"M:" prc-recommend-retail
+				"G:" prc-recommend-retail-inc-tax
+		endon
+	endif
+	report finished
+endprocedure // check-kit -----------------------------------------------------
+
+procedure inject-bom-header
+	get bill-of-materials-header first
+	get stock-master
+	set stock-code = "RMDBOM2"
+	insert bill-of-materials-header
+	on error
+	endon
+	set stk-price-per = 1
+	insert stock-master
+	on error
+	endon
+endprocedure // inject-bom-header ---------------------------------------------
+
+
+//screen maint-option-1
+//	window @1,1 to @24,90
+//		title concat("Maintain Option 1")
+//		primary tmp-prod-sel-level-1 //snz-prod-sel-level-1
+//		datagrid occurs 20
+//	allowed search entry correct remove //md-next //-back
+//	review-from-start
+//before
+//	open snz-prod-sel-level-1 create permanent
+//	open tmp-prod-sel-level-1 truncate temporary
+//	//get snz-prod-sel-level-1 first
+//	extract snz-prod-sel-level-1
+//	detail
+//		insert tmp-prod-sel-level-1
+//	endextract
+//detail
+//	accept pl1-seq				@1,010 title "Seq" pic zzzz9
+//	accept pl1-id				@1,020 title "ID"  pic x(6)
+//	accept pl1-description		@1,030 title "Description" pic x(50)
+//confirm
+//	auto
+//confirmed
+//	//switch on screen-mode()
+//	//	case md-next
+//	//		do stuff
+//	//endswitch
+//endconfirm
+//endscreen // maint-option-1 ---------------------------------------------------
+
+screen select-combo
+returning
+	lr-scs-id				like scs-id
+	lr-scs-description		like scs-description
+	window @1,1 to @13,32
+		title concat("Select Range")
+		primary tmp-snz-combo-style
+			on index scs-id
+		datagrid occurs 10
+	allowed md-select search
+	//review-from-start
+//before
+//	open tmp-snz-combo-style truncate temporary
+//	extract snz-combo-style
+//	detail
+//		insert tmp-snz-combo-style
+//	endextract
+//	get tmp-snz-combo-style on index scs-id first
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept scs-description		@1,020 pic x(30) title "Description"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-scs-id 			= scs-id
+			set lr-scs-description	= scs-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-combo -----------------------------------------------------
+
+//ssk-pronto-size						pic x(16) //sps-description
+screen select-pronto-size
+returning
+	lr-sps-description		like sps-description
+	window @1,1 to @24,50
+		title concat("Select Size")
+		primary tmp-snz-pronto-size
+			on index scs-id sps-description
+		datagrid occurs 20
+	allowed md-select search
+	//review-from-start
+before
+	open tmp-snz-pronto-size truncate temporary
+	extract snz-pronto-size
+	detail
+		insert tmp-snz-pronto-size
+	endextract
+	get tmp-snz-pronto-size on index scs-id sps-description first
+detail
+	accept sps-description		@1,020 pic x(30) title "Size"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-sps-description	= sps-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-pronto-size -----------------------------------------------
+
+
+screen select-head
+returning
+	lr-shs-id				like shs-id
+	lr-shs-description		like shs-description
+	window @1,1 to @24,50
+		title concat("Select Headboard")
+		primary tmp-snz-head-style
+			on index scs-id shs-id
+		datagrid occurs 20
+	allowed md-select search
+	//review-from-start
+before
+	open tmp-snz-head-style truncate temporary
+	extract snz-head-style
+		on index scs-id shs-id
+		key is ws-scs-id 0
+		next same scs-id
+	detail
+		insert tmp-snz-head-style
+	endextract
+	get tmp-snz-head-style on index scs-id shs-id first
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept shs-description		@1,020 pic x(30) title "Headboard"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-shs-id 			= shs-id
+			set lr-shs-description	= shs-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-head ------------------------------------------------------
+
+screen select-material-style
+returning
+	lr-sms-id				like sms-id
+	lr-sms-description		like sms-description
+	window @1,1 to @24,50
+		title concat("Select Timber Style")
+		primary tmp-snz-material-style
+			on index scs-id sms-id
+		datagrid occurs 20
+	allowed md-select search
+	//review-from-start
+before
+	open tmp-snz-material-style truncate temporary
+	extract snz-material-style
+		on index scs-id sms-id
+		key is ws-scs-id 0
+		next same scs-id
+	detail
+		insert tmp-snz-material-style
+	endextract
+	get tmp-snz-material-style on index scs-id sms-id first
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept sms-description		@1,020 pic x(30) title "Description"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-sms-id 			= sms-id
+			set lr-sms-description	= sms-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-material-style --------------------------------------------
+
+
+screen select-base-type
+returning
+	lr-sbt-id				like sbt-id
+	lr-sbt-description		like sbt-description
+	window @1,1 to @24,50
+		title concat("Select Base")
+		primary tmp-snz-base-type
+			on index scs-id sbt-id
+		datagrid occurs 20
+	allowed md-select search
+	//review-from-start
+before
+	open tmp-snz-base-type truncate temporary
+	extract snz-base-type
+		on index scs-id sbt-id
+		key is ws-scs-id 0
+		next same scs-id
+	detail
+		insert tmp-snz-base-type
+	endextract
+	get tmp-snz-base-type on index scs-id sbt-id first
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept sbt-description		@1,020 pic x(30) title "Base"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-sbt-id 			= sbt-id
+			set lr-sbt-description	= sbt-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-base-type -------------------------------------------------
+
+screen select-leg-type
+returning
+	lr-slt-id				like slt-id
+	lr-slt-description		like slt-description
+	window @1,1 to @24,50
+		title concat("Select Legs")
+		primary tmp-snz-leg-type
+			on index scs-id sbt-id slt-id
+		datagrid occurs 20
+	allowed md-select search
+	//review-from-start
+before
+	set lr-slt-id 		    = 0
+    set lr-slt-description	= SPACES
+	open tmp-snz-leg-type truncate temporary
+	extract snz-leg-type
+		on index scs-id sbt-id slt-id
+		key is ws-scs-id ws-sbt-id 0
+		next same scs-id sbt-id
+	detail
+		insert tmp-snz-leg-type
+	endextract
+	get tmp-snz-leg-type on index scs-id sbt-id first
+	on error
+		//no lines exist - this is acceptable
+	endon
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept slt-description		@1,020 pic x(30) title "Legs"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-slt-id 			= slt-id
+			set lr-slt-description	= slt-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-leg-type --------------------------------------------------
+
+screen select-storage-type
+returning
+	lr-sst-id				like sst-id
+	lr-sst-description		like sst-description
+	window @1,1 to @24,50
+		title concat("Select Storage")
+		primary tmp-snz-storage-type
+			on index scs-id sbt-id sst-id
+		datagrid occurs 20
+	allowed md-select search
+	//review-from-start
+before
+	open tmp-snz-storage-type truncate temporary
+	extract snz-storage-type
+		on index scs-id sbt-id sst-id
+		key is ws-scs-id ws-sbt-id 0
+		next same scs-id sbt-id
+	detail
+		insert tmp-snz-storage-type
+	endextract
+	get tmp-snz-storage-type on index scs-id sbt-id first
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept sst-description		@1,020 pic x(30) title "Storage"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-sst-id 			= sst-id
+			set lr-sst-description	= sst-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-storage-type ----------------------------------------------
+
+screen select-head-band
+returning
+	lr-shb-id				like shb-id
+	lr-shb-description		like shb-description
+	window @1,1 to @24,50
+		title concat("Headboard Fabric")
+		primary tmp-snz-head-band
+			on index scs-id shb-id
+		datagrid occurs 20
+	allowed md-select search
+	//review-from-start
+before
+	open tmp-snz-head-band truncate temporary
+	extract snz-head-band
+		on index scs-id shb-id
+		key is ws-scs-id ws-shb-id
+		next same scs-id
+	detail
+		insert tmp-snz-head-band
+	endextract
+	get tmp-snz-head-band on index scs-id shb-id first
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept shb-description		@1,020 pic x(30) title "Headboard Fabric"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-shb-id 			= shb-id
+			set lr-shb-description	= shb-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-head-band ----------------------------------------------
+
+screen select-fabric-look
+returning
+	lr-sfl-description		like sfl-description
+	window @1,1 to @24,50
+		//title concat("Select Fabric Look")
+		title concat("Select Style")
+		primary tmp-snz-fabric-look
+			on index sfl-description
+		datagrid occurs 20
+	allowed md-select search
+before
+	open tmp-snz-fabric-look truncate temporary
+	extract snz-fabric-look
+		on index sfl-description
+	detail
+		insert tmp-snz-fabric-look
+	endextract
+	get tmp-snz-fabric-look on index sfl-description first
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept sfl-description		@1,020 pic x(30) title "Style"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-sfl-description	= sfl-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-fabric-look -----------------------------------------------
+
+
+screen select-head-colour
+returning
+	lr-shc-description		like shc-description
+	window @1,1 to @24,50
+		title concat("Select Headboard Colour")
+		primary tmp-snz-head-colour
+			on index shc-description
+		datagrid occurs 20
+	allowed md-select search
+before
+	open tmp-snz-head-colour truncate temporary
+	extract snz-head-colour
+		on index shc-description
+	detail
+		insert tmp-snz-head-colour
+	endextract
+	get tmp-snz-head-colour on index shc-description first
+	on error
+	endon
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept shc-description		@1,020 pic x(30) title "Headboard Colour"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-shc-description	= shc-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-head-colour -----------------------------------------------
+
+/*
+screen select-material-style
+returning
+	lr-sms-id				like sms-id
+	lr-sms-description		like sms-description
+	window @1,1 to @24,50
+		title concat("Select Timber Style")
+		primary tmp-snz-material-style
+			on index sms-id
+		datagrid occurs 20
+	allowed md-select search
+before
+	open tmp-snz-material-style truncate temporary
+	extract snz-material-style
+		on index sms-id
+	detail
+		insert tmp-snz-material-style
+	endextract
+	get tmp-snz-material-style on index sms-id first
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept sms-description		@1,020 pic x(30) title "Description"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-sms-description	= sms-description
+			set lr-sms-id			= sms-id
+			exit
+	endswitch
+endconfirm
+endscreen // select-material-style --------------------------------------------
+*/
+
+screen select-base-colour
+returning
+	lr-sbc-description		like sbc-description
+	window @1,1 to @24,50
+		title concat("Select Base Colour")
+		primary tmp-snz-base-colour
+			on index sbc-description
+		datagrid occurs 20
+	allowed md-select search
+before
+	open tmp-snz-base-colour truncate temporary
+	extract snz-base-colour
+		on index sbc-description
+	detail
+		insert tmp-snz-base-colour
+	endextract
+	get tmp-snz-base-colour on index sbc-description first
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept sbc-description		@1,020 pic x(30) title "Base Colour"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-sbc-description	= sbc-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-base-colour -----------------------------------------------
+
+//screen select-fabric-look
+//returning
+//	lr-sfl-description		like sfl-description
+//	window @1,1 to @24,50
+//		title concat("Select Fabric Look")
+//		primary tmp-snz-fabric-look
+//			on index sfl-description
+//		datagrid occurs 20
+//	allowed md-select search
+//before
+//	open tmp-snz-fabric-look truncate temporary
+//	extract snz-fabric-look
+//		on index sfl-description
+//	detail
+//		insert tmp-snz-fabric-look
+//	endextract
+//	get tmp-snz-fabric-look on index sfl-description first
+//detail
+//	//accept scs-id				@1,010 title "Code"
+//	accept sfl-description		@1,020 pic x(30) title "Description"
+//confirm
+//	auto
+//confirmed
+//	switch on screen-mode()
+//		case md-select
+//			set lr-sfl-description	= sfl-description
+//			exit
+//	endswitch
+//endconfirm
+//endscreen // select-fabric-look -----------------------------------------------
+
+//ssk-bed-base-price-band-id
+
+//ssk-bed-base-price-band-desc
+
+screen select-base-band
+returning
+	lr-sbb-id				like sbb-id
+	lr-sbb-description		like sbb-description
+	window @1,1 to @24,50
+		title concat("Base Fabric")
+		primary tmp-snz-base-band
+			on index scs-id sbb-id
+		datagrid occurs 20
+	allowed md-select search
+	//review-from-start
+before
+	open tmp-snz-base-band truncate temporary
+	extract snz-base-band
+		on index scs-id sbb-id
+		key is ws-scs-id ws-sbb-id
+		next same scs-id
+	detail
+		insert tmp-snz-base-band
+	endextract
+	get tmp-snz-base-band on index scs-id sbb-id first
+detail
+	//accept scs-id				@1,010 title "Code"
+	accept sbb-description		@1,020 pic x(30) title "Base Fabric"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-sbb-id 			= sbb-id
+			set lr-sbb-description	= sbb-description
+			exit
+	endswitch
+endconfirm
+endscreen // select-base-band ----------------------------------------------
+
+//ssk-parent-code
+//ssk-combination-style-id
+//ssk-combination-style-desc
+//ssk-shape-id
+//ssk-shape-code
+//ssk-shape-desc
+//ssk-headboard-id
+//ssk-headboard-code
+//ssk-headboard-desc
+//ssk-headboard-price-band-id
+//ssk-headboard-price-band-desc
+//ssk-bed-base-type-id
+//ssk-bed-base-type-code
+//ssk-bed-base-type-desc
+//ssk-bed-base-id
+//ssk-bed-base-code
+//ssk-bed-base-desc
+//ssk-bed-base-price-band-id
+//ssk-bed-base-price-band-desc
+//ssk-leg-type-id
+//ssk-leg-type-desc
+//ssk-leg-id
+//ssk-leg-code
+//ssk-leg-desc
+//ssk-has-storage
+//ssk-storage-type-id
+//ssk-storage-type-desc
+//ssk-storage-id
+//ssk-storage-code
+//ssk-storage-desc
+//ssk-material-style-id
+//ssk-material-style-code
+//ssk-material-style-desc
+
+screen dig-snz-simplify-kit	//v4
+	window @1,1 to @24,90
+		title concat("snz-simplify-kit")
+		primary tmp-snz-simplify-kit
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+detail
+	display ssk-parent-code				  	@1,004 title "01 ssk-parent-code"
+	display ssk-combination-style-id        @1,006 title "02 ssk-combination-style-id"
+	display ssk-combination-style-desc      @1,008 title "03 ssk-combination-style-desc"       pic x(20)
+	display ssk-shape-id                    @1,010 title "04 ssk-shape-id"
+	display ssk-shape-code                  @1,012 title "05 ssk-shape-code"
+	display ssk-shape-desc                  @1,014 title "06 ssk-shape-desc"					pic x(20)
+	display ssk-headboard-id                @1,016 title "07 ssk-headboard-id"
+	display ssk-headboard-code              @1,020 title "08 ssk-headboard-code"
+	display ssk-headboard-desc              @1,024 title "09 ssk-headboard-desc"				pic x(20)
+	display ssk-headboard-price-band-id     @1,028 title "10 ssk-headboard-price-band-id"
+	display ssk-headboard-price-band-desc   @1,032 title "11 ssk-headboard-price-band-desc"	pic x(20)
+	display ssk-bed-base-type-id            @1,036 title "12 ssk-bed-base-type-id"
+	display ssk-bed-base-type-code          @1,040 title "13 ssk-bed-base-type-code"
+	display ssk-bed-base-type-desc          @1,044 title "14 ssk-bed-base-type-desc"			pic x(20)
+	display ssk-bed-base-id				    @1,048 title "15 ssk-bed-base-id"
+	display ssk-bed-base-code   	        @1,052 title "16 ssk-bed-base-code"
+	display ssk-bed-base-desc	            @1,056 title "17 ssk-bed-base-desc"                pic x(20)
+	display ssk-bed-base-price-band-id      @1,060 title "18 ssk-bed-base-price-band-id"
+	display ssk-bed-base-price-band-desc    @1,064 title "19 ssk-bed-base-price-band-desc"     pic x(20)
+	display ssk-leg-type-id                 @1,068 title "20 ssk-leg-type-id"
+	display ssk-leg-type-desc               @1,072 title "21 ssk-leg-type-desc"                pic x(20)
+	display ssk-leg-id					    @1,076 title "22 ssk-leg-id"
+	display ssk-leg-code                    @1,080 title "23 ssk-leg-code"
+	display ssk-leg-desc                    @1,084 title "24 ssk-leg-desc"                     pic x(20)
+	//display ssk-has-storage                 @1,088 title "25 ssk-has-storage"
+	display ssk-storage-type-id             @1,092 title "26 ssk-storage-type-id"
+	display ssk-storage-type-desc	        @1,096 title "27 ssk-storage-type-desc"            pic x(20)
+	display ssk-storage-id                  @1,100 title "28 ssk-storage-id"
+	display ssk-storage-code                @1,104 title "29 ssk-storage-code"
+	display ssk-storage-desc	            @1,108 title "30 ssk-storage-desc"                 pic x(20)
+	display ssk-storage-qty					@1,110 title "31 ssk-storage-qty" 				   pic z9		//{6}
+	display ssk-material-style-id		    @1,112 title "32 ssk-material-style-id"
+	display ssk-material-style-code         @1,116 title "33 ssk-material-style-code"
+	display ssk-material-style-desc         @1,120 title "34 ssk-material-style-desc"          pic x(20)
+	display ssk-head-uph			        @1,124 title "35 ssk-head-uph"
+	display ssk-base-uph			        @1,128 title "36 ssk-base-uph"
+	display ssk-pronto-size			        @1,132 title "37 ssk-pronto-size"
+	display ssk-fabric-look-id		        @1,136 title "38 ssk-fabric-look-id"
+	display ssk-fabric-look-code            @1,140 title "39 ssk-fabric-look-code"
+	display ssk-fabric-look-desc            @1,144 title "40 ssk-fabric-look-desc"             pic x(20)
+	display ssk-head-colour-id		        @1,148 title "41 ssk-head-colour-id"
+	display ssk-head-colour-code            @1,152 title "42 ssk-head-colour-code"
+	display ssk-head-colour-desc            @1,156 title "43 ssk-head-colour-desc"             pic x(20)
+	display ssk-base-colour-id		        @1,160 title "44 ssk-base-colour-id"
+	display ssk-base-colour-code            @1,164 title "45 ssk-base-colour-code"
+	display ssk-base-colour-desc            @1,168 title "46 ssk-base-colour-desc"             pic x(20)
+	display ssk-has-base			        @1,172 title "47 ssk-has-base"
+	display ssk-has-price-band		        @1,176 title "48 ssk-has-price-band"
+	display ssk-combination-style-desc2		@1,180 title "49 ssk-combination-style-desc2"      pic x(20)
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // dig-snz-simplify-kit ---------------------------------------------
+
+//ssk-parent-code
+//ssk-material-style-id
+//ssk-headboard-stock-code
+//ssk-headboard-id
+//ssk-headboard-description
+//ssk-bed-base-id
+//ssk-bed-base-stock-code
+//ssk-bed-base-description
+//ssk-storage-stock-code
+//ssk-storage-description
+//ssk-leg-id
+//ssk-leg-stock-code
+//ssk-leg-description
+//ssk-combination-style-id
+//ssk-combination-name
+//ssk-has-storage
+//ssk-shape-id
+//ssk-shape-name
+//ssk-shape-code
+//ssk-material-style-name
+//ssk-material-style-code
+//ssk-bed-base-type-id
+//ssk-bed-base-code
+//ssk-bed-base-type
+//ssk-leg-type-id
+//ssk-bed-base-leg-type
+//ssk-storage-type-id
+//ssk-storage-type-name
+//ssk-headboard-price-band-id
+//ssk-headboard-price-band-name
+//ssk-bed-base-price-band-id
+//ssk-bed-base-price-band-name
+
+/*
+screen dig-snz-simplify-kit-v3
+	window @1,1 to @24,90
+		title concat("snz-simplify-kit")
+		primary tmp-snz-simplify-kit
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+detail
+	display ssk-parent-code			    @1,004 title "ssk-parent-code"
+	ssk-material-style-id
+	display ssk-headboard-stock-code    @1,008 title "ssk-headboard-stock-code"
+	display ssk-headboard-id			@1,010 title "ssk-headboard-id"
+	display ssk-headboard-description   @1,012 pic x(16) title "ssk-headboard-description"
+	ssk-bed-base-id
+	display ssk-bed-base-stock-code     @1,016 title "ssk-bed-base-stock-code"
+	display ssk-bed-base-description    @1,020 pic x(16) title "ssk-bed-base-description"
+	display ssk-storage-stock-code      @1,024 title "ssk-storage-stock-code"
+	display ssk-storage-description     @1,028 pic x(16) title "ssk-storage-description"
+	display ssk-leg-stock-code          @1,032 title "ssk-leg-stock-code"
+	display ssk-leg-description         @1,036 pic x(16) title "ssk-leg-description"
+	display ssk-combination-style-id    @1,040 title "ssk-combination-style-id"
+	display ssk-combination-name        @1,044 pic x(16) title "ssk-combination-name"
+	display ssk-has-storage             @1,048 title "ssk-has-storage"
+	display ssk-shape-id                @1,052 title "ssk-shape-id"
+	display ssk-shape-name              @1,056 pic x(16) title "ssk-shape-name"
+	display ssk-shape-code              @1,060 title "ssk-shape-code"
+	display ssk-material-style-name     @1,064 title "ssk-material-style-name"
+	display ssk-material-style-code     @1,068 title "ssk-material-style-code"
+	display ssk-bed-base-type-id        @1,072 title "ssk-bed-base-type-id"
+	display ssk-bed-base-code           @1,076 title "ssk-bed-base-code"
+	display ssk-bed-base-type           @1,080 title "ssk-bed-base-type"
+	display ssk-leg-type-id             @1,084 title "ssk-leg-type-id"
+	display ssk-bed-base-leg-type       @1,088 title "ssk-bed-base-leg-type"
+	display ssk-storage-type-id         @1,092 title "ssk-storage-type-id"
+	display ssk-storage-type-name	 	@1,096 pic x(16) title "ssk-storage-type-name"
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // dig-snz-simplify-kit ---------------------------------------------
+*/
+
+/*
+screen dig-snz-simplify-kit-v2
+	window @1,1 to @24,90
+		title concat("snz-simplify-kit")
+		primary tmp-snz-simplify-kit
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+detail
+	display ssk-parent-code			    @1,004 title "ssk-parent-code"
+	display ssk-headboard-stock-code    @1,008 title "ssk-headboard-stock-code"
+	display ssk-headboard-id			@1,010 title "ssk-headboard-id"
+	display ssk-headboard-description   @1,012 pic x(16) title "ssk-headboard-description"
+	display ssk-bed-base-stock-code     @1,016 title "ssk-bed-base-stock-code"
+	display ssk-bed-base-description    @1,020 pic x(16) title "ssk-bed-base-description"
+	display ssk-storage-stock-code      @1,024 title "ssk-storage-stock-code"
+	display ssk-storage-description     @1,028 pic x(16) title "ssk-storage-description"
+	display ssk-leg-stock-code          @1,032 title "ssk-leg-stock-code"
+	display ssk-leg-description         @1,036 pic x(16) title "ssk-leg-description"
+	display ssk-combination-style-id    @1,040 title "ssk-combination-style-id"
+	display ssk-combination-name        @1,044 pic x(16) title "ssk-combination-name"
+	display ssk-has-storage             @1,048 title "ssk-has-storage"
+	display ssk-shape-id                @1,052 title "ssk-shape-id"
+	display ssk-shape-name              @1,056 pic x(16) title "ssk-shape-name"
+	display ssk-shape-code              @1,060 title "ssk-shape-code"
+	display ssk-material-style-name     @1,064 title "ssk-material-style-name"
+	display ssk-material-style-code     @1,068 title "ssk-material-style-code"
+	display ssk-bed-base-type-id        @1,072 title "ssk-bed-base-type-id"
+	display ssk-bed-base-code           @1,076 title "ssk-bed-base-code"
+	display ssk-bed-base-type           @1,080 title "ssk-bed-base-type"
+	display ssk-leg-type-id             @1,084 title "ssk-leg-type-id"
+	display ssk-bed-base-leg-type       @1,088 title "ssk-bed-base-leg-type"
+	display ssk-storage-type-id         @1,092 title "ssk-storage-type-id"
+	display ssk-storage-type-name	 	@1,096 pic x(16) title "ssk-storage-type-name"
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // dig-snz-simplify-kit ---------------------------------------------
+*/
+
+screen selection-wizard-ho	//headboard only
+
+
+endscreen // selection-wizard-ho ----------------------------------------------
+
+screen selection-wizard-uu	//upholstered headboard / upholstered base
+
+endscreen // selection-wizard-uu ----------------------------------------------
+
+screen selection-wizard-ut	//upholstered headboard / timber base
+
+endscreen // selection-wizard-ut ----------------------------------------------
+
+screen selection-wizard-tt	//timber headboard / timber base
+
+endscreen // selection-wizard-tt ----------------------------------------------
+
+procedure build-list
+	open ism-snz-simplify-kit //read-only
+	open tmp-snz-simplify-kit truncate temporary
+	extract ism-snz-simplify-kit
+	detail
+		insert tmp-snz-simplify-kit
+	endextract
+	//do dig-snz-simplify-kit
+endprocedure // build-list ----------------------------------------------------
+
+procedure build-results
+	//message ws-sbc-description
+	open tmp-flt-snz-simplify-kit truncate temporary
+	open ism-snz-simplify-kit read-only
+	extract ism-snz-simplify-kit //key is ssk-combination-style-id ssk-shape-id	ssk-bed-base-type-id ssk-leg-type-id ssk-storage-type-id ssk-parent-code
+	detail
+		//if ws-scs-description in (SPACES ssk-combination-style-desc) and ws-shs-description in {SPACES ssk-shape-desc} and ws-sbt-description in {SPACES ssk-bed-base-type-desc} and ws-slt-description in {SPACES ssk-leg-type-desc} and ws-sst-description in {SPACES ssk-storage-type-desc}
+		//	and ws-sms-description in {SPACES ssk-material-style-desc} and ws-sbb-description in {SPACES ssk-bed-base-price-band-desc}
+		//	and shb-description	in {SPACES ssk-headboard-price-band-desc} and sps-description in {SPACES ssk-pronto-size}
+		//	and ws-sfl-description in {SPACES ssk-fabric-look-desc} and ws-shc-description in {SPACES ssk-head-colour-desc}
+		//	and ws-sbc-description in {SPACES ssk-base-colour-desc}
+		//	insert tmp-flt-snz-simplify-kit
+		//endif
+		if ws-scs-description in (SPACES ssk-combination-style-desc) and ws-shs-description in {SPACES ssk-shape-desc} and ws-sbt-description in {SPACES ssk-bed-base-type-desc} and ws-slt-description in {SPACES ssk-leg-type-desc} and ws-sst-description in {SPACES ssk-storage-type-desc}
+			and ws-sms-description in {SPACES ssk-material-style-desc} and sps-description in {SPACES ssk-pronto-size}
+			and ws-sfl-description in {SPACES ssk-fabric-look-desc} and ws-shc-description in {SPACES ssk-head-colour-desc}
+			and ws-sbc-description in {SPACES ssk-base-colour-desc}
+			and ws-shb-description in {SPACES ssk-headboard-price-band-desc}
+			and ws-sbb-description in {SPACES ssk-bed-base-price-band-desc}
+			insert tmp-flt-snz-simplify-kit
+			on error
+			endon
+		endif
+	endextract
+endprocedure // build-results -------------------------------------------------
+
+//dig-filtered-results ssk-fabric-look-desc
+
+screen dig-filtered-results
+returning
+	lr-ssk-parent-code				like ssk-parent-code
+	window @1,1 to @24,90
+		title concat("Results")
+		primary tmp-flt-snz-simplify-kit
+		datagrid occurs 20
+	allowed md-select search //md-mode
+	review-from-start
+detail
+	display ssk-parent-code				  	@1,004 title "Parent Code"
+	//display ssk-combination-style-id        @1,006 title "ssk-combination-style-id"
+	display ssk-combination-style-desc      @1,008 title "Range"       pic x(20)
+	//display ssk-shape-id                    @1,010 title "ssk-shape-id"
+	//display ssk-shape-code                  @1,012 title "ssk-shape-code"
+	//display ssk-shape-desc                  @1,014 title "Head Shape"					pic x(20)
+	//display ssk-headboard-id                @1,016 title "ssk-headboard-id"
+	//display ssk-headboard-code              @1,020 title "ssk-headboard-code"
+	display ssk-headboard-desc              @1,024 title "Headboard"			pic x(20)
+	display ssk-material-style-desc         @1,026 title "Headboard Wood Style"          pic x(20)
+	//display ssk-headboard-price-band-id     @1,028 title "ssk-headboard-price-band-id"
+	display ssk-headboard-price-band-desc   @1,032 title "Headboard Fabric"	pic x(20)
+	display ssk-fabric-look-desc            @1,034 title "HB Style"            	pic x(20)
+	//display ssk-head-colour-id		        @1,132 title "ssk-head-colour-id"
+	//display ssk-head-colour-code            @1,134 title "ssk-head-colour-code"
+	display ssk-head-colour-desc            @1,036 title "Headboard Colour"
+	//display ssk-bed-base-type-id            @1,036 title "ssk-bed-base-type-id"
+	//display ssk-bed-base-type-code          @1,040 title "ssk-bed-base-type-code"
+	//display ssk-bed-base-type-desc          @1,044 title "ssk-bed-base-type-desc"			pic x(20)
+	//display ssk-bed-base-id				    @1,048 title "ssk-bed-base-id"
+	//display ssk-bed-base-code   	        @1,052 title "ssk-bed-base-code"
+	display ssk-bed-base-desc	            @1,056 title "Base"                pic x(20)
+	//display ssk-bed-base-price-band-id      @1,060 title "ssk-bed-base-price-band-id"
+	display ssk-bed-base-price-band-desc    @1,064 title "Base Fabric"     pic x(20)
+	display ssk-base-colour-desc            @1,066 title "Base Colour"         pic x(20)
+	//display ssk-leg-type-id                 @1,068 title "ssk-leg-type-id"
+	//display ssk-leg-type-desc               @1,072 title "ssk-leg-type-desc"                pic x(20)
+	//display ssk-leg-id					    @1,076 title "ssk-leg-id"
+	//display ssk-leg-code                    @1,080 title "ssk-leg-code"
+	display ssk-leg-desc                    @1,084 title "Leg"                     pic x(20)
+	//display ssk-has-storage                 @1,088 title "ssk-has-storage"
+	//display ssk-storage-type-id             @1,092 title "ssk-storage-type-id"
+	//display ssk-storage-type-desc	        @1,096 title "ssk-storage-type-desc"            pic x(20)
+	//display ssk-storage-id                  @1,100 title "ssk-storage-id"
+	//display ssk-storage-code                @1,104 title "ssk-storage-code"
+	display ssk-storage-desc	            @1,108 title "Storage"                 pic x(20)
+	//display ssk-material-style-id		    @1,112 title "ssk-material-style-id"
+	//display ssk-material-style-code         @1,116 title "ssk-material-style-code"
+	//display ssk-head-uph			        @1,122 title "ssk-head-uph"
+	//display ssk-base-uph			        @1,124 title "ssk-base-uph"
+	display ssk-pronto-size			        @1,126 title "Size"
+	//display ssk-fabric-look-id		        @1,124 title "ssk-fabric-look-id"
+	//display ssk-fabric-look-code            @1,128 title "ssk-fabric-look-code"            pic x(20)
+	//display ssk-base-colour-id		        @1,138 title "ssk-base-colour-id"
+	//display ssk-base-colour-code            @1,140 title "ssk-base-colour-code"
+
+	//display ssk-has-base					@1,144 title "ssk-has-base"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-select
+			set lr-ssk-parent-code				= ssk-parent-code
+			exit
+	endswitch
+endconfirm
+endscreen // dig-filtered-results ---------------------------------------------
+
+screen dig-filtered-results-verbose
+	window @1,1 to @24,90
+		title concat("tmp-flt-snz-simplify-kit")
+		primary tmp-flt-snz-simplify-kit
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+detail
+	display ssk-parent-code				  	@1,004 title "ssk-parent-code"
+	display ssk-combination-style-id        @1,006 title "ssk-combination-style-id"
+	display ssk-combination-style-desc      @1,008 title "ssk-combination-style-desc"       pic x(20)
+	display ssk-shape-id                    @1,010 title "ssk-shape-id"
+	display ssk-shape-code                  @1,012 title "ssk-shape-code"
+	display ssk-shape-desc                  @1,014 title "ssk-shape-desc"					pic x(20)
+	display ssk-headboard-id                @1,016 title "ssk-headboard-id"
+	display ssk-headboard-code              @1,020 title "ssk-headboard-code"
+	display ssk-headboard-desc              @1,024 title "ssk-headboard-desc"				pic x(20)
+	display ssk-headboard-price-band-id     @1,028 title "ssk-headboard-price-band-id"
+	display ssk-headboard-price-band-desc   @1,032 title "ssk-headboard-price-band-desc"	pic x(20)
+	display ssk-bed-base-type-id            @1,036 title "ssk-bed-base-type-id"
+	display ssk-bed-base-type-code          @1,040 title "ssk-bed-base-type-code"
+	display ssk-bed-base-type-desc          @1,044 title "ssk-bed-base-type-desc"			pic x(20)
+	display ssk-bed-base-id				    @1,048 title "ssk-bed-base-id"
+	display ssk-bed-base-code   	        @1,052 title "ssk-bed-base-code"
+	display ssk-bed-base-desc	            @1,056 title "ssk-bed-base-desc"                pic x(20)
+	display ssk-bed-base-price-band-id      @1,060 title "ssk-bed-base-price-band-id"
+	display ssk-bed-base-price-band-desc    @1,064 title "ssk-bed-base-price-band-desc"     pic x(20)
+	display ssk-leg-type-id                 @1,068 title "ssk-leg-type-id"
+	display ssk-leg-type-desc               @1,072 title "ssk-leg-type-desc"                pic x(20)
+	display ssk-leg-id					    @1,076 title "ssk-leg-id"
+	display ssk-leg-code                    @1,080 title "ssk-leg-code"
+	display ssk-leg-desc                    @1,084 title "ssk-leg-desc"                     pic x(20)
+	//display ssk-has-storage                 @1,088 title "ssk-has-storage"
+	display ssk-storage-type-id             @1,092 title "ssk-storage-type-id"
+	display ssk-storage-type-desc	        @1,096 title "ssk-storage-type-desc"            pic x(20)
+	display ssk-storage-id                  @1,100 title "ssk-storage-id"
+	display ssk-storage-code                @1,104 title "ssk-storage-code"
+	display ssk-storage-desc	            @1,108 title "ssk-storage-desc"                 pic x(20)
+	display ssk-material-style-id		    @1,112 title "ssk-material-style-id"
+	display ssk-material-style-code         @1,116 title "ssk-material-style-code"
+	display ssk-material-style-desc         @1,120 title "ssk-material-style-desc"          pic x(20)
+	display ssk-head-uph			        @1,122 title "ssk-head-uph"
+	display ssk-base-uph			        @1,124 title "ssk-base-uph"
+	display ssk-pronto-size			        @1,126 title "ssk-pronto-size"
+	display ssk-fabric-look-id		        @1,124 title "ssk-fabric-look-id"
+	display ssk-fabric-look-code            @1,128 title "ssk-fabric-look-code"
+	display ssk-fabric-look-desc            @1,130 title "ssk-fabric-look-desc"            	pic x(20)
+	display ssk-head-colour-id		        @1,132 title "ssk-head-colour-id"
+	display ssk-head-colour-code            @1,134 title "ssk-head-colour-code"
+	display ssk-head-colour-desc            @1,136 title "ssk-head-colour-desc"             pic x(20)
+	display ssk-base-colour-id		        @1,138 title "ssk-base-colour-id"
+	display ssk-base-colour-code            @1,140 title "ssk-base-colour-code"
+	display ssk-base-colour-desc            @1,142 title "ssk-base-colour-desc"             pic x(20)
+	display ssk-has-base					@1,144 title "ssk-has-base"
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // dig-filtered-results ---------------------------------------------
+
+procedure desc-splitter
+local field
+	c					pic x
+	i					type numeric
+	p1                  type numeric
+	p2                  type numeric
+	p3                  type numeric
+	p4                  type numeric
+	p5                  type numeric
+	p6                  type numeric
+	s                   type numeric
+	e                   type numeric
+parameters
+	lp-input			pic x(180)
+returning
+	lr-line-1			pic x(30)
+	lr-line-2			pic x(30)
+	lr-line-3			pic x(30)
+	lr-line-4			pic x(30)
+	lr-line-5			pic x(30)
+	lr-line-6			pic x(30)
+    do string-clean
+    	parameters
+    		lp-input
+    	returning
+    		lp-input
+	if strlen(lp-input) < 31
+		set lr-line-1 = lp-input
+	else
+		for i = 1 to 31
+			if pattern(substring(lp-input,i,i),' ') > 0
+				set p1 = i
+			endif
+		endfor
+		set lr-line-1 = substring(lp-input,1,p1 - 1)
+		if strlen(lp-input) <= p1
+			exit
+		endif
+		for i = p1 + 1 to p1 + 31
+			if pattern(substring(lp-input,i,i),' ') > 0
+				set p2 = i
+			endif
+		endfor
+		set lr-line-2 = substring(lp-input,p1 + 1,p2 - 1)
+		if strlen(lp-input) <= p2
+			exit
+		endif
+		for i = p2 + 1 to p2 + 31
+			if pattern(substring(lp-input,i,i),' ') > 0
+				set p3 = i
+			endif
+		endfor
+		set lr-line-3 = substring(lp-input,p2 + 1,p3 - 1)
+		//
+		for i = p3 + 1 to p3 + 31
+			if pattern(substring(lp-input,i,i),' ') > 0
+				set p4 = i
+			endif
+		endfor
+		set lr-line-4 = substring(lp-input,p3 + 1,p4 - 1)
+		for i = p4 + 1 to p4 + 31
+			if pattern(substring(lp-input,i,i),' ') > 0
+				set p5 = i
+			endif
+		endfor
+		set lr-line-5 = substring(lp-input,p4 + 1,p5 - 1)
+		for i = p5 + 1 to p5 + 31
+			if pattern(substring(lp-input,i,i),' ') > 0
+				set p6 = i
+			endif
+		endfor
+		set lr-line-6 = substring(lp-input,p5 + 1,p6 - 1)
+	endif
+endprocedure // desc-splitter -------------------------------------------------
+
+
+procedure string-clean
+local field
+	i					type numeric
+	c					pic x
+	d					pic xx
+	lf-space-prev		type boolean
+	lf-num-prev			type boolean
+parameters
+	lp-input			pic x(180)
+returning
+	lp-output			pic x(180)
+	//convert double single quotes to a single double quote //'in'
+	for i = 1 to strlen(lp-input)
+		set d = substring(lp-input,i,i + 1)
+		if d = "''"
+			//string lp-input replacing "in" at i
+			string lp-input replacing '"' at i
+		endif
+	endfor
+	//25oct12 rmd preserve double quotes where they exist
+	//for i = 1 to strlen(lp-input)
+	//	//special case for Inches convert " to IN
+	//	set c = substring(lp-input,i,i)
+	//	if lf-num-prev and ascii-num(c) = 34
+	//		string lp-input replacing 'in' at i
+	//		string lp-input inserting ' ' at i + 2
+	//	endif
+	//	if c between "0" and "9"
+	//		set lf-num-prev = TRUE
+	//	else
+	//		set lf-num-prev = FALSE
+	//	endif
+	//endfor
+	for i = strlen(lp-input) down to 1
+		set c = substring(lp-input,i,i)
+		if c = SPACES
+			if lf-space-prev
+			else
+				set lf-space-prev = TRUE
+				set lp-output = concat(c strconcat(lp-output))
+			endif
+		else
+			//special case for Inches convert " to IN
+			//if ascii-num(c) = 34
+			//	set lf-space-prev = FALSE
+			//	set lp-output = concat("in" strconcat(lp-output))
+			//else
+			//if ascii-num(c) between 33 and 126 and ascii-num(c) not in {34 39 44 96 124}
+			if ascii-num(c) between 33 and 126 and ascii-num(c) not in {39 44 96 124}	//25oct12 don't strip double quotes
+				set lf-space-prev = FALSE
+				set lp-output = concat(c strconcat(lp-output))
+			endif
+		endif
+	endfor
+endprocedure // string-clean --------------------------------------------------
+
+procedure price-band-note-lines
+local field
+	lf-sol-line-seq			like sol-line-seq
+	//message "price-band-note-lines"
+	//message "1: " ws-so-order-no
+	//message "2: " ws-so-bo-suffix
+	//message "3: " ws-sol-line-seq
+    //message "4: " ws-shb-range-1
+    //message "5: " ws-shb-range-2
+    //message "6: " ws-sbb-range-1
+    //message "7: " ws-sbb-range-2
+    //subheading
+    set lf-sol-line-seq = ws-sol-line-seq
+    if ws-shb-range-1 != SPACES or ws-shb-range-2 != SPACES
+		initialise sales-order-line
+		set so-order-no	    = ws-so-order-no
+		set so-bo-suffix    = ws-so-bo-suffix
+		set sol-line-seq 	= integer(ws-sol-line-seq) + 1.01	//1.80
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sol-line-type 			= "DN"
+			set sol-line-description 	= "Headboard Fabric Details:"
+			insert sales-order-line
+		else
+			set sol-line-description 	= "Headboard Fabric Details:"
+			update sales-order-line
+		endon
+    endif
+    if ws-sbb-range-1 != SPACES or ws-sbb-range-2 != SPACES
+		initialise sales-order-line
+		set so-order-no	    = ws-so-order-no
+		set so-bo-suffix    = ws-so-bo-suffix
+		set sol-line-seq 	= integer(ws-sol-line-seq) + 2.01	//2.80
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sol-line-type 			= "DN"
+			set sol-line-description 	= "Base Fabric Details:"
+			insert sales-order-line
+		else
+			set sol-line-description 	= "Base Fabric Details:"
+			update sales-order-line
+		endon
+    endif
+	if ws-shb-range-1 != SPACES
+		initialise sales-order-line			//{7} uncomment
+		initialise sales-order-line-notes	//{2}
+		set so-order-no	    = ws-so-order-no
+		set so-bo-suffix    = ws-so-bo-suffix
+		//set sol-line-seq 	= ws-sol-line-seq
+		set sol-line-seq 	= integer(ws-sol-line-seq) + 1.02 //1.81
+		//set sol-print-line	= "Y"
+		//<{7} uncomment this block
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			//key is ws-so-order-no ws-so-bo-suffix (ws-sol-line-seq + 0.81)
+		on error
+			set sol-line-type 			= "DN"
+			set sol-line-description 	= concat("  " ws-shb-range-1)
+			insert sales-order-line
+		else
+			set sol-line-description 	= concat("  " ws-shb-range-1)
+			update sales-order-line
+		endon
+		//>{7}
+		set soln-seq-no		= (sol-line-seq + 1.81) * 10	//{2}
+		set soln-type		= "SN"              //{2}
+		get sales-order-line-notes 				//{2}
+			on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+		on error
+			set soln-text = ws-shb-range-1
+			insert sales-order-line-notes
+		else
+			set soln-text = ws-shb-range-1
+			update sales-order-line-notes
+		endon
+		//
+	endif
+	if ws-shb-range-2 != SPACES
+		initialise sales-order-line         //{7} uncomment
+		initialise sales-order-line-notes	//{2}
+		set so-order-no	    = ws-so-order-no
+		set so-bo-suffix    = ws-so-bo-suffix
+		set sol-line-seq 	= integer(ws-sol-line-seq) + 1.03 //1.82
+		//<{7} uncomment this block
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			//key is ws-so-order-no ws-so-bo-suffix (ws-sol-line-seq + 0.82)
+		on error
+			set sol-line-type 			= "DN"
+			set sol-line-description 	= concat("  " ws-shb-range-2)
+			insert sales-order-line
+		else
+			set sol-line-description 	= concat("  " ws-shb-range-2)
+			update sales-order-line
+		endon
+		//>{7}
+		set soln-seq-no		= (sol-line-seq + 1.82) * 10	//{2}
+		set soln-type		= "SN"              //{2}
+		get sales-order-line-notes 				//{2}
+			on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+		on error
+			set soln-text = ws-shb-range-2
+			insert sales-order-line-notes
+		else
+			set soln-text = ws-shb-range-2
+			update sales-order-line-notes
+		endon
+	endif
+	if ws-sbb-range-1 != SPACES
+		initialise sales-order-line    		//{7} uncomment
+		initialise sales-order-line-notes	//{2}
+		set so-order-no	    = ws-so-order-no
+		set so-bo-suffix    = ws-so-bo-suffix
+		//set sol-line-seq 	= ws-sol-line-seq
+		set sol-line-seq 	= integer(ws-sol-line-seq) + 2.02 //2.81
+		//<{7} uncomment this block
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			//key is ws-so-order-no ws-so-bo-suffix (ws-sol-line-seq + 0.81)
+		on error
+			set sol-line-type 			= "DN"
+			set sol-line-description 	= concat("  " ws-sbb-range-1)
+			insert sales-order-line
+		else
+			set sol-line-description 	= concat("  " ws-sbb-range-1)
+			update sales-order-line
+		endon
+		//>{7}
+		set soln-seq-no		= (sol-line-seq + 2.81) * 10	//{2}
+		set soln-type		= "SN"              //{2}
+		get sales-order-line-notes 				//{2}
+			on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+		on error
+			set soln-text = ws-sbb-range-1
+			insert sales-order-line-notes
+		else
+			set soln-text = ws-sbb-range-1
+			update sales-order-line-notes
+		endon
+	endif
+	if ws-sbb-range-2 != SPACES
+		initialise sales-order-line			//{7} uncomment
+		initialise sales-order-line-notes	//{2}
+		set so-order-no	    = ws-so-order-no
+		set so-bo-suffix    = ws-so-bo-suffix
+		//set sol-line-seq 	= ws-sol-line-seq
+		set sol-line-seq 	= integer(ws-sol-line-seq) + 2.03 //2.82
+		//<{7} uncomment this block
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			//key is ws-so-order-no ws-so-bo-suffix (ws-sol-line-seq + 0.82)
+		on error
+			set sol-line-type 			= "DN"
+			set sol-line-description 	= concat("  " ws-sbb-range-2)
+			insert sales-order-line
+		else
+			set sol-line-description 	= concat("  " ws-sbb-range-2)
+			update sales-order-line
+		endon
+		//>{7}
+		set soln-seq-no		= (sol-line-seq + 2.82) * 10	//{2}
+		set soln-type		= "SN"              //{2}
+		get sales-order-line-notes 				//{2}
+			on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+		on error
+			set soln-text = ws-sbb-range-2
+			insert sales-order-line-notes
+		else
+			set soln-text = ws-sbb-range-2
+			update sales-order-line-notes
+		endon
+	endif
+endprocedure // price-band-note-lines -----------------------------------------
+
+procedure comp-desc-note-lines	//{8}
+parameters
+	lp-parent-code				like stock-code
+local field
+	lf-desc-lines				pic x(30) occurs 8
+	i							type numeric
+	lf-sol-line-seq				like sol-line-seq	//{9}
+	//message "price-band-note-lines"
+	//message "1: " ws-so-order-no
+	//message "2: " ws-so-bo-suffix
+	//message "3: " ws-sol-line-seq
+    //message "4: " ws-shb-range-1
+    //message "5: " ws-shb-range-2
+    //message "6: " ws-sbb-range-1
+    //message "7: " ws-sbb-range-2
+    for i = 1 to 8
+    	set lf-desc-lines[i] = SPACES
+    endfor
+    set i = 0
+	if ssk-headboard-code != SPACES
+		get stock-master
+			on index stock-code
+			key is ssk-headboard-code
+		on error
+		else
+			set i += 1
+			set lf-desc-lines[i] = stk-description
+			set i += 1
+			set lf-desc-lines[i] = stk-desc-line-2
+		endon
+	endif
+	if ssk-bed-base-code != SPACES
+		get stock-master
+			on index stock-code
+			key is ssk-bed-base-code
+		on error
+		else
+			set i += 1
+			set lf-desc-lines[i] = stk-description
+			set i += 1
+			set lf-desc-lines[i] = stk-desc-line-2
+		endon
+	endif
+	if ssk-leg-code != SPACES
+		get stock-master
+			on index stock-code
+			key is ssk-leg-code
+		on error
+		else
+			set i += 1
+			set lf-desc-lines[i] = stk-description
+			set i += 1
+			set lf-desc-lines[i] = stk-desc-line-2
+		endon
+	endif
+	if ssk-storage-code != SPACES
+		get stock-master
+			on index stock-code
+			key is ssk-storage-code
+		on error
+		else
+			set i += 1
+			set lf-desc-lines[i] = stk-description
+			set i += 1
+			set lf-desc-lines[i] = stk-desc-line-2
+		endon
+	endif
+	//we now have a possible 8 lines of desc in the order we want to see them appear
+	//clear the parent code desc
+	get stock-master
+		on index stock-code
+		key is lp-parent-code
+	on error
+	else
+		set stk-description = lf-desc-lines[1]
+		set stk-desc-line-2 = lf-desc-lines[2]
+		set stk-desc-line-3 = lf-desc-lines[3]
+		update stock-master
+	endon
+	initialise sales-order-line
+	set so-order-no	    = ws-so-order-no
+	set so-bo-suffix    = ws-so-bo-suffix
+	//set sol-line-seq 	= integer(ws-sol-line-seq) + 0.14
+	//get sales-order-line
+	//	on index so-order-no so-bo-suffix sol-line-seq
+	//on error
+	//	set sol-line-type 			= "DN"
+	//	set sol-line-description 	= stk-description
+	//	insert sales-order-line
+	//else
+	//	set sol-line-description 	= stk-description
+	//	update sales-order-line
+	//endon
+	for i = 4 to 8
+		set sol-line-seq 	= integer(ws-sol-line-seq) + 0.1 + (i / 100)
+		if lf-desc-lines[i] = SPACES
+			continue
+		endif
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sol-line-type 			= "DN"
+			set sol-line-description 	= lf-desc-lines[i]
+			insert sales-order-line
+		else
+			set sol-line-description 	= lf-desc-lines[i]
+			update sales-order-line
+		endon
+	endfor
+	//<{9}
+	//print line of --------------------- as note at and of kit
+	message "end of kit line " concat(str(ws-so-order-no) ws-so-bo-suffix ":" str(ws-sol-line-seq))
+	set lf-sol-line-seq = ws-sol-line-seq
+	extract bill-of-materials-detail
+		on index bom-parent-code bom-seq-no comp-code
+		key is ssk-parent-code 0 SPACES
+		next same bom-parent-code
+	detail
+		set lf-sol-line-seq += 1
+	endextract//e
+	initialise sales-order-line
+	set so-order-no	    = ws-so-order-no
+	set so-bo-suffix    = ws-so-bo-suffix
+	set sol-line-seq 	= integer(lf-sol-line-seq) + 1
+	set soln-type		= "SN"
+	get sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+	on error
+		set sol-line-type 			= "DN"
+		set sol-line-description 	= concat("--------------------")
+		insert sales-order-line
+	else
+		set sol-line-description 	= concat("--------------------")
+		update sales-order-line
+	endon
+	//>{9}
+endprocedure // comp-desc-note-lines ------------------------------------------
+
+
+procedure comp-desc-note-lines-old	//{8}
+	//message "price-band-note-lines"
+	//message "1: " ws-so-order-no
+	//message "2: " ws-so-bo-suffix
+	//message "3: " ws-sol-line-seq
+    //message "4: " ws-shb-range-1
+    //message "5: " ws-shb-range-2
+    //message "6: " ws-sbb-range-1
+    //message "7: " ws-sbb-range-2
+	//if ssk-headboard-code != SPACES
+	//	get stock-master
+	//		on index stock-code
+	//		key is ssk-headboard-code
+	//	on error
+	//	else
+	//		initialise sales-order-line
+	//		set so-order-no	    = ws-so-order-no
+	//		set so-bo-suffix    = ws-so-bo-suffix
+	//		set sol-line-seq 	= integer(ws-sol-line-seq) + 0.11
+	//		get sales-order-line
+	//			on index so-order-no so-bo-suffix sol-line-seq
+	//		on error
+	//			set sol-line-type 			= "DN"
+	//			set sol-line-description 	= stk-description
+	//			insert sales-order-line
+	//		else
+	//			set sol-line-description 	= stk-description
+	//			update sales-order-line
+	//		endon
+	//		set sol-line-seq 	= integer(ws-sol-line-seq) + 0.12
+	//		get sales-order-line
+	//			on index so-order-no so-bo-suffix sol-line-seq
+	//		on error
+	//			set sol-line-type 			= "DN"
+	//			set sol-line-description 	= stk-desc-line-2
+	//			insert sales-order-line
+	//		else
+	//			set sol-line-description 	= stk-desc-line-2
+	//			update sales-order-line
+	//		endon
+	//	endon
+	//endif
+	if ssk-bed-base-code != SPACES
+		get stock-master
+			on index stock-code
+			key is ssk-bed-base-code
+		on error
+		else
+			initialise sales-order-line
+			set so-order-no	    = ws-so-order-no
+			set so-bo-suffix    = ws-so-bo-suffix
+			//set sol-line-seq 	= integer(ws-sol-line-seq) + 0.14
+			//get sales-order-line
+			//	on index so-order-no so-bo-suffix sol-line-seq
+			//on error
+			//	set sol-line-type 			= "DN"
+			//	set sol-line-description 	= stk-description
+			//	insert sales-order-line
+			//else
+			//	set sol-line-description 	= stk-description
+			//	update sales-order-line
+			//endon
+			set sol-line-seq 	= integer(ws-sol-line-seq) + 0.15
+			get sales-order-line
+				on index so-order-no so-bo-suffix sol-line-seq
+			on error
+				set sol-line-type 			= "DN"
+				set sol-line-description 	= stk-desc-line-2
+				insert sales-order-line
+			else
+				set sol-line-description 	= stk-desc-line-2
+				update sales-order-line
+			endon
+		endon
+	endif
+endprocedure // comp-desc-note-lines ------------------------------------------
+
+procedure price-band-note-lines-old
+	//message "price-band-note-lines"
+	//message "1: " ws-so-order-no
+	//message "2: " ws-so-bo-suffix
+	//message "3: " ws-sol-line-seq
+    //message "4: " ws-shb-range-1
+    //message "5: " ws-shb-range-2
+    //message "6: " ws-sbb-range-1
+    //message "7: " ws-sbb-range-2
+	if ws-shb-range-1 != SPACES
+		initialise sales-order-line
+		initialise sales-order-line-notes	//{2}
+		set so-order-no	    = ws-so-order-no
+		set so-bo-suffix    = ws-so-bo-suffix
+		set sol-line-seq 	= ws-sol-line-seq + 1.81
+		set sol-print-line	= "Y"
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sol-line-type 			= "DN"
+			set sol-line-description 	= ws-shb-range-1
+			insert sales-order-line
+		else
+			set sol-line-description 	= ws-shb-range-1
+			update sales-order-line
+		endon
+		set soln-seq-no		= sol-line-seq * 10	//{2}
+		set soln-type		= "SN"              //{2}
+		get sales-order-line-notes 				//{2}
+			on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+		on error
+			set soln-text = ws-shb-range-1
+			insert sales-order-line-notes
+		else
+			set soln-text = ws-shb-range-1
+			update sales-order-line-notes
+		endon
+	endif
+	if ws-shb-range-2 != SPACES
+		initialise sales-order-line
+		initialise sales-order-line-notes	//{2}
+		set so-order-no	    = ws-so-order-no
+		set so-bo-suffix    = ws-so-bo-suffix
+		set sol-line-seq 	= ws-sol-line-seq + 1.82
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sol-line-type 			= "DN"
+			set sol-line-description 	= ws-shb-range-2
+			insert sales-order-line
+		else
+			set sol-line-description 	= ws-shb-range-2
+			update sales-order-line
+		endon
+		set soln-seq-no		= sol-line-seq * 10	//{2}
+		set soln-type		= "SN"              //{2}
+		get sales-order-line-notes 				//{2}
+			on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+		on error
+			set soln-text = ws-shb-range-2
+			insert sales-order-line-notes
+		else
+			set soln-text = ws-shb-range-2
+			update sales-order-line-notes
+		endon
+	endif
+	if ws-sbb-range-1 != SPACES
+		initialise sales-order-line
+		initialise sales-order-line-notes	//{2}
+		set so-order-no	    = ws-so-order-no
+		set so-bo-suffix    = ws-so-bo-suffix
+		set sol-line-seq 	= ws-sol-line-seq + 2.81
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sol-line-type 			= "DN"
+			set sol-line-description 	= ws-sbb-range-1
+			insert sales-order-line
+		else
+			set sol-line-description 	= ws-sbb-range-1
+			update sales-order-line
+		endon
+		set soln-seq-no		= sol-line-seq * 10	//{2}
+		set soln-type		= "SN"              //{2}
+		get sales-order-line-notes 				//{2}
+			on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+		on error
+			set soln-text = ws-sbb-range-1
+			insert sales-order-line-notes
+		else
+			set soln-text = ws-sbb-range-1
+			update sales-order-line-notes
+		endon
+	endif
+	if ws-sbb-range-2 != SPACES
+		initialise sales-order-line
+		initialise sales-order-line-notes	//{2}
+		set so-order-no	    = ws-so-order-no
+		set so-bo-suffix    = ws-so-bo-suffix
+		set sol-line-seq 	= ws-sol-line-seq + 2.82
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sol-line-type 			= "DN"
+			set sol-line-description 	= ws-sbb-range-2
+			insert sales-order-line
+		else
+			set sol-line-description 	= ws-sbb-range-2
+			update sales-order-line
+		endon
+		set soln-seq-no		= sol-line-seq * 10	//{2}
+		set soln-type		= "SN"              //{2}
+		get sales-order-line-notes 				//{2}
+			on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+		on error
+			set soln-text = ws-sbb-range-2
+			insert sales-order-line-notes
+		else
+			set soln-text = ws-sbb-range-2
+			update sales-order-line-notes
+		endon
+	endif
+endprocedure // price-band-note-lines -----------------------------------------
+
+//<{4} validation routines
+procedure validate-sps-description
+parameters
+	lp-sps-description		like ws-sps-description
+returning
+	lr-valid				type boolean
+	//open snz-pronto-size
+	open tmp-snz-pronto-size truncate temporary
+	extract snz-pronto-size
+	detail
+		insert tmp-snz-pronto-size
+	endextract
+	set lr-valid = FALSE
+	//set ws-sps-id = 0 - not exists
+	extract tmp-snz-pronto-size
+	detail
+		if lp-sps-description = sps-description
+			set lr-valid = TRUE
+			break
+		endif
+	endextract
+endprocedure // validate-sps-description --------------------------------------
+
+procedure validate-shs-description
+parameters
+	lp-shs-description		like ws-shs-description
+returning
+	lr-valid				type boolean
+	//open snz-pronto-size
+	open tmp-snz-head-style truncate temporary
+	extract snz-head-style
+		on index scs-id shs-id
+		key is ws-scs-id 0
+		next same scs-id
+	detail
+		insert tmp-snz-head-style
+	endextract
+	set lr-valid = FALSE
+	set ws-shs-id = 0
+	extract tmp-snz-head-style
+	detail
+		if lp-shs-description = shs-description
+			set ws-shs-id = shs-id
+			set lr-valid = TRUE
+			break
+		endif
+	endextract
+endprocedure // validate-shs-description --------------------------------------
+
+procedure validate-sms-description
+parameters
+	lp-sms-description		like ws-sms-description
+returning
+	lr-valid				type boolean
+	//open snz-pronto-size
+	open tmp-snz-material-style truncate temporary
+	extract snz-material-style
+		on index scs-id sms-id
+		key is ws-scs-id 0
+		next same scs-id
+	detail
+		insert tmp-snz-material-style
+	endextract
+	set lr-valid = FALSE
+	set ws-sms-id = 0
+	extract tmp-snz-material-style
+	detail
+		if lp-sms-description = sms-description
+			set ws-sms-id = sms-id
+			set lr-valid = TRUE
+			break
+		endif
+	endextract
+endprocedure // validate-sms-description --------------------------------------
+
+procedure validate-shc-description
+parameters
+	lp-shc-description		like ws-shc-description
+returning
+	lr-valid				type boolean
+	open tmp-snz-head-colour truncate temporary
+	extract snz-head-colour	//#| - strange! there's no filtering while building the tmp file
+		on index shc-description
+	detail
+		insert tmp-snz-head-colour
+	endextract
+	set lr-valid = FALSE
+	extract tmp-snz-head-colour
+	detail
+		if lp-shc-description = shc-description
+			set lr-valid = TRUE
+			break
+		endif
+	endextract
+endprocedure // validate-shc-description --------------------------------------
+
+procedure validate-shb-description
+parameters
+	lp-shb-description		like ws-shb-description
+returning
+	lr-valid				type boolean
+	//open snz-pronto-size
+	open tmp-snz-head-band truncate temporary
+	extract snz-head-band
+		on index scs-id shb-id
+		key is ws-scs-id ws-shb-id
+		next same scs-id
+	detail
+		insert tmp-snz-head-band
+	endextract
+	set lr-valid = FALSE
+	set ws-shb-id = 0
+	extract tmp-snz-head-band
+	detail
+		if lp-shb-description = shb-description
+			set ws-shb-id = shb-id
+			set lr-valid = TRUE
+			break
+		endif
+	endextract
+endprocedure // validate-shb-description --------------------------------------
+
+procedure validate-sbt-description
+parameters
+	lp-sbt-description		like ws-sbt-description
+returning
+	lr-valid				type boolean
+	//open snz-pronto-size
+	open tmp-snz-base-type truncate temporary
+	extract snz-base-type
+		on index scs-id sbt-id
+		key is ws-scs-id 0
+		next same scs-id
+	detail
+		insert tmp-snz-base-type
+	endextract
+	set lr-valid = FALSE
+	set ws-sbt-id = 0
+	extract tmp-snz-base-type
+	detail
+		if lp-sbt-description = sbt-description
+			set ws-sbt-id = sbt-id
+			set lr-valid = TRUE
+			break
+		endif
+	endextract
+endprocedure // validate-sbt-description --------------------------------------
+
+procedure validate-sbb-description
+parameters
+	lp-sbb-description		like ws-sbb-description
+returning
+	lr-valid				type boolean
+	open tmp-snz-base-band truncate temporary
+	extract snz-base-band
+		on index scs-id sbb-id
+		key is ws-scs-id ws-sbb-id
+		next same scs-id
+	detail
+		insert tmp-snz-base-band
+	endextract
+	set ws-sbb-id = 0
+	set lr-valid = FALSE
+	extract tmp-snz-base-band
+	detail
+		if lp-sbb-description = sbb-description
+			set ws-sbb-id = ws-sbb-id
+			set lr-valid = TRUE
+			break
+		endif
+	endextract
+endprocedure // validate-sbb-description --------------------------------------
+
+procedure validate-slt-description
+parameters
+	lp-slt-description		like ws-slt-description
+returning
+	lr-valid				type boolean
+	//open snz-pronto-size
+	open tmp-snz-leg-type truncate temporary
+	extract snz-leg-type
+		on index scs-id sbt-id slt-id
+		key is ws-scs-id ws-sbt-id 0
+		next same scs-id sbt-id
+	detail
+		insert tmp-snz-leg-type
+	endextract
+	set lr-valid = FALSE
+	set ws-slt-id = 0
+	extract tmp-snz-leg-type
+	detail
+		if lp-slt-description = slt-description
+			set ws-slt-id = slt-id
+			set lr-valid = TRUE
+			break
+		endif
+	endextract
+endprocedure // validate-slt-description --------------------------------------
+
+procedure validate-sbc-description
+parameters
+	lp-sbc-description		like ws-sbc-description
+returning
+	lr-valid				type boolean
+	open tmp-snz-base-colour truncate temporary
+	extract snz-base-colour
+		on index sbc-description
+	detail
+		insert tmp-snz-base-colour
+	endextract
+	set lr-valid = FALSE
+	extract tmp-snz-base-colour
+	detail
+		if lp-sbc-description = sbc-description
+			set lr-valid = TRUE
+			break
+		endif
+	endextract
+endprocedure // validate-sbc-description --------------------------------------
+
+procedure validate-sst-description
+parameters
+	lp-sst-description		like ws-sst-description
+returning
+	lr-valid				type boolean
+	//open snz-pronto-size
+	open tmp-snz-storage-type truncate temporary
+	extract snz-storage-type
+		on index scs-id sbt-id sst-id
+		key is ws-scs-id ws-sbt-id 0
+		next same scs-id sbt-id
+	detail
+		insert tmp-snz-storage-type
+	endextract
+	set lr-valid = FALSE
+	set ws-sst-id = 0
+	extract tmp-snz-storage-type
+	detail
+		if lp-sst-description = sst-description
+			set ws-sst-id = sst-id
+			set lr-valid = TRUE
+			break
+		endif
+	endextract
+endprocedure // validate-sst-description --------------------------------------
+
+//>{4}

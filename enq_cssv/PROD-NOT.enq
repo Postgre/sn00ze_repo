@@ -1,0 +1,40 @@
+select
+	stock-code
+	stock-group
+	stk-user-group
+	stk-description
+	stk-sort-analysis-code
+	stk-condition-code
+	ash-value
+	stk-pack-desc
+	total-sales = sum-array (ash-value 1 13) 
+	ash-years-ago
+	whse-code
+from
+	stock-master
+	stock-aged-sales-history
+	stock-warehouse-detail
+where
+	stk-description like "%PRODUCT%" 
+	//and ash-years-ago = 0 
+order by stock-code 
+group by stock-code
+format is lst
+//title line 1 is PRODUCT NOT KNOWN REPORT
+//title line 2 is BY WAREHOUSE
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress stk-pack-desc
+field order is stock-code stk-description stk-user-group[2] stock-group
+display pic of total-sales is z(8)9

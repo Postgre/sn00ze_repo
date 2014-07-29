@@ -1,0 +1,3 @@
+delete from gl-trans
+where
+	gl-accountcode = "3M3501440" 

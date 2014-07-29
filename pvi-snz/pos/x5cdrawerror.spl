@@ -1,0 +1,213 @@
+//Program		: x5cdrawerror.spl
+//Written By	: Ranjith
+//Written on 	: 14 Sep 2009
+//Description 	: CASH DRAWER DISCREPANCY REPORT
+//
+//
+
+version-number "CUSTOM rc/x5cdrawerror 20090702"
+
+
+#include "/pro/pronto/bms/include/rbtchproc.spl"
+#include "/pro/pronto/bms/include/i85codes.spl"
+
+fields
+	ws-store 			like whse-code
+	ws-start-date 		like gl-trans-date
+	ws-end-date			like gl-trans-date
+
+procedure main
+	//
+	get system-control first
+	//
+	set rbtchproc-report-name = "CASH DRAWER DISCREPANCY REPORT"
+	//
+	get system-user
+		on index user-id sys-comp-code
+		key is login-id() sys-consolidation-division
+	//
+	set ws-store 		= user-territory
+	//
+	RBTCHPROC_RUN_PROGRAM(rbtchproc-report-name)
+	do rbtchproc-report-parameters once
+endprocedure  //main ------------------------------------------------
+
+screen rbtchproc-report-parameters
+	//
+    window @1,1 to @7,80
+		title "CASH DRAWER DISCREPANCY REPORT"
+	allow entry
+before
+    box @1,2 to @6,79
+    	title is " "
+detail
+    accept ws-store @3,32
+        default ws-store
+        title 'Start warehouse code:'
+        help "Enter the warehouse you wish to start report on, SPACE for ALL. [HELP]"
+        uppercase
+    on help-key
+		set sys-tbl-type = "WH"
+		do i85codes-table-help
+		if sys-tbl-code > SPACES
+			set ws-store = sys-tbl-code
+		endif
+		reenter ws-store
+	endon
+	validations
+		get system-table lookup
+			on index sys-tbl-type sys-tbl-code
+			key is "WH" ws-store
+		on error
+			if ws-store = SPACES
+			else
+				message "Warehouse entered is not defined."
+				reenter ws-store
+			endif
+		endon
+	endvalidations
+	//
+	accept ws-start-date @4,32
+        default ws-start-date
+        title 'Start Delivery Date:'
+        help "Enter Start Delivery Date"
+	//
+	accept ws-end-date @5,32
+        default ws-end-date
+        title 'End Delivery Date:'
+        help "Enter End Delivery Date"
+	//
+confirm auto
+confirmed
+   // RBTCHPROC_EXECUTION
+    do rbtchproc-report-detail
+endconfirm
+endscreen //rbtchproc-report-parameters --------------------------------------
+
+procedure start-report
+	report rbtchproc-report-name
+		header
+			print-report-heading
+		depth 60
+		width 143
+		no-message
+	set ws-report-started = TRUE
+	display "Report :" @20,59 background
+	display spool-file-name() @20,68 pic x(12) foreground prompts
+endprocedure //start-report --------------------------------------------------
+
+procedure rbtchproc-set-parameters
+endprocedure //rbtchproc-set-parameters --------------------------------------
+
+procedure print-report-heading
+	print
+		company-name in col 1
+		"CASH DRAWER DISCREPANCY REPORT" in col 53
+		today() in col 102
+		"Page No." in col 117
+		pageno() in col 125
+	skip 2
+	print
+		"Stock" in col 2
+		"Whse" in col 87
+	print
+		"Code" in col 2
+		"Description" in col 22
+		"Code" in col 87
+		"Minimum" in col 100
+		"Maximum" in col 113
+    print "================================================================================================================================="
+endprocedure //print-report-heading ------------------------------------------
+
+procedure rbtchproc-report-detail
+local
+	new-gl-accountcode pic 9
+    //
+    window @19,44 to @23,80
+        title is "Report Progress"
+        color white
+        no-hide
+    //
+    do start-report
+    page
+    //
+    if not rbtchproc-in-background
+	    display bitmap concat(getenv('BMS')'/images/repedge.gif') @19,44
+	    display 'Report :' @20,59 background right
+	    display "Now at :" @23,45 background prompts left
+    endif
+    //
+ 	select
+		gl-accountcode
+		gl-desc
+		gl-trans-type
+		gl-trans-date
+		gl-reference
+		gl-details
+		gl-amount
+	from
+		gl-master
+		gl-trans
+	where
+		gl-trans-date between ws-start-date and ws-end-date
+		and sub-string (gl-accountcode 6 9) = "1320"
+		and sub-string (gl-accountcode 3 5) = ws-store
+before gl-accountcode
+	set new-gl-accountcode = 1
+detail
+	display gl-accountcode @23,57 foreground prompts
+	//
+	if (new-gl-accountcode)
+		print gl-accountcode in col 1 pic x(9) no newline
+		print gl-desc in col 12 pic x(16) no newline
+		print ws-store in col 3 bold
+	endif
+	if gl-reference = "ADJUST"
+		print gl-trans-type in col 20 bold no newline
+		print gl-trans-date in col 7 bold no newline
+		print gl-reference in col 25 bold no newline
+		print gl-details in col 37 bold no newline
+		print gl-amount in col 79 bold no newline
+		skip
+	else
+		print gl-trans-type in col 20 no newline
+		print gl-trans-date in col 7 no newline
+		print gl-reference in col 25 no newline
+		print gl-details in col 37 no newline
+		print gl-amount in col 79 no newline
+		skip
+	endif
+	set new-gl-accountcode = 0
+    endselect
+    skip
+    report section finished // detail
+    //
+    do report-finished
+    RBTCHPROC_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+endprocedure //rbtchproc-report-detail ---------------------------------------
+
+procedure report-finished
+    if ws-report-started
+        report section "Finish"
+	    skip
+		print "NOTE:" in col 1 bold underlined
+			"Transactions in 'bold' are a result of the cash drawer not balancing" in col 7
+		print "when the 'Finish a Shift' process was completed." in col 7
+		print "A positive amount is a cash shortage. A negative amount is a cash shortage." in col 7 bold
+		print "If there is a opposite transaction (eg: ogirinal trans $100, then a " in col 7
+		print "another transaction for -$100, then it is likely that the discrepancy" in col 7
+		print "has been corrected" in col 7
+		print "'BANK ST' transactions have been posted by Support Centre" in col 7
+		skip 2
+		print "Report Name :" in col 10
+			"cdrawerror.enq" in col 24
+		skip
+		print "Store Number:" in col 10
+			ws-store in col 24 pic x(3)
+		print "Start Date  :" in col 10
+			ws-start-date in col 24
+		print "End   Date  :" in col 10
+			ws-end-date in col 24
+         report section finished //finish
+    endif
+endprocedure //report-finished -----------------------------------------------

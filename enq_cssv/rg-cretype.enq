@@ -1,0 +1,9 @@
+// creditor type not equal to Q
+select
+	cre-accountcode
+	cr-type
+from
+	cre-master
+where
+	( cr-type != "Q"  )
+format is lst

@@ -1,0 +1,399 @@
+select
+	stock-code
+	stock-group
+	ash-type
+	ash-years-ago
+	ash-value
+	ash-cost
+	ash-qty
+	ws-years-ago = input numeric "Years ago:"
+	ws-period-ago = input numeric "Period ago (1=current):"
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+from
+	stock-master
+	stock-aged-sales-history
+	system-table
+where
+	ash-type = 'Q' 
+	and ash-years-ago = ws-years-ago 
+	and sys-tbl-type = 'PG' 
+	and sys-tbl-code = stock-group 
+format is rpt
+field total-ash-value like ash-value
+field sub-tot-ash-value like ash-value
+field total-ash-cost like ash-cost
+field sub-tot-ash-cost like ash-cost
+field total-ash-qty like ash-qty
+field sub-tot-ash-qty like ash-qty
+report header
+	page
+	set total-ash-value[1] = 0
+	set total-ash-value[2] = 0
+	set total-ash-value[3] = 0
+	set total-ash-value[4] = 0
+	set total-ash-value[5] = 0
+	set total-ash-value[6] = 0
+	set total-ash-value[7] = 0
+	set total-ash-value[8] = 0
+	set total-ash-value[9] = 0
+	set total-ash-value[10] = 0
+	set total-ash-value[11] = 0
+	set total-ash-value[12] = 0
+	set total-ash-value[13] = 0
+	set total-ash-cost[1] = 0
+	set total-ash-cost[2] = 0
+	set total-ash-cost[3] = 0
+	set total-ash-cost[4] = 0
+	set total-ash-cost[5] = 0
+	set total-ash-cost[6] = 0
+	set total-ash-cost[7] = 0
+	set total-ash-cost[8] = 0
+	set total-ash-cost[9] = 0
+	set total-ash-cost[10] = 0
+	set total-ash-cost[11] = 0
+	set total-ash-cost[12] = 0
+	set total-ash-cost[13] = 0
+	set total-ash-qty[1] = 0
+	set total-ash-qty[2] = 0
+	set total-ash-qty[3] = 0
+	set total-ash-qty[4] = 0
+	set total-ash-qty[5] = 0
+	set total-ash-qty[6] = 0
+	set total-ash-qty[7] = 0
+	set total-ash-qty[8] = 0
+	set total-ash-qty[9] = 0
+	set total-ash-qty[10] = 0
+	set total-ash-qty[11] = 0
+	set total-ash-qty[12] = 0
+	set total-ash-qty[13] = 0
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		'Stk' in col 34
+		'Cost' in col 50
+		'Qty' in col 66
+	skip 1
+before stock-group
+	set sub-tot-ash-value[1] = 0
+	set sub-tot-ash-value[2] = 0
+	set sub-tot-ash-value[3] = 0
+	set sub-tot-ash-value[4] = 0
+	set sub-tot-ash-value[5] = 0
+	set sub-tot-ash-value[6] = 0
+	set sub-tot-ash-value[7] = 0
+	set sub-tot-ash-value[8] = 0
+	set sub-tot-ash-value[9] = 0
+	set sub-tot-ash-value[10] = 0
+	set sub-tot-ash-value[11] = 0
+	set sub-tot-ash-value[12] = 0
+	set sub-tot-ash-value[13] = 0
+	set sub-tot-ash-cost[1] = 0
+	set sub-tot-ash-cost[2] = 0
+	set sub-tot-ash-cost[3] = 0
+	set sub-tot-ash-cost[4] = 0
+	set sub-tot-ash-cost[5] = 0
+	set sub-tot-ash-cost[6] = 0
+	set sub-tot-ash-cost[7] = 0
+	set sub-tot-ash-cost[8] = 0
+	set sub-tot-ash-cost[9] = 0
+	set sub-tot-ash-cost[10] = 0
+	set sub-tot-ash-cost[11] = 0
+	set sub-tot-ash-cost[12] = 0
+	set sub-tot-ash-cost[13] = 0
+	set sub-tot-ash-qty[1] = 0
+	set sub-tot-ash-qty[2] = 0
+	set sub-tot-ash-qty[3] = 0
+	set sub-tot-ash-qty[4] = 0
+	set sub-tot-ash-qty[5] = 0
+	set sub-tot-ash-qty[6] = 0
+	set sub-tot-ash-qty[7] = 0
+	set sub-tot-ash-qty[8] = 0
+	set sub-tot-ash-qty[9] = 0
+	set sub-tot-ash-qty[10] = 0
+	set sub-tot-ash-qty[11] = 0
+	set sub-tot-ash-qty[12] = 0
+	set sub-tot-ash-qty[13] = 0
+
+detail
+	set total-ash-value[1] += ash-value[1]
+	set sub-tot-ash-value[1] += ash-value[1]
+	set total-ash-value[2] += ash-value[2]
+	set sub-tot-ash-value[2] += ash-value[2]
+	set total-ash-value[3] += ash-value[3]
+	set sub-tot-ash-value[3] += ash-value[3]
+	set total-ash-value[4] += ash-value[4]
+	set sub-tot-ash-value[4] += ash-value[4]
+	set total-ash-value[5] += ash-value[5]
+	set sub-tot-ash-value[5] += ash-value[5]
+	set total-ash-value[6] += ash-value[6]
+	set sub-tot-ash-value[6] += ash-value[6]
+	set total-ash-value[7] += ash-value[7]
+	set sub-tot-ash-value[7] += ash-value[7]
+	set total-ash-value[8] += ash-value[8]
+	set sub-tot-ash-value[8] += ash-value[8]
+	set total-ash-value[9] += ash-value[9]
+	set sub-tot-ash-value[9] += ash-value[9]
+	set total-ash-value[10] += ash-value[10]
+	set sub-tot-ash-value[10] += ash-value[10]
+	set total-ash-value[11] += ash-value[11]
+	set sub-tot-ash-value[11] += ash-value[11]
+	set total-ash-value[12] += ash-value[12]
+	set sub-tot-ash-value[12] += ash-value[12]
+	set total-ash-value[13] += ash-value[13]
+	set sub-tot-ash-value[13] += ash-value[13]
+	set total-ash-cost[1] += ash-cost[1]
+	set sub-tot-ash-cost[1] += ash-cost[1]
+	set total-ash-cost[2] += ash-cost[2]
+	set sub-tot-ash-cost[2] += ash-cost[2]
+	set total-ash-cost[3] += ash-cost[3]
+	set sub-tot-ash-cost[3] += ash-cost[3]
+	set total-ash-cost[4] += ash-cost[4]
+	set sub-tot-ash-cost[4] += ash-cost[4]
+	set total-ash-cost[5] += ash-cost[5]
+	set sub-tot-ash-cost[5] += ash-cost[5]
+	set total-ash-cost[6] += ash-cost[6]
+	set sub-tot-ash-cost[6] += ash-cost[6]
+	set total-ash-cost[7] += ash-cost[7]
+	set sub-tot-ash-cost[7] += ash-cost[7]
+	set total-ash-cost[8] += ash-cost[8]
+	set sub-tot-ash-cost[8] += ash-cost[8]
+	set total-ash-cost[9] += ash-cost[9]
+	set sub-tot-ash-cost[9] += ash-cost[9]
+	set total-ash-cost[10] += ash-cost[10]
+	set sub-tot-ash-cost[10] += ash-cost[10]
+	set total-ash-cost[11] += ash-cost[11]
+	set sub-tot-ash-cost[11] += ash-cost[11]
+	set total-ash-cost[12] += ash-cost[12]
+	set sub-tot-ash-cost[12] += ash-cost[12]
+	set total-ash-cost[13] += ash-cost[13]
+	set sub-tot-ash-cost[13] += ash-cost[13]
+	set total-ash-qty[1] += ash-qty[1]
+	set sub-tot-ash-qty[1] += ash-qty[1]
+	set total-ash-qty[2] += ash-qty[2]
+	set sub-tot-ash-qty[2] += ash-qty[2]
+	set total-ash-qty[3] += ash-qty[3]
+	set sub-tot-ash-qty[3] += ash-qty[3]
+	set total-ash-qty[4] += ash-qty[4]
+	set sub-tot-ash-qty[4] += ash-qty[4]
+	set total-ash-qty[5] += ash-qty[5]
+	set sub-tot-ash-qty[5] += ash-qty[5]
+	set total-ash-qty[6] += ash-qty[6]
+	set sub-tot-ash-qty[6] += ash-qty[6]
+	set total-ash-qty[7] += ash-qty[7]
+	set sub-tot-ash-qty[7] += ash-qty[7]
+	set total-ash-qty[8] += ash-qty[8]
+	set sub-tot-ash-qty[8] += ash-qty[8]
+	set total-ash-qty[9] += ash-qty[9]
+	set sub-tot-ash-qty[9] += ash-qty[9]
+	set total-ash-qty[10] += ash-qty[10]
+	set sub-tot-ash-qty[10] += ash-qty[10]
+	set total-ash-qty[11] += ash-qty[11]
+	set sub-tot-ash-qty[11] += ash-qty[11]
+	set total-ash-qty[12] += ash-qty[12]
+	set sub-tot-ash-qty[12] += ash-qty[12]
+	set total-ash-qty[13] += ash-qty[13]
+	set sub-tot-ash-qty[13] += ash-qty[13]
+after stock-group
+	if ws-period-ago = 1
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[1] in col 24
+		sub-tot-ash-cost[1] in col 40
+		sub-tot-ash-qty[1] in col 56
+	elseif 
+		ws-period-ago = 2
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[2] in col 24
+		sub-tot-ash-cost[2] in col 40
+		sub-tot-ash-qty[2] in col 56
+	elseif 
+		ws-period-ago = 3
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[3] in col 24
+		sub-tot-ash-cost[3] in col 40
+		sub-tot-ash-qty[3] in col 56
+	elseif 
+		ws-period-ago = 4
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[4] in col 24
+		sub-tot-ash-cost[4] in col 40
+		sub-tot-ash-qty[4] in col 56
+	elseif 
+		ws-period-ago = 5
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[5] in col 24
+		sub-tot-ash-cost[5] in col 40
+		sub-tot-ash-qty[5] in col 56
+	elseif 
+		ws-period-ago = 6
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[6] in col 24
+		sub-tot-ash-cost[6] in col 40
+		sub-tot-ash-qty[6] in col 56
+	elseif 
+		ws-period-ago = 7
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[7] in col 24
+		sub-tot-ash-cost[7] in col 40
+		sub-tot-ash-qty[7] in col 56
+	elseif 
+		ws-period-ago = 8
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[8] in col 24
+		sub-tot-ash-cost[8] in col 40
+		sub-tot-ash-qty[8] in col 56
+	elseif 
+		ws-period-ago = 9
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[9] in col 24
+		sub-tot-ash-cost[9] in col 40
+		sub-tot-ash-qty[9] in col 56
+	elseif 
+		ws-period-ago = 10
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[10] in col 24
+		sub-tot-ash-cost[10] in col 40
+		sub-tot-ash-qty[10] in col 56
+	elseif 
+		ws-period-ago = 11
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[11] in col 24
+		sub-tot-ash-cost[11] in col 40
+		sub-tot-ash-qty[11] in col 56
+	elseif 
+		ws-period-ago = 12
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[12] in col 24
+		sub-tot-ash-cost[12] in col 40
+		sub-tot-ash-qty[12] in col 56
+	elseif 
+		ws-period-ago = 13
+	print
+		stock-group in col 1 
+		sys-description in col 4 pic is x(18)
+		sub-tot-ash-value[13] in col 24
+		sub-tot-ash-cost[13] in col 40
+		sub-tot-ash-qty[13] in col 56
+	endif
+	skip
+report footer
+	print
+		"---------------" in col 24
+		"---------------" in col 40
+		"---------------" in col 56
+	if ws-period-ago = 1
+	print
+		total-ash-value[1] in col 24
+		total-ash-cost[1] in col 40
+		total-ash-qty[1] in col 56
+	elseif 
+		ws-period-ago = 2
+	print
+		total-ash-value[2] in col 24
+		total-ash-cost[2] in col 40
+		total-ash-qty[2] in col 56
+	elseif 
+		ws-period-ago = 3
+	print
+		total-ash-value[3] in col 24
+		total-ash-cost[3] in col 40
+		total-ash-qty[3] in col 56
+	elseif 
+		ws-period-ago = 4
+	print
+		total-ash-value[4] in col 24
+		total-ash-cost[4] in col 40
+		total-ash-qty[4] in col 56
+	elseif 
+		ws-period-ago = 5
+	print
+		total-ash-value[5] in col 24
+		total-ash-cost[5] in col 40
+		total-ash-qty[5] in col 56
+	elseif 
+		ws-period-ago = 6
+	print
+		total-ash-value[6] in col 24
+		total-ash-cost[6] in col 40
+		total-ash-qty[6] in col 56
+	elseif 
+		ws-period-ago = 7
+	print
+		total-ash-value[7] in col 24
+		total-ash-cost[7] in col 40
+		total-ash-qty[7] in col 56
+	elseif 
+		ws-period-ago = 8
+	print
+		total-ash-value[8] in col 24
+		total-ash-cost[8] in col 40
+		total-ash-qty[8] in col 56
+	elseif 
+		ws-period-ago = 9
+	print
+		total-ash-value[9] in col 24
+		total-ash-cost[9] in col 40
+		total-ash-qty[9] in col 56
+	elseif 
+		ws-period-ago = 10
+	print
+		total-ash-value[10] in col 24
+		total-ash-cost[10] in col 40
+		total-ash-qty[10] in col 56
+	elseif 
+		ws-period-ago = 11
+	print
+		total-ash-value[11] in col 24
+		total-ash-cost[11] in col 40
+		total-ash-qty[11] in col 56
+	elseif 
+		ws-period-ago = 12
+	print
+		total-ash-value[12] in col 24
+		total-ash-cost[12] in col 40
+		total-ash-qty[12] in col 56
+	elseif 
+		ws-period-ago = 13
+	print
+		total-ash-value[13] in col 24
+		total-ash-cost[13] in col 40
+		total-ash-qty[13] in col 56
+	endif
+skip 3
+print
+	"Years ago:" in col 1
+	ws-years-ago in col 12
+print
+	"Period:" in col 1
+	ws-period-ago in col 12
+
+

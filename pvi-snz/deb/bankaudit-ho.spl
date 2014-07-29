@@ -1,0 +1,1306 @@
+// bankaudit-ho.spl
+// 15may14	rmd	{1} upgrade for 710.3
+//						tr-sort-key fix switch to trans-ref
+//						switch index accountcode tr-sort-key
+//							to accountcode trans-ref batch-ref dr-tr-trans-no
+//						suppress deb-trans-archive extract?  not used
+// 06may09	rmd direct GL transactions of T type not appearing, prefix detail with TRF
+// 30apr09	rmd	run a pass on bankrec-cash-trans to pickup trans for non deb accounts
+// 18mar09	rmd use tr-details = bct-details to lookup cheque drawer name
+// 19dec08	rmd -ho mode
+// 13nov08	rmd This is for reconciling banking, all bankable trans need to show, even ZCS*
+// 08oct08	rmd	display CCTPOS trans in EFTPOS section
+// 04oct08	rmd	get receipting store from uid on deb-trans, fallback to trans terr if not found
+// 02oct08	rmd bug when run over historical reaching back to previous month
+//				set user-id = login-id() prior to get system-user otherwise
+//				user-id contains random user account, we found root or robz
+
+// 13aug08P	rmd ensure correct point of receipt being recorded
+// 13aug08A	rmd	add tdt-dr-cust-type field to test for P if finance company
+//				if tdt-dr-cust-type = P and tdt-trans-type is CR this is a transfer
+// 08aug08	rmd add -eod switch assume start and finish = today, user-store-id
+// 07aug08	rmd add header
+// 28jul08	rmd	subtotal EFT items into EFTPOS, MC and V
+// 04jun08	rmd	shift date focus from date-stamp to trans-date add store filter
+// 04jun08	rmd switch to bankrec-cash-trans object...
+//				back to deb-trans, no way to filter store
+// 03jun08	rmd	added DRAFT detail to EFTPOS grouping
+// 23may08	rmd written
+
+
+//user-unix-id-no
+
+//#include "../../../../bms/include/i85codes.spl"   //{1}
+#include "/pro/pronto/bms/include/i85codes.spl"		//{1}
+
+
+field
+	ws-start-date							type date
+	ws-end-date								type date
+	ws-store								like territory
+	ws-store-desc							like na-company
+	ws-show-all-stores						type boolean
+	ws-rec-count							type numeric
+	ws-tmp-table-total						type numeric
+	ws-print-total							type numeric
+
+
+object tmp-deb-trans
+type is memory
+	record
+		//tdt-sort-order						type numeric
+		//tdt-dr-tr-date-stamp				like dr-tr-date-stamp // 04jun08
+		tdt-trans-date						like trans-date
+		tdt-accountcode                     like accountcode
+		tdt-shortname                       like shortname
+		tdt-bct-payee-details 				like bct-payee-details
+		tdt-trans-type                      like trans-type
+		tdt-trans-ref 						like trans-ref//tr-sort-key		// non-arc, trans-ref is arc
+		tdt-tr-details                      like tr-details
+		tdt-tr-amount                       like tr-amount
+		tdt-dr-tr-territory					like dr-tr-territory
+		tdt-bct-batch-ref					like bct-batch-ref
+		tdt-dr-cust-type					like dr-cust-type
+		tdt-cash-drawer						like dr-tr-territory
+	endrecord
+	key
+		//tdt-sort-order
+		tdt-trans-type
+		//tdt-dr-tr-date-stamp
+		tdt-trans-date
+		tdt-accountcode
+
+
+procedure main
+	open tmp-deb-trans truncate temporary
+	if get-param(1) = "-eod"
+		get system-control first
+		get system-user
+		on index user-id sys-comp-code
+		key is login-id() sys-consolidation-division
+		set ws-start-date		= today()
+		set ws-end-date         = today()
+		set ws-show-all-stores 	= FALSE
+		set ws-store			= user-store-id
+	elseif get-param(1) = "-ho"
+		do get-user-input-ho
+	else
+		//do get-user-input
+		do get-user-input-ho
+	endif
+	if get-param(1) = "-ho"
+		do build-dataset-bct
+		do build-dataset-ho
+	else
+		//do build-dataset-dt
+		do build-dataset-bct
+		do build-dataset-ho
+	endif
+	do print-report
+endprocedure // main ----------------------------------------------------------
+
+procedure get-user-input
+local field
+	lf-accept				pic x
+
+window @5,4 to @12,30 title is "Enter Details"
+	do determine-default-store
+		returning
+			ws-store
+	set ws-show-all-stores = FALSE
+	//display	login-id			@4,16 title is "UID:"
+	accept ws-start-date 	@5,16 title is "Start Date:"
+	accept ws-end-date 		@6,16 title is "End Date:"
+	accept ws-store			@7,16 title is "Store:"
+		//when not ws-show-all-stores
+		help "Enter the store you wish to report on, SPACE for ALL. [HELP]"
+		default ws-store
+		uppercase
+	on help-key
+		set sys-tbl-type = "TC"
+		do i85codes-table-help
+		if sys-tbl-code > SPACES
+			set ws-store = sys-tbl-code
+		endif
+		reenter ws-store optional
+	endon
+	validations
+		get system-table lookup
+			on index sys-tbl-type sys-tbl-code
+			key is "TC" ws-store
+		on error
+			if ws-store = SPACES
+			else
+				message "Store entered is not defined."
+				reenter ws-store
+			endif
+		endon
+	endvalidations
+	if ws-store = SPACES
+		set ws-store-desc = "All Stores"
+		set ws-show-all-stores = TRUE
+	else
+		set ws-show-all-stores = FALSE
+		get name-and-address-master
+		on index accountcode na-type
+		key is ws-store "WH"
+		on error
+			set ws-store-desc = "***"
+		else
+			set ws-store-desc = na-company
+		endon
+	endif
+
+	display ws-store-desc @8,8 background bold
+
+	accept lf-accept		@9,16 title is "Accept Y/N?"
+		uppercase
+		allowed "Y" "N"
+		default "Y"
+	if lf-accept = "N"
+		exit
+	endif
+endprocedure // get-user-input ------------------------------------------------
+
+procedure get-user-input-ho
+local field
+	lf-accept				pic x
+
+window @5,4 to @12,30 title is "Enter Details"
+
+	set ws-show-all-stores = TRUE
+	//display	login-id			@4,16 title is "UID:"
+	accept ws-start-date 	@5,16 title is "Start Date:"
+		default today()
+	accept ws-end-date 		@6,16 title is "End Date:"
+		default ws-start-date
+
+	accept lf-accept		@9,16 title is "Accept Y/N?"
+		uppercase
+		allowed "Y" "N"
+		default "Y"
+	if lf-accept = "N"
+		exit
+	endif
+endprocedure // get-user-input-ho ---------------------------------------------
+
+
+
+procedure build-dataset-dt
+local field
+	lf-continue				type boolean
+
+		//message ws-store
+		//message str(strlen(ws-store))
+
+		extract deb-trans
+		//on index accountcode tr-sort-key                      //{1}
+		on index accountcode trans-ref batch-ref dr-tr-trans-no	//{1}
+		//key is accountcode spaces
+		// when dr-tr-date-stamp between ws-start-date and ws-end-date
+		when trans-date between ws-start-date and ws-end-date
+		and trans-type in {"CR" "CP" "PD"}
+		// 30may08 - using new logic
+		////Exclude Post dated - Other Credit Card, Diners, Amex
+		//and substring(tr-details,1,2) not in {"CC","DC","AC"}
+		//or substring(tr-details,1,3) = "CCT") //CCTPOS - Credit transfer
+		//and substring(accountcode,1,3) != "ZCS"					//13nov08
+		detail
+			set lf-continue = FALSE
+			if dr-tr-territory = SPACES
+				//message "spaces"
+				get sales-order
+				on index so-order-no so-bo-suffix
+				key is dr-tr-order-no dr-tr-bo-suffix
+				on error
+					get sales-order-archive
+					on index so-order-no so-bo-suffix
+					key is dr-tr-order-no dr-tr-bo-suffix
+					on error
+						//set tdt-dr-tr-territory	= "000"
+						//message concat(accountcode "SOX:" str(dr-tr-order-no) dr-tr-bo-suffix " Terr:" tdt-dr-tr-territory)
+						get sales-order
+						on index so-order-no so-bo-suffix
+						key is num(strconcat(trans-ref)) SPACES
+						on error
+							get sales-order-archive
+							on index so-order-no so-bo-suffix
+							key is num(strconcat(trans-ref)) SPACES
+							on error
+								set tdt-dr-tr-territory	= "000"
+								message concat(accountcode "~SOX~:" str(dr-tr-order-no) dr-tr-bo-suffix " Terr:" tdt-dr-tr-territory)
+							endon
+						endon
+					else
+						set tdt-dr-tr-territory	= so-territory-code
+						//message concat("SOA:" str(dr-tr-order-no) dr-tr-bo-suffix " Terr:" tdt-dr-tr-territory)
+					endon
+				else
+					set tdt-dr-tr-territory	= so-territory-code
+					//message concat("SO:" str(dr-tr-order-no) dr-tr-bo-suffix " Terr:" tdt-dr-tr-territory)
+				endon
+			else
+				set tdt-dr-tr-territory	= dr-tr-territory
+			endif
+
+
+			// 30may08 - new method of determining if trans is postdated and if it is the cust or fincomp
+			// Exclude Post dated - Other Credit Card, Diners, Amex
+			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+				// this should be shown
+			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"} and trans-type = "PD"
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, show this transaction as the postdated trans against customer
+				else
+					// this is a finance account -
+					//message "fin act"
+					continue
+					//set lf-continue = TRUE
+				endif
+			endif
+			get deb-master
+			//set tdt-dr-tr-date-stamp 	= dr-tr-date-stamp
+			set tdt-trans-date 		 	= trans-date
+			set tdt-accountcode      	= accountcode
+			set tdt-shortname        	= shortname
+			set tdt-trans-type       	= trans-type
+			set tdt-trans-ref 	 		= trans-ref//tr-sort-key {1}
+			set tdt-tr-details       	= tr-details
+			set tdt-tr-amount        	= tr-amount
+			// if payment via cheque, obtain drawer name
+			set tdt-bct-payee-details 	= SPACES
+			set tdt-dr-cust-type	 	= dr-cust-type
+
+			//// get receipting store code 13aug08
+			//extract bankrec-cash-trans
+			//on index bct-batch-ref bct-trans-no
+			//key is batch-ref 0
+			//next same bct-batch-ref
+			//detail
+			//	if accountcode = bct-accountcode
+			//		set tdt-cash-drawer = bct-receipt-location
+			//	endif
+			//endextract
+
+
+			if substring(tdt-tr-details,1,6) = "CHEQUE"
+				extract bankrec-cash-trans
+				on index bct-batch-ref bct-trans-no
+				key is batch-ref 0
+				next same bct-batch-ref
+				detail
+					set tdt-bct-payee-details  = "Not Found"
+
+					// test accountcode
+					if accountcode != bct-accountcode
+						//message accountcode
+						//message bct-accountcode
+						continue
+						//set lf-continue = TRUE
+					endif
+
+					// test cheque #
+					//if strconcat(bct-document-no) != strconcat(substring(tr-details,8,30))
+					if left-justify(bct-document-no) != strconcat(substring(tr-details,8,30))
+						//message left-justify(bct-document-no)
+						//message strconcat(substring(tr-details,8,30))
+						continue
+						//set lf-continue = TRUE
+					endif
+
+					set tdt-bct-payee-details = bct-payee-details
+				endextract
+			endif
+
+			// 13aug08 obtain store code from login-id via dr-tr-uid
+			//message num(dr-tr-uid)
+			// 03oct08
+			//get system-control first
+			//set sys-comp-code = sys-consolidation-division
+			////message sys-comp-code
+			//
+			//get system-user-control
+			//on index user-unix-id-no
+			//key is num(dr-tr-uid)
+			//
+			////message user-id
+			//
+			//// 02oct08
+			//set user-id = login-id()
+			//get system-user
+			////on index user-id sys-comp-code
+			//
+			//set tdt-cash-drawer = user-store-id
+
+			//03oct08 - wtf?
+			//set tdt-dr-tr-territory = tdt-cash-drawer
+
+			//// 03oct08 get cash drawer using user-id
+			//get system-user-control
+			//on index user-unix-id-no
+			//key is num(dr-tr-uid)
+			//on error
+			//	set tdt-dr-tr-territory = SPACES
+			//else
+			//	set tdt-dr-tr-territory = substring(user-id,4,6)
+			//endon
+
+
+
+			//04oct08
+			get system-control first
+			set sys-comp-code = sys-consolidation-division
+
+			get system-user-control
+			on index user-unix-id-no
+			key is num(dr-tr-uid)
+
+			get system-user
+			on index user-id sys-comp-code
+			on error
+				// cannot get this user's store id, fallback to the territory of the transaction
+				set tdt-cash-drawer = tdt-dr-tr-territory
+			else
+				set tdt-cash-drawer = user-store-id
+			endon
+			set tdt-dr-tr-territory = tdt-cash-drawer
+
+
+
+
+
+			if ws-show-all-stores or (tdt-dr-tr-territory = ws-store)
+				set ws-tmp-table-total += tr-amount
+				insert tmp-deb-trans
+			endif
+		endextract
+
+		set lf-continue = FALSE
+		//<{1}
+        /*
+		extract deb-trans-archive
+		on index accountcode trans-ref
+		when trans-date between ws-start-date and ws-end-date
+		and trans-type in {"CR" "CP" "PD"}
+		//and substring(accountcode,1,3) != "ZCS"				//13nov08
+		detail
+			set lf-continue = FALSE
+			if dr-tr-territory = SPACES
+				//message "spaces"
+				get sales-order
+				on index so-order-no so-bo-suffix
+				key is dr-tr-order-no dr-tr-bo-suffix
+				on error
+					get sales-order-archive
+					on index so-order-no so-bo-suffix
+					key is dr-tr-order-no dr-tr-bo-suffix
+					on error
+						//message concat(accountcode "SOX:" str(dr-tr-order-no) dr-tr-bo-suffix " Terr:" tdt-dr-tr-territory)
+						get sales-order
+						on index so-order-no so-bo-suffix
+						key is num(strconcat(trans-ref)) SPACES
+						on error
+							get sales-order-archive
+							on index so-order-no so-bo-suffix
+							key is num(strconcat(trans-ref)) SPACES
+							on error
+								set tdt-dr-tr-territory	= "000"
+								message concat(accountcode "~SOX~:" str(dr-tr-order-no) dr-tr-bo-suffix " Terr:" tdt-dr-tr-territory)
+							endon
+						endon
+					else
+						set tdt-dr-tr-territory	= so-territory-code
+						//message concat("SOA:" str(dr-tr-order-no) dr-tr-bo-suffix " Terr:" tdt-dr-tr-territory)
+					endon
+				else
+					set tdt-dr-tr-territory	= so-territory-code
+					//message concat("SO:" str(dr-tr-order-no) dr-tr-bo-suffix " Terr:" tdt-dr-tr-territory)
+				endon
+			else
+				set tdt-dr-tr-territory	= dr-tr-territory
+			endif
+			// 30may08 - new method of determining if trans is postdated and if it is the cust or fincomp
+			// Exclude Post dated - Other Credit Card, Diners, Amex
+			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+				// this should be shown
+			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"} and trans-type = "PD"
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, show this transaction as the postdated trans against customer
+				else
+					// this is a finance account -
+					//message "fin act"
+					continue
+					//set lf-continue = TRUE
+				endif
+			endif
+			get deb-master
+			//set tdt-dr-tr-date-stamp = dr-tr-date-stamp
+			set tdt-trans-date 		 	= trans-date
+			set tdt-accountcode      	= accountcode
+			set tdt-shortname        	= shortname
+			set tdt-trans-type       	= trans-type
+			set tdt-trans-ref 	 		= trans-ref//trans-ref {1}
+			set tdt-tr-details       	= tr-details
+			set tdt-tr-amount        	= tr-amount
+			// if payment via cheque, obtain drawer name
+			set tdt-bct-payee-details 	= SPACES
+			set tdt-tr-amount        	= tr-amount
+
+			//// get receipting store code 13aug08
+			//extract bankrec-cash-trans
+			//on index bct-batch-ref bct-trans-no
+			//key is batch-ref 0
+			//next same bct-batch-ref
+			//detail
+			//	if accountcode = bct-accountcode
+			//		set tdt-cash-drawer = bct-receipt-location
+			//	endif
+			//endextract
+
+			if substring(tdt-tr-details,1,6) = "CHEQUE"
+				extract bankrec-cash-trans
+				on index bct-batch-ref bct-trans-no
+				key is batch-ref 0
+				next same bct-batch-ref
+				detail
+					set tdt-bct-payee-details  = "Not Found"
+
+					// test accountcode
+					if accountcode  != bct-accountcode
+						//message accountcode
+						//message bct-accountcode
+						continue
+						//set lf-continue = TRUE
+					endif
+
+					// test cheque #
+					//if strconcat(bct-document-no) != strconcat(substring(tr-details,8,30))
+					if left-justify(bct-document-no) != strconcat(substring(tr-details,8,30))
+						//message left-justify(bct-document-no)
+						//message strconcat(substring(tr-details,8,30))
+						continue
+						//set lf-continue = TRUE
+					endif
+
+					set tdt-bct-payee-details = bct-payee-details
+				endextract
+			endif
+
+			// 03oct08
+			//// 13aug08 obtain store code from login-id via dr-tr-uid
+			////message num(dr-tr-uid)
+			//get system-control first
+			//set sys-comp-code = sys-consolidation-division
+			////message sys-comp-code
+			//
+			//get system-user-control
+			//on index user-unix-id-no
+			//key is num(dr-tr-uid)
+			//
+			////message user-id
+			//
+			//// 02oct08
+			//set user-id = login-id()
+			//get system-user
+			////on index user-id sys-comp-code
+			//
+			//set tdt-cash-drawer = user-store-id
+            //
+            //
+			//set tdt-dr-tr-territory = tdt-cash-drawer
+
+
+			//// 03oct08 get cash drawer using user-id
+			//get system-user-control
+			//on index user-unix-id-no
+			//key is num(dr-tr-uid)
+			//on error
+			//	set tdt-dr-tr-territory = SPACES
+			//else
+			//	set tdt-dr-tr-territory = substring(user-id,4,6)
+			//endon
+
+
+
+
+
+
+			//04oct08
+			get system-control first
+			set sys-comp-code = sys-consolidation-division
+
+			get system-user-control
+			on index user-unix-id-no
+			key is num(dr-tr-uid)
+
+			get system-user
+			on index user-id sys-comp-code
+			on error
+				// cannot get this user's store id, fallback to the territory of the transaction
+				set tdt-cash-drawer = tdt-dr-tr-territory
+			else
+				set tdt-cash-drawer = user-store-id
+			endon
+			set tdt-dr-tr-territory = tdt-cash-drawer
+
+
+
+
+
+			//if ws-show-all-stores or (tdt-dr-tr-territory = ws-store)
+			//	insert tmp-deb-trans
+			//endif
+
+
+
+
+
+
+			if ws-show-all-stores or (tdt-dr-tr-territory = ws-store)
+				set ws-tmp-table-total += tr-amount
+				insert tmp-deb-trans
+			endif
+		endextract
+        */
+        //>{1}
+		set lf-continue = FALSE
+
+endprocedure // build-dataset-dt ----------------------------------------------
+
+procedure build-dataset-ho
+local field
+	lf-continue				type boolean
+
+
+
+		extract deb-trans
+		//on index accountcode tr-sort-key                      //{1}
+		on index accountcode trans-ref batch-ref dr-tr-trans-no	//{1}
+		when trans-date between ws-start-date and ws-end-date
+		and trans-type in {"CR" "CP" "PD" "CU"} // 30apr09 added CU for HO trans.
+		detail
+			set tdt-dr-tr-territory	= dr-tr-territory
+			// 30may08 - new method of determining if trans is postdated and if it is the cust or fincomp
+			// Exclude Post dated - Other Credit Card, Diners, Amex
+			// 13mar09 add TFR transfers
+			//if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+			if substring(tr-details,1,3) in {"CCT" "TFR"} //CCTPOS - Credit transfer
+				// this should be shown
+				//message tr-details
+			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"} and trans-type = "PD"
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, show this transaction as the postdated trans against customer
+				else
+					// this is a finance account -
+					//message "fin act"
+					continue
+					//set lf-continue = TRUE
+				endif
+			endif
+			get deb-master
+			//set tdt-dr-tr-date-stamp 	= dr-tr-date-stamp
+			set tdt-trans-date 		 	= trans-date
+			set tdt-accountcode      	= accountcode
+			set tdt-shortname        	= shortname
+			set tdt-trans-type       	= trans-type
+			set tdt-trans-ref 	 		= trans-ref//tr-sort-key {1}
+			set tdt-tr-details       	= tr-details
+			set tdt-tr-amount        	= tr-amount
+			// if payment via cheque, obtain drawer name
+			set tdt-bct-payee-details 	= SPACES
+			set tdt-dr-cust-type	 	= dr-cust-type
+
+
+
+			if substring(tdt-tr-details,1,6) = "CHEQUE"
+				set tdt-bct-payee-details  = "Not Found."
+				extract bankrec-cash-trans
+				on index bct-batch-ref bct-trans-no
+				key is batch-ref 0
+				next same bct-batch-ref
+				detail
+					// 18mar09
+					// test accountcode and chq#
+					if tdt-accountcode = bct-accountcode and tdt-tr-details = bct-details
+						set tdt-bct-payee-details = bct-payee-details
+					endif
+				endextract
+			endif
+
+			//04oct08
+			get system-control first
+			set sys-comp-code = sys-consolidation-division
+
+			get system-user-control
+			on index user-unix-id-no
+			key is num(dr-tr-uid)
+
+			get system-user
+			on index user-id sys-comp-code
+			on error
+				// cannot get this user's store id, fallback to the territory of the transaction
+				set tdt-cash-drawer = tdt-dr-tr-territory
+			else
+				set tdt-cash-drawer = user-store-id
+			endon
+			set tdt-dr-tr-territory = tdt-cash-drawer
+
+
+
+			if ws-show-all-stores or (tdt-dr-tr-territory = ws-store)
+				set ws-tmp-table-total += tr-amount
+				insert tmp-deb-trans
+			endif
+		endextract
+
+		set lf-continue = FALSE
+        //<{1}
+        /*
+		extract deb-trans-archive
+		on index accountcode trans-ref
+		when trans-date between ws-start-date and ws-end-date
+		and trans-type in {"CR" "CP" "PD" "CU"} //30apr09 CU trans type added for HO
+		//and substring(accountcode,1,3) != "ZCS"				//13nov08
+		detail
+			set tdt-dr-tr-territory	= dr-tr-territory
+			// 30may08 - new method of determining if trans is postdated and if it is the cust or fincomp
+			// Exclude Post dated - Other Credit Card, Diners, Amex
+			// 13mar09 add TFR transfers
+			//if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+			if substring(tr-details,1,3) in {"CCT" "TFR"} //CCTPOS - Credit transfer
+				// this should be shown
+				//message tr-details
+			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"} and trans-type = "PD"
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, show this transaction as the postdated trans against customer
+				else
+					// this is a finance account -
+					//message "fin act"
+					continue
+					//set lf-continue = TRUE
+				endif
+			endif
+			get deb-master
+			//set tdt-dr-tr-date-stamp = dr-tr-date-stamp
+			set tdt-trans-date 		 	= trans-date
+			set tdt-accountcode      	= accountcode
+			set tdt-shortname        	= shortname
+			set tdt-trans-type       	= trans-type
+			set tdt-trans-ref 	 		= trans-ref//trans-ref {1}
+			set tdt-tr-details       	= tr-details
+			set tdt-tr-amount        	= tr-amount
+			// if payment via cheque, obtain drawer name
+			set tdt-bct-payee-details 	= SPACES
+			//set tdt-tr-amount        	= tr-amount
+
+
+			if substring(tdt-tr-details,1,6) = "CHEQUE"
+				set tdt-bct-payee-details  = "Not Found."
+				extract bankrec-cash-trans
+				on index bct-batch-ref bct-trans-no
+				key is batch-ref 0
+				next same bct-batch-ref
+				detail
+					// 18mar09
+					// test accountcode and chq#
+					if tdt-accountcode = bct-accountcode and tdt-tr-details = bct-details
+						set tdt-bct-payee-details = bct-payee-details
+					endif
+				endextract
+			endif
+
+
+			//04oct08
+			get system-control first
+			set sys-comp-code = sys-consolidation-division
+
+			get system-user-control
+			on index user-unix-id-no
+			key is num(dr-tr-uid)
+
+			get system-user
+			on index user-id sys-comp-code
+			on error
+				// cannot get this user's store id, fallback to the territory of the transaction
+				set tdt-cash-drawer = tdt-dr-tr-territory
+			else
+				set tdt-cash-drawer = user-store-id
+			endon
+			set tdt-dr-tr-territory = tdt-cash-drawer
+
+
+
+
+
+			if ws-show-all-stores or (tdt-dr-tr-territory = ws-store)
+				set ws-tmp-table-total += tr-amount
+				insert tmp-deb-trans
+			endif
+
+		endextract
+        */
+        //{1}
+		set lf-continue = FALSE
+
+endprocedure // build-dataset-ho ----------------------------------------------
+
+//30apr09
+procedure build-dataset-bct
+local field
+	lf-continue				type boolean
+
+
+
+		select *
+		from
+			bankrec-cash-trans
+		where
+			bct-date between ws-start-date and ws-end-date
+			and
+			bct-trans-type in {"Q" "T"} // cheques and transfers
+		detail
+			get deb-master
+			on index accountcode
+			key is bct-accountcode
+			on error
+				set tdt-trans-date 		 	= bct-date
+				set tdt-accountcode      	= bct-accountcode
+				set tdt-shortname        	= bct-shortname
+				set tdt-trans-type       	= bct-trans-type // Q or T
+				set tdt-trans-ref 	 		= strconcat(bct-document-no)
+				if bct-trans-type = "Q" and substring(bct-details,1,6) != "CHEQUE"
+					set tdt-tr-details  = concat("CHEQUE " strconcat(bct-details))
+				else
+					// 06may09 missing transfers from the output
+					//set tdt-tr-details    bct-details
+					set tdt-tr-details      = concat("TFR " strconcat(bct-details)) // bct-details
+					// 06may09
+				endif
+
+
+				//substring(tdt-tr-details,1,3) = "TFR"
+				set tdt-tr-amount        	= bct-local-amount
+				// if payment via cheque, obtain drawer name
+				set tdt-bct-payee-details 	= bct-payee-details
+				set tdt-dr-cust-type	 	= "BC" //dr-cust-type
+				set ws-tmp-table-total 		+= bct-local-amount
+				insert tmp-deb-trans
+			else
+			endon
+	    endselect
+endprocedure // build-dataset-bct ---------------------------------------------
+
+//30apr09
+
+
+procedure print-report
+local field
+	st-cash                             type numeric
+	st-cheque                           type numeric
+	st-eft-debit                        type numeric
+	st-mc                               type numeric
+	st-vc                               type numeric
+	st-banking							type numeric
+	st-eftpos                           type numeric
+	st-takings							type numeric
+	st-transfer							type numeric
+	st-post-dated						type numeric
+	gt-grand-total						type numeric
+
+	//message concat("Record Count: " str(ws-rec-count))
+	report "Bank Audit"
+	header is top-of-page
+	page
+	need 8
+
+	set st-cash     	= 0
+	set st-cheque   	= 0
+	set st-eft-debit	= 0
+	set st-mc       	= 0
+	set st-vc       	= 0
+	set st-banking  	= 0
+	set st-eftpos   	= 0
+	set st-takings  	= 0
+	set st-transfer		= 0
+	set st-post-dated 	= 0
+
+
+	if get-param(1) = "-ho"
+		print
+			"Payment Type Transfer" in col 1 bold
+		extract tmp-deb-trans
+		//when substring(tdt-trans-type,1,1) = "H"
+		//when tdt-tr-details = SPACES
+		//when substring(tdt-tr-details,1,3) = "TFR"  // 13aug08
+		//when substring(tdt-tr-details,1,3) = "TFR"
+		//when tdt-dr-cust-type = "P" and tdt-trans-type = "CR"
+		when substring(tdt-tr-details,1,3) = "TFR"
+		detail
+			print
+				//tdt-dr-tr-date-stamp			in col 1
+				tdt-trans-date					in col 1
+				tdt-accountcode					in col 14
+				tdt-shortname					in col 26
+				tdt-dr-tr-territory				in col 55
+				tdt-trans-ref					in col 60
+				tdt-tr-details  				in col 75
+
+				tdt-tr-amount					in col 110
+				//tdt-dr-tr-territory				in col 120
+				//tdt-cash-drawer					in col 127
+			set st-transfer						+= tdt-tr-amount
+			set gt-grand-total					+= tdt-tr-amount
+		endextract
+		print
+			"Total Transfer"		 		in col 93						bold
+			st-transfer						in col 113 pic -,---,--9.99		bold
+	endif
+
+	skip 2
+	need 8
+	print
+		"Payment Type Cash" in col 1 bold
+
+	extract tmp-deb-trans
+	//when substring(tdt-trans-type,1,1) = "H"
+	//when tdt-tr-details = SPACES
+	when substring(tdt-tr-details,1,2) = "H_"
+	detail
+		print
+			//tdt-dr-tr-date-stamp			in col 1
+			tdt-trans-date					in col 1
+			tdt-accountcode					in col 14
+			tdt-shortname					in col 26
+			tdt-dr-tr-territory				in col 55
+			tdt-trans-ref					in col 60
+			tdt-tr-details  				in col 75
+
+			tdt-tr-amount					in col 110
+			//tdt-dr-tr-territory				in col 120
+			//tdt-cash-drawer					in col 127
+		set st-cash							+= tdt-tr-amount
+		set st-banking  					+= tdt-tr-amount
+		set gt-grand-total					+= tdt-tr-amount
+
+
+	endextract
+
+		print
+			"Total Cash"		 			in col 93
+			st-cash							in col 113 pic -,---,--9.99
+
+	skip 2
+
+	need 8
+	if get-param(1) = "-ho"
+		print
+			"Payment Type Cheque" 	in col 001 bold
+	else
+		print
+			"Payment Type Cheque" 	in col 001 bold
+			"Cheque#"				in col 082 bold
+			"Drawer Name"			in col 093 bold
+	endif
+	extract tmp-deb-trans
+	//when substring(tdt-trans-type,1,1) = "Q"
+	when substring(tdt-tr-details,1,6) = "CHEQUE"
+	detail
+		if get-param(1) = "-ho"
+			//18mar09
+			//set tdt-bct-payee-details = SPACES
+		endif
+		print
+			//tdt-dr-tr-date-stamp			in col 1
+			tdt-trans-date					in col 1
+			tdt-accountcode					in col 14
+			tdt-shortname					in col 26
+			tdt-dr-tr-territory				in col 55
+			tdt-trans-ref					in col 60
+			tdt-tr-details					in col 75
+			tdt-bct-payee-details			in col 93
+			tdt-tr-amount					in col 110
+			//tdt-dr-tr-territory				in col 120
+			//tdt-cash-drawer					in col 127
+		set st-cheque						+= tdt-tr-amount
+		set st-banking  					+= tdt-tr-amount
+		set gt-grand-total					+= tdt-tr-amount
+	endextract
+		print
+			"Total Cheque"		 			in col 93
+			st-cheque							in col 113 		pic -,---,--9.99
+
+		skip
+		print
+			"Total for Banking" 			in col 93 bold
+			st-banking						in col 113 bold  	pic -,---,--9.99
+
+	skip 2
+	need 8
+	print
+		"Payment by EFTPOS Direct Debit" in col 1 bold
+	extract tmp-deb-trans
+	//when substring(tdt-trans-type,1,1) = "Q"
+	//when substring(tdt-tr-details,1,6) = "EFTPOS"
+	//when substring(tdt-tr-details,1,5) in {"DRAFT" "EFTPO"} // 03jun08
+	when substring(tdt-tr-details,1,5) in {"DRAFT" "EFTPO" "CCTPO"} // 08oct08
+	detail
+		print
+			//tdt-dr-tr-date-stamp			in col 1
+			tdt-trans-date					in col 1
+			tdt-accountcode					in col 14
+			tdt-shortname					in col 26
+			tdt-dr-tr-territory				in col 55
+			tdt-trans-ref					in col 60
+			tdt-tr-details					in col 75
+			tdt-bct-payee-details			in col 95
+			tdt-tr-amount					in col 110
+			//tdt-dr-tr-territory				in col 120
+			//tdt-cash-drawer					in col 127
+		set st-eft-debit					+= tdt-tr-amount
+		set st-eftpos	  					+= tdt-tr-amount
+		set gt-grand-total					+= tdt-tr-amount
+	endextract
+
+		print
+			"Total EFT Direct Debit"		in col 93
+			st-eft-debit					in col 113 pic -,---,--9.99
+
+	skip 2
+	need 8
+	print
+		"Payment by Visa" in col 1 bold
+	extract tmp-deb-trans
+	//when substring(tdt-trans-type,1,1) = "Q"
+	when substring(tdt-tr-details,1,2) = "VC"
+	detail
+		print
+			//tdt-dr-tr-date-stamp			in col 1
+			tdt-trans-date					in col 1
+			tdt-accountcode					in col 14
+			tdt-shortname					in col 26
+			tdt-dr-tr-territory				in col 55
+			tdt-trans-ref					in col 60
+			tdt-tr-details					in col 75
+			tdt-bct-payee-details			in col 95
+			tdt-tr-amount					in col 110
+			//tdt-dr-tr-territory				in col 120
+			//tdt-cash-drawer					in col 127
+		set st-vc			  				+= tdt-tr-amount
+		set st-eftpos		  				+= tdt-tr-amount
+		set gt-grand-total					+= tdt-tr-amount
+	endextract
+		print
+			"Total Visa"					in col 93
+			st-vc							in col 113 pic -,---,--9.99
+
+	skip 2
+	need 8
+	print
+		"Payment by MasterCard" in col 1 bold
+	extract tmp-deb-trans
+	//when substring(tdt-trans-type,1,1) = "Q"
+	when substring(tdt-tr-details,1,2) = "MC"
+	detail
+		print
+			//tdt-dr-tr-date-stamp			in col 1
+			tdt-trans-date					in col 1
+			tdt-accountcode					in col 14
+			tdt-shortname					in col 26
+			tdt-dr-tr-territory				in col 55
+			tdt-trans-ref					in col 60
+			tdt-tr-details					in col 75
+			tdt-bct-payee-details			in col 95
+			tdt-tr-amount					in col 110
+			//tdt-dr-tr-territory				in col 120
+			//tdt-cash-drawer					in col 127
+		set st-mc			  				+= tdt-tr-amount
+		set st-eftpos		  				+= tdt-tr-amount
+		set gt-grand-total					+= tdt-tr-amount
+	endextract
+		print
+			"Total Mastercard"				in col 93
+			st-mc							in col 113 pic -,---,--9.99
+		skip
+
+		print
+			"Total EFTPOS" 					in col 93 bold
+			st-eftpos						in col 113 bold  pic -,---,--9.99
+		set st-takings = st-banking + st-eftpos
+		if get-param(1) = "-ho"
+		else
+			print
+				"Total for DAY"					in col 93 bold
+				st-takings						in col 113 bold pic -,---,--9.99
+		endif
+
+	skip 6
+	need 8
+	if get-param(1) = "-ho"
+	else
+		print
+			"Payment Type Transfer" in col 1 bold
+		extract tmp-deb-trans
+		//when substring(tdt-trans-type,1,1) = "H"
+		//when tdt-tr-details = SPACES
+		//when substring(tdt-tr-details,1,3) = "TFR"  // 13aug08
+		//when substring(tdt-tr-details,1,3) = "TFR"
+		when tdt-dr-cust-type = "P" and tdt-trans-type = "CR"
+		detail
+			print
+				//tdt-dr-tr-date-stamp			in col 1
+				tdt-trans-date					in col 1
+				tdt-accountcode					in col 14
+				tdt-shortname					in col 26
+				tdt-dr-tr-territory				in col 55
+				tdt-trans-ref					in col 60
+				tdt-tr-details  				in col 75
+
+				tdt-tr-amount					in col 110
+				//tdt-dr-tr-territory			in col 120
+				//tdt-cash-drawer				in col 127
+			set st-transfer						+= tdt-tr-amount
+			set gt-grand-total					+= tdt-tr-amount
+		endextract
+		print
+			"Total Transfer"		 		in col 93						bold
+			st-transfer						in col 113 pic -,---,--9.99		bold
+	endif
+
+
+
+
+	skip 6
+	need 8
+	print
+		"Postdated payments recieved for"	bold
+		ws-start-date                       bold
+		"to"                                bold
+		ws-end-date                         bold
+
+	extract tmp-deb-trans
+	when tdt-trans-type = "PD"
+	detail
+		print
+			// tdt-dr-tr-date-stamp			in col 1
+			tdt-trans-date					in col 1
+			tdt-accountcode					in col 14
+			tdt-shortname					in col 26
+			tdt-dr-tr-territory				in col 55
+			tdt-trans-ref					in col 60
+			tdt-tr-details					in col 75
+			tdt-bct-payee-details			in col 95
+			tdt-tr-amount					in col 110
+			//tdt-cash-drawer					in col 127
+
+		set st-post-dated					+= tdt-tr-amount
+		set gt-grand-total					+= tdt-tr-amount
+
+	endextract
+
+		print
+			"Total for Postdated"			in col 93 bold
+			st-post-dated					in col 113 bold pic -,---,--9.99
+
+
+		if ws-tmp-table-total != gt-grand-total
+			//message "Warning: Report does not match Transactions"
+			skip
+				print
+					"******************************************************" bold
+				print
+					"** WARNING: REPORT DOES NOT MATCH TRANSACTION TOTAL **" bold
+				print
+					"**       SOME TRANSACTION TYPES MAY BE MISSING      **" bold
+				print
+					"**             PLEASE CONTACT SUPPORT               **" bold
+
+				print
+					"** Transaction Amount:"  	in col 1
+					ws-tmp-table-total		in col 32
+					"**"
+
+				print
+					"** Report Amount:"		in col 1
+					gt-grand-total			in col 32
+					"**"
+
+				print
+					"******************************************************" bold
+
+		endif
+
+	report finished
+	if ws-tmp-table-total != gt-grand-total
+		message "Warning: Report does not match Transactions"
+	endif
+endprocedure // print-report --------------------------------------------------
+
+
+
+
+procedure determine-default-store
+	returning
+		lr-default-store				like so-territory-code
+	//
+	local field
+		lf-record-count					pic 9
+	//
+	set lf-record-count = ZERO
+	select *
+	from
+		system-table
+	order by
+		sys-tbl-type
+		sys-tbl-code
+	when
+		sys-tbl-type = "TC"
+	detail
+		set lf-record-count += 1
+		set lr-default-store = sys-tbl-code
+		if lf-record-count > 1
+			set lr-default-store = SPACES
+			break
+		endif
+	endselect
+endprocedure // determine-default-store ---------------------------------------
+
+procedure top-of-page
+	print
+		company-name col 1 SCALE 200 BOLD
+		//today() col 95
+		//tod() col 107
+		//"Prepared:" in col 61
+
+		//"by" in col 89
+		//login-id() in col 92
+		concat("BANK AUDIT REPORT   " julian2date(ws-start-date) " - " julian2date(ws-end-date)) col 33 bold
+		today() in col 99
+		tod() in col 111 pic HH:MM
+		"Page :" col 117
+		left-justify(str(page-no())) col 124
+		//no-new-line
+
+	if ws-show-all-stores
+		print
+			//"Store:"
+			"All Stores"
+			//"ORDERS AS AT:" 								col 45 	bold
+			//today()											col 58	bold
+	else
+		print
+			//"Store:"
+			ws-store
+			ws-store-desc
+			//"CUSTOMER TRANSACTIONS AND OUTSTANDING" col 39 bold
+			//today() in col 108
+			//tod() in col 120 pic HH:MM
+			//"ORDERS AS AT:" 								col 45 	bold
+			//today()											col 58	bold
+
+	endif
+
+	skip 1
+
+
+	//	print
+	//		strconcat("Customer Outstanding Orders") in col 1 font 15 bold // scale 200 bold
+
+
+		print
+			//"Date         Account       Drawer Name                           Trans Ref          Cheque #         Amount"
+			"Date" 			in col 001
+			"Account"		in col 014
+			"Customer Name"	in col 026
+			"Invoice"		in col 061
+			"Trans Ref"		in col 072
+			//"Cheque#"		in col 082
+			//"Drawer Name"	in col 090
+			"Amount"		in col 119
+		//print
+		//	"================================================================================|"
+		//	"<============= $==========>"
+
+		//print
+		//	"Acct"							in col 1           	bold
+		//	"Trans"							in col 8           	bold
+		//	"Trans"							in col 21          	bold
+		//	"Trans"							in col 28          	bold
+		//	"Trans"							in col 35          	bold
+		//	"Trans"							in col 51          	bold
+		//
+		//	"Store"							in col 59		   	bold
+		//	"Order"							in col 65          	bold
+		//	"Order"							in col 80          	bold
+		//	"Order"							in col 87          	bold
+		//	"Order"							in col 121         	bold
+        //
+	    //
+		//print
+		//	"Code"							in col 1           	bold
+		//	"Date"							in col 8           	bold
+		//	"Type"							in col 21          	bold
+		//	"Ref"							in col 28          	bold
+		//	"Details"						in col 35          	bold
+		//	"Amount"						in col 50          	bold
+		//
+		//	"Code"							in col 59			bold
+		//	"Date"							in col 65          	bold
+		//	"Number"						in col 79          	bold
+		//	"Status"						in col 87          	bold
+		//	"Amount"						in col 120         	bold
+
+		//print
+        //
+		//	"Time"							in col ws-col-1     bold  	// underline bold
+		//	"Order"							in col ws-col-2 + 3 bold  	// underline bold
+		//	//"Delivery"					in col ws-col-3     bold  	// underline bold
+		//	"Customer"						in col ws-col-4     bold  	// underline bold
+		//	"Phone #"						in col ws-col-5     bold  	// underline bold
+		//	"Address"						in col ws-col-6 	bold	// underline bold
+		//	"Balance"						in col ws-col-7	+ 1	bold  	// underline bold
+
+endprocedure // top-of-page ---------------------------------------------------
+
+
+				///*
+				////if substring(dr-tr-territory,1,3) = ws-store
+				////else
+				////	continue
+				////endif
+				//// get the order
+				//get sales-order
+				//on index so-order-no so-bo-suffix
+				//key is dr-tr-order-no dr-tr-bo-suffix
+				//on error
+				//	get sales-order
+				//	on index so-order-no so-bo-suffix
+				//	key is dr-tr-order-no dr-tr-bo-suffix
+				//	on error
+				//		// there is no order to match this trans
+				//	else
+				//		set tdt-dr-tr-territory	= so-territory-code
+				//		if so-territory-code != ws-store
+				//			continue
+				//		endif
+				//	endon
+				//else
+				//	set tdt-dr-tr-territory	= so-territory-code
+				//	if so-territory-code != ws-store
+				//		continue
+				//	endif
+				//endon
+				//*/
+
+// bankaudit-ho.spl

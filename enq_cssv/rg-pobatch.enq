@@ -1,0 +1,9 @@
+// gl Batch numbers of po in archive
+select
+	po-order-no
+	po-batch-ref
+from
+	purchase-order-archive
+where
+	( po-batch-ref != " "  )
+format is lst

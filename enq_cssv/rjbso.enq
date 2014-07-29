@@ -1,0 +1,11 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-actual-delivery-date
+	so-order-total-amount
+from
+	sales-order-archive
+where
+	so-actual-delivery-date between 01-jan-00 and 31-dec-00 
+	and so-order-total-amount >= 5000 
+format is lst

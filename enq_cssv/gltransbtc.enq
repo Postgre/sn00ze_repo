@@ -1,0 +1,127 @@
+select
+	gl-accountcode
+	gl-tr-uid
+	gl-subledger-code
+	gl-trans-type
+	gl-trans-date
+	gl-reference
+	gl-details
+	gl-batch-ref
+	gl-amount
+	company-name
+	ws-start-code = input
+		string
+		prompt is "Enter start GL code   :"
+	ws-end-code = input
+		string
+		prompt is "Enter   end GL code   :"
+	ws-start-date = input
+		date
+		prompt is "Enter start trans date:"
+	ws-end-date = input
+		date
+		prompt is "Enter   end trans date:"
+	gl-desc
+from
+	gl-trans
+	system-control
+	gl-master
+where
+	gl-accountcode between ws-start-code and ws-end-code 
+	and gl-trans-date between ws-start-date and ws-end-date 
+order by gl-accountcode gl-reference 
+format is rpt
+field new-gl-accountcode pic 9
+field sub-total-gl-amount like gl-amount
+field total-gl-amount like gl-amount
+report header
+	page
+header
+	print 
+		company-name in col 1
+		"General Ledger Transactions" in col 54
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 125
+	print "by Reference" in col 61
+	skip
+	print
+		"(Account)" in col 1
+	print
+		"Login ID" in col 4
+		"Subledger" in col 16
+		"Type" in col 28
+		"Date" in col 37
+		"Reference" in col 49
+		"Details" in col 63
+		"Batch" in col 103
+		"Amount" in col 117
+	print
+		"=================================================================================================================================" in col 1
+	skip 1
+before gl-accountcode
+	set new-gl-accountcode = 1
+	set total-gl-amount = 0
+
+before gl-reference
+	set sub-total-gl-amount = 0
+
+detail
+	if (new-gl-accountcode)
+	print
+		gl-accountcode in col 1
+		gl-desc in col 17
+	skip
+	endif
+	print
+		gl-tr-uid in col 5
+		gl-subledger-code in col 15
+		gl-trans-type in col 29
+		gl-trans-date in col 34
+		gl-reference in col 49
+		gl-details in col 62
+		gl-batch-ref in col 105
+		gl-amount in col 112 pic zzz,zzz,zz9.99-
+	set new-gl-accountcode = 0
+	set total-gl-amount += gl-amount
+	set sub-total-gl-amount += gl-amount
+after gl-reference
+	print
+		"---------------" in col 112
+	if sub-total-gl-amount != 0
+		print
+			"TOTAL FOR REFERENCE" in col 79 bold 
+			gl-reference in col 99 bold
+			sub-total-gl-amount in col 112 pic zzz,zzz,zz9.99- bold 
+	else
+		print
+			"TOTAL FOR REFERENCE" in col 79  
+			gl-reference in col 99 
+			sub-total-gl-amount in col 112 pic zzz,zzz,zz9.99-  
+	endif
+	skip
+after gl-accountcode
+	print
+		"---------------" in col 112
+	print
+		"TOTAL FOR ACCOUNT" in col 74 bold 
+		gl-accountcode in col 92 bold 
+		total-gl-amount in col 112 pic zzz,zzz,zz9.99- bold 
+	skip 2
+report footer
+	print "Program Name     :" in col 10
+		"gltransbtc.enq" in col 33
+	skip
+	print "Start GL code    :" in col 10
+		ws-start-code in col 33 pic x(15)
+	print 
+		"End   GL code    :" in col 10
+		ws-end-code in col 33 pic x(15)
+	print 
+		"Start trans date :" in col 10
+		ws-start-date in col 33 pic dd-mmm-yy
+	print 
+		"End   trans date :" in col 10
+		ws-end-date in col 33 pic dd-mmm-yy
+

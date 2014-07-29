@@ -1,0 +1,9 @@
+select
+	sys-company
+	sys-status
+	company-name
+	sys-so-territory-default
+	sys-consolidation-division
+from
+	system-control
+format is lst

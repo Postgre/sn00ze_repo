@@ -1,0 +1,16 @@
+select
+	stk-user-group
+	whse-code
+	ash-value-lytd
+	stock-code
+	stock-group
+	stock-owner-code
+from
+	outer stock-master
+	outer stock-weekly-sales-history
+	outer stock-warehouse-detail
+	outer warehouse-stock-master
+	stock-aged-sales-history
+where
+	stk-user-group[2] = "IS" 
+format is lst

@@ -1,0 +1,86 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	stk-desc-line-2
+	whse-code
+	whse-qty-on-hand
+	whse-current-orders
+	whse-back-orders
+	whse-qty-on-order
+	ws-stock-avail = whse-qty-on-hand - whse-current-orders 
+	ws-whse-code = input alpha "Please enter your warehouse code:"
+	ws-start-stockcode = input alpha "Start Stock Code:"
+	ws-end-stockcode = input alpha "End Stock Code:"
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+	ws-stk-supp = substring (stock-code 1 3) 
+from
+	stock-master
+	stock-warehouse-detail
+	system-table
+where
+	sys-tbl-type = 'PG' 
+	and sys-tbl-code = stock-group 
+	and whse-code = ws-whse-code 
+	and ws-stock-avail != 0 
+	and stock-code between ws-start-stockcode and ws-end-stockcode 
+order by stock-group ws-stk-supp stk-description stk-desc-line-2 
+format is rpt
+field new-stock-group pic 9
+field new-sys-description pic 9
+report header
+header
+	print 
+		"rjbstavlpg" in col 1
+		"STOCK AVAILABLE REPORT IN PRODUCT GROUP SEQUENCE" in col 27
+		today() in col 100
+		"Pageno." in col 115
+		pageno() in col 122
+	skip 2
+	print
+		"Stock" in col 3
+		"On" in col 21
+		"On" in col 31
+		"On Back" in col 49
+		"Stock" in col 60 bold 
+	print
+		"Code" in col 3
+		"Hand" in col 20
+		"Order" in col 30
+		"Commit" in col 40
+		"Order" in col 50
+		"Available" in col 58 bold 
+		"Description" in col 69
+	print "=================================================================================================================================" in col 1
+	skip
+	skip 1
+before stock-group
+	set new-stock-group = 1
+	page
+before sys-description
+	set new-sys-description = 1
+
+detail
+	if (new-stock-group)
+	endif
+	if (new-sys-description)
+		print sys-description in col 24 bold underlined
+	endif
+skip 2
+	print stock-code in col 2 no newline
+	print whse-qty-on-hand in col 21 pic is -zzz9 no newline
+	print whse-current-orders in col 41 pic is -zzz9 no newline
+	print whse-back-orders in col 51 pic is -zzz9 no newline
+	print whse-qty-on-order in col 31 pic is -zzz9 no newline
+	print ws-stock-avail in col 61 pic is -zzz9 bold  no newline
+	print stk-description in col 70 no newline
+	print stk-desc-line-2 in col 101 pic x(28) no newline
+	skip
+	skip
+	set new-stock-group = 0
+	set new-sys-description = 0
+after stock-group
+after sys-description
+report footer

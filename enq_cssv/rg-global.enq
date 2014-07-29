@@ -1,0 +1,11 @@
+// general ledger opening balances 07/08
+select
+	gl-accountcode
+	gl-amount
+	gl-trans-type
+from
+	gl-trans
+where
+	(gl-trans-type = "BF" ) 
+format is lst
+total on gl-amount

@@ -1,0 +1,14 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	stock-group
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = 'Q' 
+	and ash-years-ago = 2001 
+format is external

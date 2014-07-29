@@ -1,0 +1,214 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	whse-code
+	whse-qty-on-hand
+	whse-qty-on-order
+	whse-current-orders
+	whse-back-orders
+	whse-min-stock
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-qty
+	ws-ash-qty = sum-array (ash-qty 1 12) 
+	ws-total = (whse-qty-on-hand + whse-qty-on-order ) - (whse-current-orders + whse-back-orders )
+from
+	stock-master
+	stock-warehouse-detail
+	outer stock-aged-sales-history
+where
+	stock-group in { "B" "BC" "F" "FC" "IN" "IS" "TC" "TM" } 
+	and ash-type = "O" 
+	and ash-whse = whse-code 
+	and ash-years-ago = 2002 
+order by stock-group stock-code 
+format is rpt
+field sub-tot-whse-qty-on-hand like whse-qty-on-hand
+field sub-tot-whse-qty-on-order like whse-qty-on-order
+field sub-tot-whse-current-orders like whse-current-orders
+field sub-tot-whse-back-orders like whse-back-orders
+field sub-tot-whse-min-stock like whse-min-stock
+field sub-tot-ash-qty like ash-qty
+field sub-tot-ws-ash-qty like ws-ash-qty
+field sub-tot-ws-total like ws-total
+field new-stock-code pic 9
+report header
+	page
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	skip
+	print
+		"Whse" in col 47
+		"Min" in col 53
+		"On" in col 59
+		"|" in col 63
+		"On" in col 65
+		"|" in col 69
+		"|" in col 75
+		"|" in col 81
+		"Nett" in col 82 bold 
+		"YTD" in col 89 bold 
+		"<-" in col 95
+		ash-years-ago in col 98
+		"-------------------------->" in col 103
+	print
+		"Stock Code" in col 1
+		"Description" in col 16
+		"Code" in col 47
+		"Max" in col 53
+		"Hand" in col 58
+		"|" in col 63
+		"Ord" in col 65
+		"|Comm" in col 69
+		"|" in col 75
+		"B/O" in col 77
+		"|" in col 81
+		"Hold" in col 82 bold 
+		"Sales" in col 88 bold 
+		"Ju" in col 95
+		"Au" in col 98
+		"Se" in col 101
+		"Oc" in col 104
+		"No" in col 107
+		"De" in col 110
+		"Ja" in col 113
+		"Fe" in col 116
+		"Ma" in col 119
+		"Ap" in col 122
+		"Ma" in col 125
+		"Ju" in col 128
+	print "|" in col 63
+		"|" in col 69
+		"|" in col 75
+		"|" in col 81
+	print "==================================================================================================================================" in col 1
+before stock-code
+	set new-stock-code = 1
+	set sub-tot-whse-qty-on-hand = 0
+	set sub-tot-whse-qty-on-order = 0
+	set sub-tot-whse-current-orders = 0
+	set sub-tot-whse-back-orders = 0
+	set sub-tot-whse-min-stock = 0
+	set sub-tot-ash-qty[1] = 0
+	set sub-tot-ash-qty[2] = 0
+	set sub-tot-ash-qty[3] = 0
+	set sub-tot-ash-qty[4] = 0
+	set sub-tot-ash-qty[5] = 0
+	set sub-tot-ash-qty[6] = 0
+	set sub-tot-ash-qty[7] = 0
+	set sub-tot-ash-qty[8] = 0
+	set sub-tot-ash-qty[9] = 0
+	set sub-tot-ash-qty[10] = 0
+	set sub-tot-ash-qty[11] = 0
+	set sub-tot-ash-qty[12] = 0
+	set sub-tot-ws-ash-qty = 0
+	set sub-tot-ws-total = 0
+
+detail
+	if (new-stock-code)
+	print
+		stock-code in col 1 pic x(13)
+		stk-description in col 16 no newline
+	endif
+	print
+		whse-code in col 48 pic is xxx
+		whse-qty-on-hand in col 59 pic is zz9
+		"|" in col 63
+		whse-qty-on-order in col 65 pic is zz9
+		"|" in col 69
+		whse-current-orders in col 71 pic is zz9
+		"|" in col 75
+		whse-back-orders in col 77 pic is zz9
+		"|" in col 81
+		ws-total in col 83 pic zz9 bold 
+		whse-min-stock in col 53 pic is zz9
+		ws-ash-qty in col 89 pic is zz9 bold 
+		ash-qty[1] in col 95 pic is z9
+		ash-qty[2] in col 98 pic is z9
+		ash-qty[3] in col 101 pic is z9
+		ash-qty[4] in col 104 pic is z9
+		ash-qty[5] in col 107 pic is z9
+		ash-qty[6] in col 110 pic is z9
+		ash-qty[7] in col 113 pic is z9
+		ash-qty[8] in col 116 pic is z9
+		ash-qty[9] in col 119 pic is z9
+		ash-qty[10] in col 122 pic is z9
+		ash-qty[11] in col 125 pic is z9
+		ash-qty[12] in col 128 pic is z9
+	set sub-tot-whse-qty-on-hand += whse-qty-on-hand
+	set sub-tot-whse-qty-on-order += whse-qty-on-order
+	set sub-tot-whse-current-orders += whse-current-orders
+	set sub-tot-whse-back-orders += whse-back-orders
+	set sub-tot-whse-min-stock += whse-min-stock
+	set sub-tot-ash-qty[1] += ash-qty[1]
+	set sub-tot-ash-qty[2] += ash-qty[2]
+	set sub-tot-ash-qty[3] += ash-qty[3]
+	set sub-tot-ash-qty[4] += ash-qty[4]
+	set sub-tot-ash-qty[5] += ash-qty[5]
+	set sub-tot-ash-qty[6] += ash-qty[6]
+	set sub-tot-ash-qty[7] += ash-qty[7]
+	set sub-tot-ash-qty[8] += ash-qty[8]
+	set sub-tot-ash-qty[9] += ash-qty[9]
+	set sub-tot-ash-qty[10] += ash-qty[10]
+	set sub-tot-ash-qty[11] += ash-qty[11]
+	set sub-tot-ash-qty[12] += ash-qty[12]
+	set sub-tot-ws-ash-qty += ws-ash-qty
+	set sub-tot-ws-total += ws-total
+	set new-stock-code = 0
+after stock-code
+	print
+		"---" in col 59
+		"|" in col 63
+		"---" in col 65
+		"|" in col 69
+		"---" in col 71
+		"|" in col 75
+		"---" in col 77
+		"|" in col 81
+		"---" in col 83 bold 
+		"---" in col 53
+		"--" in col 95
+		"--" in col 98
+		"--" in col 101
+		"--" in col 104
+		"--" in col 107
+		"--" in col 110
+		"--" in col 113
+		"--" in col 116
+		"--" in col 119
+		"--" in col 122
+		"--" in col 125
+		"--" in col 128
+		"---" in col 89 bold 
+	print
+		sub-tot-whse-qty-on-hand in col 59 pic is zz9
+		"|" in col 63
+		sub-tot-whse-qty-on-order in col 65 pic is zz9
+		"|" in col 69
+		sub-tot-whse-current-orders in col 71 pic is zz9
+		"|" in col 75
+		sub-tot-whse-back-orders in col 77 pic is zz9
+		"|" in col 81
+		sub-tot-ws-total in col 83 pic zz9 bold 
+		sub-tot-whse-min-stock in col 53 pic is zz9
+		sub-tot-ash-qty[1] in col 95 pic is z9
+		sub-tot-ash-qty[2] in col 98 pic is z9
+		sub-tot-ash-qty[3] in col 101 pic is z9
+		sub-tot-ash-qty[4] in col 104 pic is z9
+		sub-tot-ash-qty[5] in col 107 pic is z9
+		sub-tot-ash-qty[6] in col 110 pic is z9
+		sub-tot-ash-qty[7] in col 113 pic is z9
+		sub-tot-ash-qty[8] in col 116 pic is z9
+		sub-tot-ash-qty[9] in col 119 pic is z9
+		sub-tot-ash-qty[10] in col 122 pic is z9
+		sub-tot-ash-qty[11] in col 125 pic is z9
+		sub-tot-ash-qty[12] in col 128 pic is z9
+		sub-tot-ws-ash-qty in col 89 pic is zz9 bold 
+	skip
+report footer

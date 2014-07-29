@@ -1,0 +1,12 @@
+// Find Creditors With NO Address
+select
+	accountcode
+	na-type
+	na-name
+	na-company
+from
+	name-and-address-master
+where
+	na-company = 'unknown' 
+format is lst
+field order is accountcode na-name na-company na-type

@@ -1,0 +1,17 @@
+select
+	cre-accountcode
+	cr-shortname
+	cr-def-payment-terms
+	system-table.sys-description
+	cr-settlement-disc-code
+	system-table2.sys-description
+from
+	cre-master
+	system-table
+	system-table2 = system-table
+where
+	system-table.sys-tbl-type = 'CQ'
+	and cr-def-payment-terms = system-table.sys-tbl-code
+	and system-table2.sys-tbl-type = 'CJ'
+	and cr-settlement-disc-code = system-table2.sys-tbl-code
+format is lst

@@ -1,0 +1,13 @@
+select
+	gl-accountcode
+	gl-desc
+	gl-hist-yrs-ago
+	gl-opening-balance
+	gl-hist-history
+from
+	gl-master
+	gl-history
+where
+	gl-hist-yrs-ago = 2002  
+        and (gl-balance != 0 or gl-open-bal != 0 or gl-future-bal != 0 or gl-hist-history != 0)
+format is external

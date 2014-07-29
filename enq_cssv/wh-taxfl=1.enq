@@ -1,0 +1,7 @@
+//wh-taxfl=1
+// Change the warehouse tax flag to 1 = Tax Paid 
+update system-table
+set
+	sys-tbl-sales-ly = 1
+where
+	sys-tbl-sales-ly = 0

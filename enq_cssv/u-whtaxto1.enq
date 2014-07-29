@@ -1,0 +1,5 @@
+update system-table
+set
+	sys-tbl-sales-ly = 1
+where
+	sys-tbl-type = 'WH'

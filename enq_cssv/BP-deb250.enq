@@ -1,0 +1,11 @@
+select
+	accountcode
+	shortname
+	balance
+	warehouse
+from
+	deb-master
+where
+	territory = "840" and balance <> 0 and warehouse <> "840"
+format is lst
+total on balance

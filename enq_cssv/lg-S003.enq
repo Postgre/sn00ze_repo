@@ -1,0 +1,5 @@
+// delete Stock warehouse Movements for non-existant Warehouses
+delete from stock-movements
+where
+	( stk-trans-whse NOT LIKE INPUT ALPHA 
+	prompt is "Delete Warehouse  Movements Other than"   )

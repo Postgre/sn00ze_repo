@@ -1,0 +1,87 @@
+//sale-size
+// to list the sales for QS beds
+select
+	stock-code
+	stock-group
+	stk-abc-class
+	stk-apn-number
+	stk-user-group
+	stk-description
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ash-qty
+	sales = sum-array (ash-value 1 10) 
+	cost = sum-array (ash-cost 1 10) 
+	qty = sum-array (ash-qty 1 10) 
+	avg-sales = sales / qty 
+	stk-pack-desc
+from
+	stock-master
+	stock-aged-sales-history
+where
+	stock-group = 'IS' 
+	and stk-pack-desc = 'QS' 
+	and stk-abc-class != 'Z' 
+	and ash-years-ago = 0 
+order by stock-code ash-whse 
+format is lst
+report width is 166
+suppress stock-group
+suppress stk-user-group[1]
+suppress ash-years-ago
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ash-cost[1]
+suppress ash-cost[2]
+suppress ash-cost[3]
+suppress ash-cost[4]
+suppress ash-cost[5]
+suppress ash-cost[6]
+suppress ash-cost[7]
+suppress ash-cost[8]
+suppress ash-cost[9]
+suppress ash-cost[10]
+suppress ash-cost[11]
+suppress ash-cost[12]
+suppress ash-cost[13]
+suppress ash-qty[1]
+suppress ash-qty[2]
+suppress ash-qty[3]
+suppress ash-qty[4]
+suppress ash-qty[5]
+suppress ash-qty[6]
+suppress ash-qty[7]
+suppress ash-qty[8]
+suppress ash-qty[9]
+suppress ash-qty[10]
+suppress ash-qty[11]
+suppress ash-qty[12]
+suppress ash-qty[13]
+unique record on stock-code ash-whse
+display pic of stk-apn-number is xxxx
+display type of stk-apn-number is alpha
+total on sales
+total on cost
+total on qty
+total on avg-sales
+subtotal on sales
+	with breaks on stock-code ash-whse
+subtotal on cost
+	with breaks on stock-code ash-whse
+subtotal on qty
+	with breaks on stock-code ash-whse
+subtotal on avg-sales
+	with breaks on stock-code ash-whse

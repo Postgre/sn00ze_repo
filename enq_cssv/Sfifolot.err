@@ -1,0 +1,11 @@
+INFO  Custom include path: - '/pro/pronto/cus/include'
+INFO  Custom include path: - '/pro/pronto/cus'
+INFO  Custom include path: - '/pro/pronto/bms/include'
+INFO  Custom include path: - '/pro/pronto/bms'
+/pro/pronto/cus/Sfifolot.spl, INFO  Defined field not referenced - 'tmp-dir'
+/pro/pronto/cus/Sfifolot.spl, INFO  Defined field not referenced - 'ws-filename'
+/pro/pronto/cus/Sfifolot.spl, INFO  Defined field not referenced - 'ws-region'
+/pro/pronto/cus/Sfifolot.spl, INFO  Defined field not referenced - 'ws-found'
+/pro/pronto/cus/Sfifolot.spl, INFO  Defined field not referenced - 'ws-move'
+/pro/pronto/cus/Sfifolot.spl, INFO  Defined field not referenced - 'ws-avg'
+

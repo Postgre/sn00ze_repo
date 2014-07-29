@@ -1,0 +1,56 @@
+select
+	comp-code
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ws-ash-value = sum-array (ash-value 1 12) 
+	ws-ash-cost = sum-array (ash-cost 1 12) 
+	ws-cre-code = sub-string (comp-code 1 3) 
+from
+	bill-of-materials-detail
+	stock-aged-sales-history
+where
+	comp-code = stock-code 
+	and ash-type = 'O' 
+	and ash-years-ago = 0 
+	and ws-cre-code in { "SEA" "SLE" "SOP" } 
+order by ws-cre-code comp-code ash-whse 
+format is lst
+suppress stock-code
+suppress ash-type
+suppress ash-years-ago
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ash-cost[1]
+suppress ash-cost[2]
+suppress ash-cost[3]
+suppress ash-cost[4]
+suppress ash-cost[5]
+suppress ash-cost[6]
+suppress ash-cost[7]
+suppress ash-cost[8]
+suppress ash-cost[9]
+suppress ash-cost[10]
+suppress ash-cost[11]
+suppress ash-cost[12]
+suppress ash-cost[13]
+total on ws-ash-value
+total on ws-ash-cost
+subtotal on ws-ash-value
+	with breaks on comp-code
+subtotal on ws-ash-cost
+	with breaks on comp-code

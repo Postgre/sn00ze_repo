@@ -1,0 +1,46 @@
+select
+	stock-code
+	ash-value
+	ash-years-ago
+	sub-stock = substring (stock-code 1 3) 
+	total-sales = sum-array (ash-value 1 12) 
+	ash-value-lytd
+from
+	stock-aged-sales-history
+where
+	ash-years-ago = 0 
+order by sub-stock total-sales 
+group by sub-stock total-sales
+format is lst
+suppress stock-code
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+unique record on sub-stock
+display pic of total-sales is z(10)9
+total on ash-value[1]
+total on ash-value[2]
+total on ash-value[3]
+total on ash-value[4]
+total on ash-value[5]
+total on ash-value[6]
+total on ash-value[7]
+total on ash-value[8]
+total on ash-value[9]
+total on ash-value[10]
+total on ash-value[11]
+total on ash-value[12]
+total on total-sales
+total on ash-value-lytd
+subtotal on total-sales
+	with breaks on sub-stock

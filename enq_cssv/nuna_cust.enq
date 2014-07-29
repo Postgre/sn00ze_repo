@@ -1,0 +1,79 @@
+select
+	accountcode
+	shortname
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	na-country-code
+	na-phone
+	na-fax-no
+	so-order-no
+	son-unq = so-order-no
+	so-order-date	
+from
+	deb-master
+	name-and-address-master
+	sales-order-archive
+where
+	so-order-no in { 43058 43355 44065 46477 51283 54275 56332 57136 61493 62883 65238 66094 66268 61483 61490 61735 61999 62645 63308 63874 64013 64250 64404 64466 64562 64599 64622 65970 65989 66041 67573 67726 68158 68916 69098 22864 60283 60379 61189 45789 48466 48899 49068 51133 52108 56335 56999 59941 60331 62844 63427 64318 64949 66353 23031 23326 23358 21132 21295 21337 44812 45052 45243 46551 47827 49777 49893 51570 52253 54510 54975 55591 57121 57646 57649 } 
+order by so-order-no
+unique son-unq
+format is lst
+//field new-so-order-no pic 9
+//report header
+//	page
+//header
+//	print 
+//		"Old customers to follow up" in col 44
+//		today() in col 95
+//		tod() in col 108
+//		"Pageno." in col 118
+//		pageno() in col 126
+//	skip 1
+//	print
+//		" ws" in col 8
+//		"ash" in col 21
+//		"stock-code" in col 33
+//		"ws-ash-value" in col 57
+//		"ws-ash-cost" in col 82
+//		"ws-ash-qty" in col 107
+//	print
+//		"so-order-no" in col 1
+//	print
+//		"code" in col 8
+//	skip 1
+
+//detail
+//	if (new-so-order-no)
+		print so-order-no in col 1 //no newline
+//	endif
+//after ash-whse
+//	print
+//		ash-whse in col 21 
+//		sub-tot-ws-ash-value in col 57
+//		sub-tot-ws-ash-cost in col 82
+//		sub-tot-ws-ash-qty in col 107
+//	set new-ws-cre-code = 0
+//	set new-ash-whse = 0
+//after ws-cre-code
+//	skip
+//	print
+//		"-----------------" in col 57
+//		"-----------------" in col 82
+//		"-----------------" in col 107
+//	print
+//		sub-tot1-ws-ash-value in col 57
+//		sub-tot1-ws-ash-cost in col 82
+//		sub-tot1-ws-ash-qty in col 107
+//	skip
+//report footer
+//	print
+//		"-----------------" in col 57
+//		"-----------------" in col 82
+//		"-----------------" in col 107
+//	print
+//		total-ws-ash-value in col 57
+//		total-ws-ash-cost in col 82
+//		total-ws-ash-qty in col 107

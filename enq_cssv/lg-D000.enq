@@ -1,0 +1,11 @@
+// query Changed T or W
+select
+	accountcode
+	warehouse
+	territory
+	dr-user-only-alpha4-1
+	dr-user-only-alpha4-2
+from
+	deb-master
+where dr-user-only-alpha4-1 = "---"
+format is lst

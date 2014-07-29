@@ -1,0 +1,135 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/cashnobo
+//  Program Desc:	Disallow backorders for cash accounts
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	28mar14	rmd			upgraded for 710
+///////////////////////////////////////////////////////////////////////////////
+
+//run = "pvi-snz/so/cashnobo" so-order-no so-bo-suffix	// sol-line-seq sol-backorder-qty so-cust-code
+
+#include "../../../bms/include/m1enqdeb.spl"
+
+procedure main
+local field
+	lf-cash-backorder							type boolean
+	lf-accountcode								like accountcode
+	//
+	set lf-cash-backorder = FALSE
+	// message get-param(1)
+	if strlen(get-param(1)) > 0
+		get sales-order
+			on index so-order-no so-bo-suffix
+			key is num(get-param(1)) get-param(2)
+		on error
+		else
+			get deb-master
+			on index accountcode
+			key is so-cust-code
+			if territory = accountcode
+				// is a cash account for backorder qty's
+				extract sales-order-line
+				on index so-order-no so-bo-suffix sol-line-seq
+				key is num(get-param(1)) get-param(2) 0
+				next same so-order-no so-bo-suffix
+				detail
+					if sol-backorder-qty > 0
+						set lf-cash-backorder = TRUE
+					endif
+				endextract
+			endif
+			if lf-cash-backorder
+				set lf-accountcode = accountcode
+				do
+					change-account
+				parameters
+					so-order-no
+					so-bo-suffix
+					lf-accountcode
+			endif
+		endon
+	else
+		exit
+	endif
+endprocedure // main ----------------------------------------------------------
+
+procedure change-account
+parameters
+	lp-so-order-no						like so-order-no
+	lp-so-bo-suffix						like so-bo-suffix
+	lp-accountcode						like accountcode
+	//
+	//window @5,5 to @8,35 title is "Change account"
+	//display box @5,6 to @8,34 title is "Select a Customer Account"
+	window @5,5 to @10,45 title is "Choose a Customer Account"
+	display box @5,6 to @10,44 title is "Select a Customer Account"
+	//display "Order contains Backorders" @6,7 background
+	//display "Cannot use Cash Account" @7,7 background
+	//display "Please select a Customer Account" @8,7 background
+	//
+	display "Backorders exist, can't use Cash Account" @6,11 background bold
+	//display "Cannot use Cash Account" @7,7 background
+	display "Please select a Customer Account" @7,11 background bold
+	//
+	accept lp-accountcode @8,18 title is "Account"
+		uppercase
+		on help-key
+        	//do m1enqdeb-enquire-on-debtors
+        	//        parameters lp-accountcode //spaces spaces
+        	//        returning lp-accountcode
+        	//reenter optional
+        	spl
+        		"pvi-snz/deb/autoacct"
+        	returning
+        		lp-accountcode
+		endon
+		get deb-master
+		on index accountcode
+		key is lp-accountcode
+		on error
+			reenter lp-accountcode
+		else
+			if territory = accountcode
+				message "You cannot use a Cash Account, please select a Customer Account"
+				reenter lp-accountcode
+			endif
+		endon
+	//
+	get sales-order lock
+		on index so-order-no so-bo-suffix
+		key is lp-so-order-no lp-so-bo-suffix
+	on error
+	else
+		set so-cust-code = lp-accountcode
+		update sales-order
+	endon
+endprocedure // change-account ------------------------------------------------
+
+
+/*
+procedure main
+returning
+	lr-backorder-qty					like sol-backorder-qty
+	if num(get-param(4)) > 0 // backorder exists
+		get deb-master
+		on index accountcode
+		key is get-param(5)
+			if territory = accountcode
+				message "Cannot backorder items for Cash Sale account, please change to a Customer Account"
+				set lr-backorder-qty = 0
+			else
+				set lr-backorder-qty = num(get-param(4))
+			endif
+	else
+	endif
+endprocedure // main ----------------------------------------------------------
+*/
+// cashnobo.spl

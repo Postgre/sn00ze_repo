@@ -1,0 +1,15 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	stk-stock-status
+	cre-accountcode
+	sup-shipping-method-code
+from
+	stock-master
+	stock-supplier
+where
+	stk-stock-status = 'K' 
+	and sup-shipping-method-code = 'A' 
+format is lst
+unique stock-code

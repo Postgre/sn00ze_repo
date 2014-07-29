@@ -1,0 +1,9 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	stock-group
+	stk-pack-desc
+from
+	stock-master
+format is lst

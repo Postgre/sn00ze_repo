@@ -1,0 +1,15 @@
+// report negative stock on hand by warehouse
+select
+	stock-code
+	whse-code
+	whse-qty-on-hand
+	whse-avg-cost
+	calc1 = whse-avg-cost * whse-qty-on-hand 
+from
+	stock-warehouse-detail
+where
+	( ( whse-code = INPUT ALPHA prompt is "Enter the warehouse number"   ) AND
+	( whse-qty-on-hand < 0 ) )
+format is lst
+field title of calc1 is "value"
+total on calc1

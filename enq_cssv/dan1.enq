@@ -1,0 +1,3 @@
+delete from gl-trans
+where
+	sub-string ( gl-accountcode 1,5 ) = "3M312" 

@@ -1,0 +1,12 @@
+select
+	stock-code
+	stk-user-group
+	stk-condition-code
+	stk-description
+	stk-date-last-change
+	stk-movement-code
+from
+	stock-master
+where
+	stk-movement-code != spaces
+format is lst

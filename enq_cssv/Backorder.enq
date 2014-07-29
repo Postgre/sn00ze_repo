@@ -1,0 +1,5 @@
+update sales-order-line
+set
+	sol-backorder-qty = sol-shipped-qty
+	sol-shipped-qty = 0
+where sol-shipped-qty >= 1

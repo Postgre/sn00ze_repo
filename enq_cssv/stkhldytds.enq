@@ -1,0 +1,174 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-qty
+	ws-ash-qty = sum-array (ash-qty 1 12) 
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+	company-name
+	ws-start-stock = input
+		string
+		uppercase
+		prompt is "Enter Start Stock Code:"
+	ws-end-stock = input
+		string
+		uppercase
+		prompt is "Enter End   Stock Code:"
+from
+	stock-master
+	stock-aged-sales-history
+	system-table
+	system-control
+where
+	sys-tbl-type = 'PG' 
+	and sys-tbl-code = stock-group 
+	and stock-group in { "B" "BC" "F" "FC" "IN" "IS" "TC" "TM" } 
+	and ash-type = "O" 
+	and ash-years-ago = 2002 
+	and ws-ash-qty != 0 
+	and stock-code between ws-start-stock and ws-end-stock
+order by stock-group stock-code 
+format is rpt
+field sub-tot-ash-qty like ash-qty
+field sub-tot-ws-ash-qty like ws-ash-qty
+field new-stock-code pic 9
+field new-sys-description pic 9
+report header
+	page
+header
+	print 
+		company-name in col 1
+		"STOCK HOLDING/YTD SALES COMPARISON REPORT" in col 50
+		today() in col 99
+		"Pageno." in col 116
+		pageno() in col 124
+	skip 1
+	skip
+	print
+		"Whse" in col 47
+		bold 
+		"YTD" in col 56 bold 
+		"<" in col 63
+		ash-years-ago in col 64
+		"-------------" in col 68
+		ash-years-ago + 1 in col 81 pic zzzz
+		"------------>" in col 85
+	print
+		"Stock Code" in col 1
+		"Description" in col 16
+		"Code" in col 47
+		bold 
+		"Sales" in col 55 bold 
+		"Ju" in col 63
+		"Au" in col 66
+		"Se" in col 69
+		"Oc" in col 72
+		"No" in col 75
+		"De" in col 78
+		"Ja" in col 81
+		"Fe" in col 84
+		"Ma" in col 87
+		"Ap" in col 90
+		"Ma" in col 93
+		"Ju" in col 96
+	print "==================================================================================================================================" in col 1
+before sys-description
+	set new-sys-description = 1
+before stock-code
+	set new-stock-code = 1
+	set sub-tot-ash-qty[1] = 0
+	set sub-tot-ash-qty[2] = 0
+	set sub-tot-ash-qty[3] = 0
+	set sub-tot-ash-qty[4] = 0
+	set sub-tot-ash-qty[5] = 0
+	set sub-tot-ash-qty[6] = 0
+	set sub-tot-ash-qty[7] = 0
+	set sub-tot-ash-qty[8] = 0
+	set sub-tot-ash-qty[9] = 0
+	set sub-tot-ash-qty[10] = 0
+	set sub-tot-ash-qty[11] = 0
+	set sub-tot-ash-qty[12] = 0
+	set sub-tot-ws-ash-qty = 0
+
+detail
+	if (new-sys-description)
+        print
+        	sys-description in col 7 bold underlined
+	skip
+	endif
+	if (new-stock-code)
+	print
+		stock-code in col 1 pic x(13)
+		stk-description in col 16 
+		no newline
+	endif
+	print
+		ash-whse in col 48 pic x(3)
+		ws-ash-qty in col 56 pic is zz9 bold 
+		ash-qty[1] in col 63 pic is z9
+		ash-qty[2] in col 66 pic is z9
+		ash-qty[3] in col 69 pic is z9
+		ash-qty[4] in col 72 pic is z9
+		ash-qty[5] in col 75 pic is z9
+		ash-qty[6] in col 78 pic is z9
+		ash-qty[7] in col 81 pic is z9
+		ash-qty[8] in col 84 pic is z9
+		ash-qty[9] in col 87 pic is z9
+		ash-qty[10] in col 90 pic is z9
+		ash-qty[11] in col 93 pic is z9
+		ash-qty[12] in col 96 pic is z9
+	set sub-tot-ash-qty[1] += ash-qty[1]
+	set sub-tot-ash-qty[2] += ash-qty[2]
+	set sub-tot-ash-qty[3] += ash-qty[3]
+	set sub-tot-ash-qty[4] += ash-qty[4]
+	set sub-tot-ash-qty[5] += ash-qty[5]
+	set sub-tot-ash-qty[6] += ash-qty[6]
+	set sub-tot-ash-qty[7] += ash-qty[7]
+	set sub-tot-ash-qty[8] += ash-qty[8]
+	set sub-tot-ash-qty[9] += ash-qty[9]
+	set sub-tot-ash-qty[10] += ash-qty[10]
+	set sub-tot-ash-qty[11] += ash-qty[11]
+	set sub-tot-ash-qty[12] += ash-qty[12]
+	set sub-tot-ws-ash-qty += ws-ash-qty
+	set new-sys-description = 0
+	set new-stock-code = 0
+after stock-code
+	print
+		"--" in col 63
+		"--" in col 66
+		"--" in col 69
+		"--" in col 72
+		"--" in col 75
+		"--" in col 78
+		"--" in col 81
+		"--" in col 84
+		"--" in col 87
+		"--" in col 90
+		"--" in col 93
+		"--" in col 96
+		"---" in col 56 bold 
+	print
+		sub-tot-ash-qty[1] in col 63 pic is z9
+		sub-tot-ash-qty[2] in col 66 pic is z9
+		sub-tot-ash-qty[3] in col 69 pic is z9
+		sub-tot-ash-qty[4] in col 72 pic is z9
+		sub-tot-ash-qty[5] in col 75 pic is z9
+		sub-tot-ash-qty[6] in col 78 pic is z9
+		sub-tot-ash-qty[7] in col 81 pic is z9
+		sub-tot-ash-qty[8] in col 84 pic is z9
+		sub-tot-ash-qty[9] in col 87 pic is z9
+		sub-tot-ash-qty[10] in col 90 pic is z9
+		sub-tot-ash-qty[11] in col 93 pic is z9
+		sub-tot-ash-qty[12] in col 96 pic is z9
+		sub-tot-ws-ash-qty in col 56 pic is zz9 bold 
+	skip
+report footer
+        skip 2
+        print "Program name: stkhldytds.enq" in col 4
+        skip 2
+	skip

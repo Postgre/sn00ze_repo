@@ -1,0 +1,27 @@
+// stats01.eng
+// to list the status of the database by product group and status code
+// 
+select
+	stock-code
+	stock-group
+	stk-stock-status
+	stk-user-group
+	stk-description
+	ws-group = stk-user-group[2] 
+	ws-count = count () 
+from
+	stock-master
+order by ws-group stock-group 
+group by ws-group stock-group
+format is lst
+title line 1 is "Capt'n Snooze"
+title line 2 is " "
+title line 3 is "Count of records by User group and Product group"
+title line 4 is " "
+title line 5 is "Stats01.enq      Run on " Today " At " tod
+title line 6 is " "
+suppress stock-code
+suppress stk-stock-status
+suppress stk-user-group[1]
+suppress stk-user-group[2]
+suppress stk-description

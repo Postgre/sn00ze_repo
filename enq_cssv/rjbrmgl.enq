@@ -1,0 +1,8 @@
+select
+	gl-accountcode
+	gl-amount
+from
+	gl-trans
+where
+	sub-string (gl-accountcode 1, 5) = "3M345" 
+format is lst

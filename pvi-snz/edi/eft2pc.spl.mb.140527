@@ -1,0 +1,172 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	eft2pc.spl
+//  Program Desc:	Send EFT file to the PC
+//  Requested By:	Corey Bakes
+//  Request Date:	12may11
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	15may14	rmd	{3}		upgrade to 710.3
+//	12may11	rmd			started
+//	01Feb12 LG		Added '-r' to send2proterm argument for de-unicoding ABA output
+///////////////////////////////////////////////////////////////////////////////
+
+mode md-download
+	prompt "Download to PC"
+	currency
+
+object tmp-dir-list
+	type memory
+	record
+		tdr-dir					pic x(200)
+		tdr-file        		pic x(40)
+		tdr-full-path   		pic x(250)
+		tdr-mod-time			type date-time
+	endrecord
+		//key is tdr-full-path //unique
+		key is tdr-full-path
+
+//	parameters
+//		"-c"
+//		concat("send2proterm xml-output.xml 'C:/Program Files/Nightowl Systems/ProntoLink/Upload/invoice.xml'")
+
+procedure main
+	//message concat(strconcat(dir() "/edi/out/EFT"))
+	do file-list
+	do dig-file-list
+endprocedure // main ----------------------------------------------------------
+
+procedure file-list
+local field
+	lf-dir-ok		type boolean
+	lf-ext			pic x(4)
+	lf-dir			pic x(200)
+	lf-no-entries	type boolean
+//
+	//get system-control first
+	//get system-user
+	//	on index user-id sys-comp-code
+	//	key is login-id() sys-consolidation-division
+	//on error
+	//	message "Cannot locate System User record, please enter the "
+	//	exit
+	//endon
+	//set ws-whse-code = user-whse
+	//if ws-whse-code = SPACES
+	//	do get-whse-code entry-once
+	//endif
+	open tmp-dir-list truncate temporary
+	set lf-ext = ".ABA"
+	set lf-dir = strconcat(dir() "/edi/out/EFT") // strconcat("/data/shared2/stfiles/" ws-whse-code)
+	set lf-no-entries = TRUE
+	if start-dir-search(lf-dir,lf-ext) // SPACES)
+    	set lf-dir-ok = TRUE
+	else
+    	set lf-dir-ok = FALSE
+	endif
+	while lf-dir-ok
+    	set tdr-file	 	= next-dir-entry()
+   		set tdr-dir			= lf-dir
+		set tdr-full-path	= strconcat(tdr-dir "/" tdr-file)
+		set tdr-mod-time	= modification-time(tdr-full-path)
+		//set tdr-date-string	= substring(tdr-file,11,18) //OFFICEMAX_20100614-100350-663.xml
+    	if tdr-file = spaces
+       		set lf-dir-ok = FALSE
+       	else
+       		set lf-no-entries	= FALSE
+       		insert tmp-dir-list
+       	endif
+	endwhile
+	if lf-no-entries
+		set tdr-file = "NO FILES FOUND"
+		//insert tmp-dir-list
+	endif
+endprocedure // file-list -----------------------------------------------------
+
+screen dig-file-list
+local field
+	lf-load-status		type numeric
+	lf-full-path		like tdr-full-path
+	lf-command			pic x(200)
+	window @1,1 to @24,90
+		title concat("EFT File List: " strconcat(dir() "/edi/out/EFT"))
+		primary tmp-dir-list
+		datagrid occurs 20
+	allowed search md-download
+	review-from-start
+detail
+	//display tdr-dir		    @1,02 title "Dir"
+	display tdr-file        @1,04 title "File"			pic x(20)
+	display tdr-mod-time	@1,06 title "Modified"
+confirm
+	auto
+confirmed
+	//message tdr-full-path
+	switch on screen-mode()
+		case md-download
+		set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat(tdr-file))
+		//message lf-command
+		command
+			"sh"
+		parameters
+			"-c"
+			lf-command
+		message concat("File transferred, check your Pronto program directory.")
+	endswitch
+endconfirm
+endscreen // dig-file-list ----------------------------------------------------
+
+
+// screen eft-to-pc
+// local field
+// 	lf-unix-file				pic x(12)
+// 	lf-pc-file					pic x(12)
+// 	lf-command					pic x(60)
+// window @1,1 to @5,35 title "Send EFT file to PC"
+// box @1,1 to @4,35 title SPACES
+// 	accept lf-unix-file @2,20 title "EFT Filename:"
+// 		default lf-unix-file
+// confirm
+// confirmed
+// 	set lf-command = concat("send2proterm " strconcat(dir() "edi/eft/out/" lf-unix-file) " " lf-unix-file)
+// 	message lf-command
+// 	command
+// 		"sh"
+// 	parameters
+// 		"-c"
+// 		//concat("send2proterm " strconcat(dir() "edi/eft/out/" lf-unix-file) 'C:/Program Files/Nightowl Systems/ProntoLink/Upload/invoice.xml'")
+// 		lf-command
+// endconfirm
+// endscreen // eft-to-pc --------------------------------------------------------
+
+
+/*
+
+menu main-trial
+local field
+	lf-path			pic x(60)
+	u-path			pic x(60)
+	w-path			pic x(60)
+	set lf-path = "/pro/pronto/bmsxi6/cus/binney/pvi/sys/"
+	option "Get" @1,1
+		command "proclientft"
+			parameters
+				"-r"
+				"-t"
+				strconcat(lf-path "putted.spl")
+				"c:/putmeft.spl"
+	option "Put" @1,1
+		command "proclientft"
+			parameters
+				"-s"
+				"-t"
+				"c:/putmeft.spl"
+				strconcat(lf-path "puttedft.spl")
+endmenu // main ---------------------------------------------------------------
+
+*/

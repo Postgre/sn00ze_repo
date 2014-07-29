@@ -1,0 +1,8 @@
+select
+	stock-code
+	stk-sort-analysis-code
+from
+	stock-master
+where
+	stk-sort-analysis-code like "%P/PE%"
+format is lst

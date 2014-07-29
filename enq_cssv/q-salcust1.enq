@@ -1,0 +1,37 @@
+// Program: q-sal-cust.enq
+// author: Ellen Gallagher
+// purpose: To derive the number of customer /transactions for the pronto
+// stores as nothing is automated to retrieve them
+// date:    19-Oct-94
+select
+	so-order-no
+	ws-count = count () 
+	so-cust-code
+	so-order-status
+	so-cust-type
+	ws-so-order-date = input date "Please enter the starting date"
+	ws-so-end-order-date = input date "Please enter the ending date"
+	so-order-date
+	so-order-type-code
+	so-whse-code
+from
+	sales-order
+where
+	so-order-date between ws-so-order-date and ws-so-end-order-date 
+	and 
+	so-order-status != '99' 
+group by so-whse-code
+format is lotus
+//suppress so-order-no
+//suppress so-cust-code
+//suppress so-order-status
+//suppress so-cust-type
+//suppress so-order-date
+//suppress so-order-type-code
+//unique so-cust-code
+//unique record on so-cust-code
+//field order is so-whse-code ws-count
+//field title of ws-count is "Customers - No of Transactions"
+//field title of ws-so-order-date is "Starting Date"
+//field title of ws-so-end-order-date is "Ending Date"
+//field title of so-whse-code is "Warehouse Code"

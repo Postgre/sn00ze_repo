@@ -1,0 +1,6 @@
+update stock-master
+set
+	stk-user-group[2] = 'X'
+where
+	stk-description like "%PRODUCT%" 
+	//and ash-years-ago = 0 

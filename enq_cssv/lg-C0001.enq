@@ -1,0 +1,7 @@
+// update Creditor Tax Code
+update cre-master
+set
+	cr-user-only-alpha4-3 = cr-tax-code
+	cr-tax-code = input alpha "Set Tax Code to"
+where
+	( cr-tax-code NOT LIKE "T"  )

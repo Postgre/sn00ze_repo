@@ -1,0 +1,94 @@
+select
+	stock-code
+	stk-description
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-qty
+	ws-start-stock-code = input
+		string
+		uppercase
+		prompt is "Start Stock Code"
+	ws-end-stock-code = input
+		string
+		uppercase
+		prompt is "End Stock Code"
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = 'O' 
+	and ash-years-ago = 2001 
+	and stock-code between ws-start-stock-code and ws-end-stock-code 
+order by stock-code ash-whse 
+format is lst
+suppress ash-type
+suppress ash-years-ago
+suppress ash-qty[13]
+suppress ws-start-stock-code
+suppress ws-end-stock-code
+unique stock-code
+unique stk-description
+field title of stock-code is "Stock" "Code"
+field title of ash-whse is "Whse"
+field title of ash-qty[1] is "July"
+field title of ash-qty[2] is "Aug"
+field title of ash-qty[3] is "Sep"
+field title of ash-qty[4] is "Oct"
+field title of ash-qty[5] is "Nov"
+field title of ash-qty[6] is "Dec"
+field title of ash-qty[7] is "Jan"
+field title of ash-qty[8] is "Feb"
+field title of ash-qty[9] is "Mar"
+field title of ash-qty[10] is "Apr"
+field title of ash-qty[11] is "May"
+field title of ash-qty[12] is "June"
+display pic of stock-code is x(11)
+display pic of ash-qty[1] is zzz9
+display pic of ash-qty[2] is zzz9
+display pic of ash-qty[3] is zzz9
+display pic of ash-qty[4] is zzz9
+display pic of ash-qty[5] is zzz9
+display pic of ash-qty[6] is zzz9
+display pic of ash-qty[7] is zzz9
+display pic of ash-qty[8] is zzz9
+display pic of ash-qty[9] is zzz9
+display pic of ash-qty[10] is zzz9
+display pic of ash-qty[11] is zzz9
+display pic of ash-qty[12] is zzz9
+total on ash-qty[1]
+total on ash-qty[2]
+total on ash-qty[3]
+total on ash-qty[4]
+total on ash-qty[5]
+total on ash-qty[6]
+total on ash-qty[7]
+total on ash-qty[8]
+total on ash-qty[9]
+total on ash-qty[10]
+total on ash-qty[11]
+total on ash-qty[12]
+subtotal on ash-qty[1]
+	with breaks on stock-code
+subtotal on ash-qty[2]
+	with breaks on stock-code
+subtotal on ash-qty[3]
+	with breaks on stock-code
+subtotal on ash-qty[4]
+	with breaks on stock-code
+subtotal on ash-qty[5]
+	with breaks on stock-code
+subtotal on ash-qty[6]
+	with breaks on stock-code
+subtotal on ash-qty[7]
+	with breaks on stock-code
+subtotal on ash-qty[8]
+	with breaks on stock-code
+subtotal on ash-qty[9]
+	with breaks on stock-code
+subtotal on ash-qty[10]
+	with breaks on stock-code
+subtotal on ash-qty[11]
+	with breaks on stock-code
+subtotal on ash-qty[12]
+	with breaks on stock-code

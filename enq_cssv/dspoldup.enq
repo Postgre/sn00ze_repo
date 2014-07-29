@@ -1,0 +1,44 @@
+select
+	po-order-no
+	po-backorder-flag
+	po-l-seq
+	po-line-type
+	po-charge-type
+	po-price-override-flag
+	stock-code
+	po-supplier-stock-code
+	po-line-description
+	po-item-price
+	po-item-tax-amount
+	po-disc-rate
+	pol-spare-no-1
+	po-supplier-unit-of-measure
+	po-supplier-unit-description
+	po-supplier-unit-conversion
+	po-order-qty
+	po-received-qty
+	po-backorder-qty
+	pol-previous-line-cost
+	po-received-total-amount
+	po-order-line-total
+	pol-gl-accountcode
+	po-line-date-expected
+	pol-time-expected
+	po-line-date-stamp
+	po-line-time-stamp
+	requisition-no
+	pol-tax-rate-code
+	pol-tax-rate
+	pol-received-tax-amt
+	pol-link-to-seq-no
+	pol-tax-exemptions
+	pol-spare-num
+	pol-item-tax-rate
+	pol-user-only-date1
+	pol-user-only-alpha4-1
+	pol-user-only-alpha4-2
+	pol-user-only-num1
+	pol-user-only-num2
+from
+	purchase-order-line
+format is excel

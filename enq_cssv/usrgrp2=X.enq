@@ -1,0 +1,14 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	stk-condition-code
+	stk-user-group
+from
+	stock-master
+where
+	stk-user-group[2] = "X"
+	and
+	stk-condition-code = "O"
+format is lst
+field order is stock-code stk-description stock-group stk-user-group[2] stk-condition-code

@@ -1,0 +1,245 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-order-date
+	order-log-date
+	accountcode
+	ordlog-type
+	ordlog-old-info
+	ordlog-line-type
+	ordlog-ordered-change-value
+	ordlog-ordered-tax-chg-value
+	ws-net-value = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value 
+	ws-net-value1 = ordlog-ordered-change-value / 1.1 
+	so-rep-code
+	ordlog-new-info
+	rep-code
+	rep-description
+	ws-terr = input
+		string
+		prompt is "Enter Store No.:"
+	ws-start-date = input
+		date
+		prompt is "Enter Start Date:"
+	ws-end-date = input
+		date
+		prompt is "Enter End   Date:"
+	company-name
+	so-territory-code
+	stock-code
+	whse-code
+	whse-avg-cost
+	ordlog-old-value
+	ordlog-new-value
+from
+	sales-audit-file
+	sales-order-archive
+	rep-master
+	system-control
+	stock-warehouse-detail
+where
+	ordlog-type in { 1 5 6 9 10 11 12 } 
+	and ordlog-line-type = "SN" 
+	and order-log-date between ws-start-date and ws-end-date 
+	and so-order-date < ws-start-date 
+	and so-rep-code = rep-code 
+	and so-territory-code = ws-terr 
+	and stock-code = ordlog-old-info 
+	and whse-code = so-whse-code 
+order by so-rep-code so-order-no 
+format is rpt
+field total-ws-net-value like ws-net-value
+field sub-tot-ws-net-value like ws-net-value
+field total-ws-cost like whse-avg-cost
+field sub-tot-ws-cost like whse-avg-cost
+field total-ws-gp like whse-avg-cost
+field sub-tot-ws-gp like whse-avg-cost
+field new-rep-code pic 9
+report header
+	page
+	set total-ws-net-value = 0
+	set total-ws-cost = 0
+	set total-ws-gp = 0
+header
+	print 
+		company-name in col 1
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 117
+		pageno() in col 124
+	print "CANCELLATION/AMENDMENT REPORT" in col 44 bold 
+	print "FOR FINISHED ORDERS" in col 48 bold 
+	skip 1
+	print "Rep" in col 1
+		"Rep" in col 6
+		"Order" in col 29
+		"Order" in col 41
+		"Customer" in col 52
+		"Audit" in col 66
+		"Audit" in col 75
+		"Stock" in col 83
+	print "Code" in col 1
+		"Name" in col 6
+		"No." in col 30
+		"Date" in col 41
+		"Code" in col 54
+		"Date" in col 66
+		"Type" in col 76
+		"Code" in col 83
+		"Sales" in col 99
+		"GP$" in col 113
+		"GP%" in col 123
+	print "=================================================================================================================================" in col 1
+before so-rep-code
+	set new-rep-code = 1
+	set sub-tot-ws-net-value = 0
+	set sub-tot-ws-cost = 0
+	set sub-tot-ws-gp = 0
+
+detail
+	if (new-rep-code)
+	print
+		so-rep-code in col 1
+		rep-description in col 5 pic x(20)
+		no newline
+	endif
+	print
+		so-order-no in col 27
+		so-bo-suffix in col 35
+		so-order-date in col 39
+		order-log-date in col 64
+		accountcode in col 52
+		ordlog-type in col 77
+		ordlog-old-info in col 81 pic x(13) no newline
+	if ordlog-type in { 6 } 
+		if ws-net-value > 0
+			print
+			ws-net-value in col 96 pic zzz,zz9.99-
+			(ws-net-value - (ordlog-new-value * whse-avg-cost)) in col 109 pic zz,zz9.99-
+			((ws-net-value - (ordlog-new-value * whse-avg-cost)) / ws-net-value) * 100 in col 121 pic zz9.99-
+			set total-ws-net-value += ws-net-value
+			set sub-tot-ws-net-value += ws-net-value
+			set total-ws-cost += whse-avg-cost
+			set sub-tot-ws-cost += whse-avg-cost
+			set total-ws-gp += (ws-net-value - (ordlog-new-value * whse-avg-cost))
+			set sub-tot-ws-gp += (ws-net-value - (ordlog-new-value * whse-avg-cost))
+		else
+			print
+			ws-net-value in col 96 pic zzz,zz9.99-
+			(ws-net-value - (ordlog-new-value * (0 - whse-avg-cost))) in col 109 pic zz,zz9.99-
+			((ws-net-value - (ordlog-new-value * (0 - whse-avg-cost))) / ws-net-value) * 100 in col 121 pic zz9.99-
+			set total-ws-net-value += ws-net-value
+			set sub-tot-ws-net-value += ws-net-value
+			set total-ws-cost += whse-avg-cost
+			set sub-tot-ws-cost += whse-avg-cost
+			set total-ws-gp += (ws-net-value - (ordlog-new-value * (0 - whse-avg-cost)))
+			set sub-tot-ws-gp += (ws-net-value - (ordlog-new-value * (0 - whse-avg-cost)))
+		endif
+	elseif ordlog-type in { 9 10 } 
+		if ws-net-value > 0
+			print
+			ws-net-value in col 96 pic zzz,zz9.99-
+			(ws-net-value - (ordlog-old-value * whse-avg-cost)) in col 109 pic zz,zz9.99-
+			((ws-net-value - (ordlog-old-value * whse-avg-cost)) / ws-net-value) * 100 in col 121 pic zz9.99-
+			set total-ws-net-value += ws-net-value
+			set sub-tot-ws-net-value += ws-net-value
+			set total-ws-cost += whse-avg-cost
+			set sub-tot-ws-cost += whse-avg-cost
+			set total-ws-gp += (ws-net-value - (ordlog-old-value * whse-avg-cost))
+			set sub-tot-ws-gp += (ws-net-value - (ordlog-old-value * whse-avg-cost))
+		else
+			print
+			ws-net-value in col 96 pic zzz,zz9.99-
+			(ws-net-value - (ordlog-old-value * (0 - whse-avg-cost))) in col 109 pic zz,zz9.99-
+			((ws-net-value - (ordlog-old-value * (0 - whse-avg-cost))) / ws-net-value) * 100 in col 121 pic zz9.99-
+			set total-ws-net-value += ws-net-value
+			set sub-tot-ws-net-value += ws-net-value
+			set total-ws-cost += whse-avg-cost
+			set sub-tot-ws-cost += whse-avg-cost
+			set total-ws-gp += (ws-net-value - (ordlog-old-value * (0 - whse-avg-cost)))
+			set sub-tot-ws-gp += (ws-net-value - (ordlog-old-value * (0 - whse-avg-cost)))
+		endif
+	elseif ordlog-type in { 11 } 
+		print
+		ws-net-value in col 96 pic zzz,zz9.99-
+//		whse-avg-cost in col 109 pic zz,zz9.99-
+		ws-net-value in col 109 pic zz,zz9.99-
+		(ws-net-value / ws-net-value) * 100 in col 121 pic zz9.99-
+		set total-ws-net-value += ws-net-value
+		set sub-tot-ws-net-value += ws-net-value
+		set total-ws-gp += ws-net-value 
+		set sub-tot-ws-gp += ws-net-value 
+	elseif ordlog-type in { 5 } 
+		print
+		ws-net-value in col 96 pic zzz,zz9.99-
+//		whse-avg-cost in col 109 pic zz,zz9.99-
+		ws-net-value - ((ordlog-new-value - ordlog-old-value) * whse-avg-cost) in col 109 pic zz,zz9.99-
+		((ws-net-value - ((ordlog-new-value - ordlog-old-value) * whse-avg-cost)) / ws-net-value) * 100 in col 121 pic zz9.99-
+		set total-ws-net-value += ws-net-value
+		set sub-tot-ws-net-value += ws-net-value
+		set total-ws-gp += ws-net-value - ((ordlog-new-value - ordlog-old-value) * whse-avg-cost) 
+		set sub-tot-ws-gp += ws-net-value - ((ordlog-new-value - ordlog-old-value) * whse-avg-cost) 
+	elseif ordlog-type in { 1 } 
+		if ordlog-new-info != " "
+			print
+			ws-net-value in col 96 pic zzz,zz9.99-
+//			whse-avg-cost in col 109 pic zz,zz9.99-
+			ws-net-value in col 109 pic zz,zz9.99-
+			(ws-net-value / ws-net-value) * 100 in col 121 pic zz9.99-
+			set total-ws-net-value += ws-net-value
+			set sub-tot-ws-net-value += ws-net-value
+			set total-ws-gp += ws-net-value
+			set sub-tot-ws-gp += ws-net-value
+		endif
+	elseif ordlog-type in { 12 } 
+		print
+		ws-net-value1 in col 96 pic zzz,zz9.99-
+//		whse-avg-cost in col 109 pic zz,zz9.99-
+		ws-net-value1 in col 109 pic zz,zz9.99-
+		(ws-net-value1 / ws-net-value1) * 100 in col 121 pic zz9.99-
+		set total-ws-net-value += ws-net-value1
+		set sub-tot-ws-net-value += ws-net-value1
+		set total-ws-gp += ws-net-value1
+		set sub-tot-ws-gp += ws-net-value1
+	endif
+	set new-rep-code = 0
+after so-rep-code
+	print
+		"-----------" in col 96
+		"----------" in col 109
+		"-------" in col 121
+	print
+		"Total for " in col 62 bold
+		rep-description in col 72 pic x(20) bold
+		sub-tot-ws-net-value in col 96 pic zzz,zz9.99- bold 
+//		sub-tot-ws-cost in col 109 pic zz,zz9.99- bold
+		sub-tot-ws-gp in col 109 pic zz,zz9.99- bold
+		(sub-tot-ws-gp / sub-tot-ws-net-value) * 100 in col 121 pic zz9.99- bold
+	skip
+report footer
+	print
+		"-----------" in col 96
+		"----------" in col 109
+		"-------" in col 121
+	print
+		total-ws-net-value in col 96 pic zzz,zz9.99-
+//		total-ws-cost in col 109 pic zz,zz9.99-
+		total-ws-gp in col 109 pic zz,zz9.99- 
+		(total-ws-gp / total-ws-net-value) * 100 in col 121 pic zz9.99-
+	skip 2
+	print "Audit Types:" in col 54 underlined
+	print
+		"Report Name : cancledita.enq " in col 5
+		"1 - Item price changed" in col 55
+		"10 - Item added" in col 80
+	print "Store No.   :" in col 5
+		ws-terr in col 19 pic x(4)
+		"5 - Quantity changed" in col 55
+		"11 - Line discount changed" in col 80
+	print "Start Date  :" in col 5
+		ws-start-date in col 19
+		"6 - Cancelled order" in col 55
+		"12 - Order discount changed" in col 80
+	print "End   Date  :" in col 5
+		ws-end-date in col 19
+		"9 - Item removed" in col 55

@@ -1,0 +1,4 @@
+// day sales trend
+select
+from
+format is lst

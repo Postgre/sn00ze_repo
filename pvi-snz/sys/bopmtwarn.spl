@@ -1,0 +1,24 @@
+// bopmtwarn.spl
+// 04Sep07	rmd	Warning message when p50pos.get-backorder-payment-type is called
+//				to let user know the amount they are about to enter is for the
+//				total payment from the customer, if they are paying $100 cash
+//				and $200 VISA they should enter $300.00
+
+procedure main
+window @1,1 to @12,42 title "Part Payment Warning"
+local field
+	lf-accept								pic x
+	
+	display "If you are taking multiple tender types, you must enter"	@2,3     background
+	display "the total amount of all payments when the system asks"   	@3,3     background
+	display "for the Total Payment amount on the next screen."     		@4,3     background
+	display "If you are taking $100 Cash and $200 Visa the"       		@6,3     background
+	display "Total Payment value should be entered as $300."         	@7,3     background
+	display "You can then enter the breakdown of each tender type"  	@9,3     background
+	display "on the screens that follow the Total Payment screen."	 	@10,3    background
+	accept lf-accept @12,22 title is "Accept Y/N?"
+		uppercase
+		// default "Y"
+		allowed "Y" "N"
+endprocedure // main ----------------------------------------------------------
+// bopmtwarn.spl

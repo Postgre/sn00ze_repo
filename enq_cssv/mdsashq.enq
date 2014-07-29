@@ -1,0 +1,15 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ash-qty
+from
+	stock-aged-sales-history
+where
+	ash-type = "Q" 
+	and ash-years-ago = 2004 
+	and ( ash-value != 0 or ash-cost != 0 or ash-qty != 0 )
+format is external

@@ -1,0 +1,533 @@
+//Program		: stkavalrpt.spl
+//Written By	: Ranjith
+//Written on 	: 28 May 2009
+//Description 	: STOCK AVAILABLE REPORT IN PRODUCT GROUP SEQUENCE
+//
+// 14may14	rmd		upgrade to 701.3
+//rc 04sep09  default to uppercase
+
+version-number "CUSTOM rc/stkavalrpt 20090528"
+
+
+//#include "../../../bms/include/rbtchproc.spl"
+//#include "../../../bms/include/i85codes.spl"
+#include "/pro/pronto/bms/include/rbtchproc.spl"
+#include "/pro/pronto/bms/include/i85codes.spl"
+
+fields
+	ws-description 				like stk-description
+	ws-stock-avail 				like whse-qty-on-hand
+	ws-start-whse 				like whse-code				//= $1
+	ws-end-whse 				like whse-code				//= $2
+	ws-start-stockcode 			like stock-code				//= $3
+	ws-end-stockcode 			like stock-code				//= $4
+	ws-stk-supp 				like stock-code				//= substring (stock-code 1 3)
+	ws-start-group-code 		like stock-group			//= $5
+	ws-end-group-code 			like stock-group			//= $6
+	ws-start-size 				like stk-pack-desc			//= $7
+	ws-end-size 				like stk-pack-desc			//= $8
+	ws-start-retail 			like prc-recommend-retail	//= num($9)
+	ws-end-retail 				like prc-recommend-retail	//= num($10)
+	ws-blank-lines 				pic x						//= $11
+
+
+procedure main
+	//
+	get system-control first
+	//
+	set rbtchproc-report-name = "Stock Availability - Report"
+	//
+	get system-user
+		on index user-id sys-comp-code
+		key is login-id() sys-consolidation-division
+	//
+	set ws-start-whse 		= user-territory //min-value(whse-code)
+	set ws-end-whse 		= user-territory //max-value(whse-code)
+	set ws-start-stockcode 	= min-value(stock-code)
+	set ws-end-stockcode 	= max-value(stock-code)
+	set ws-start-group-code = min-value(stock-group)
+	set ws-end-group-code 	= max-value(stock-group)
+	set ws-start-size 		= min-value(stk-pack-desc)
+	set ws-end-size 		= max-value(stk-pack-desc)
+	set ws-start-retail 	= ZERO //min-value(prc-recommend-retail)
+	set ws-end-retail 		= max-value(prc-recommend-retail)
+	set ws-blank-lines 		= YES
+	//
+	RBTCHPROC_RUN_PROGRAM(rbtchproc-report-name)
+	do rbtchproc-report-parameters once
+endprocedure  //main ------------------------------------------------
+
+screen rbtchproc-report-parameters
+	//
+    window @1,1 to @21,80
+		title "Stock Availability - Report"
+	allow entry
+before
+    box @1,2 to @20,79
+    	title is " "
+detail
+    accept ws-start-whse @3,32
+        default ws-start-whse
+        title 'Start warehouse code:'
+        help "Enter the warehouse you wish to start report on, SPACE for ALL. [HELP]"
+        uppercase
+    on help-key
+		set sys-tbl-type = "WH"
+		do i85codes-table-help
+		if sys-tbl-code > SPACES
+			set ws-start-whse = sys-tbl-code
+		endif
+		reenter ws-start-whse
+	endon
+	validations
+		get system-table lookup
+			on index sys-tbl-type sys-tbl-code
+			key is "WH" ws-start-whse
+		on error
+			if ws-start-whse = SPACES
+			else
+				message "Warehouse entered is not defined."
+				reenter ws-start-whse
+			endif
+		else
+			set ws-end-whse = ws-start-whse
+		endon
+	endvalidations
+    accept ws-end-whse @4,32
+        default ws-end-whse
+        title 'End warehouse code:'
+        help "Enter the warehouse you wish to end report on, '~~~~' for ALL. [HELP]"
+        uppercase
+    on help-key
+		set sys-tbl-type = "WH"
+		do i85codes-table-help
+		if sys-tbl-code > SPACES
+			set ws-end-whse = sys-tbl-code
+		endif
+		reenter ws-end-whse
+	endon
+	validations
+		if ws-end-whse = SPACES
+			set ws-end-whse = max-value(whse-code)
+		endif
+		if ws-end-whse <> max-value(whse-code)
+			get system-table lookup
+				on index sys-tbl-type sys-tbl-code
+				key is "WH" ws-end-whse
+			on error
+				message "Warehouse entered is not defined."
+				reenter ws-end-whse
+			endon
+		endif
+	endvalidations
+	//
+    accept ws-start-stockcode @6,32
+        default ws-start-stockcode
+        title 'Start Stock Code:'
+        help "Enter the Stock Code you wish to start report on, SPACE for ALL. [HELP]"
+        uppercase
+	on help-key
+	    spl "rmd/stk/stklookup6"
+	   	returning
+	    	ws-start-stockcode
+		reenter optional
+	endon
+	/*
+	validation
+		if ws-start-stockcode <> SPACES
+		or ws-start-stockcode <> min-value(stock-code)
+			get stock-master
+				on index stock-code
+				key is ws-start-stockcode
+			on error
+				message concat(strconcat(ws-start-stockcode) " is not a valid stock code")
+				reenter
+			endon
+		endif
+	endvalidation
+	*/
+    accept ws-end-stockcode @7,32
+        default ws-end-stockcode
+        title 'End Stock Code:'
+        help "Enter the Stock Code you wish to end report on, SPACE for ALL. [HELP]"
+        uppercase
+	on help-key
+	    spl "rmd/stk/stklookup6"
+	   	returning
+	    	ws-end-stockcode
+		reenter optional
+	endon
+	/*
+	validation
+	if ws-end-stockcode = SPACES
+		set ws-end-stockcode = max-value(stock-code)
+	endif
+		if ws-end-stockcode <> "~~~~~~~~~~~~~~~~"
+			get stock-master
+				on index stock-code
+				key is ws-end-stockcode
+			on error
+				message concat(strconcat(ws-end-stockcode) " is not a valid stock code")
+				reenter
+			endon
+		endif
+	endvalidation
+	*/
+	accept ws-start-group-code @9,32
+        default ws-start-group-code
+        title 'Start Product Group Code:'
+        uppercase
+		help "Enter Start Product Group Code"
+	on help-key
+        set sys-tbl-type = "PG"
+        do i85codes-table-help
+        set ws-start-group-code = sys-tbl-code
+        reenter optional
+    endon
+    validation
+    	if ws-start-group-code <> SPACES
+    	or ws-start-group-code <> min-value(stock-group)
+			get system-table lookup
+				on index sys-tbl-type sys-tbl-code
+				key is "PG" ws-start-group-code
+			on error
+				message concat("Group Code " strconcat(ws-start-group-code) " does not exist")
+				reenter ws-start-group-code
+			endon
+		endif
+	endvalidation
+
+    accept ws-end-group-code @10,32
+        default ws-end-group-code
+        title 'End Product Group Code:'
+        uppercase
+		help "Enter End Product Group Code"
+	on help-key
+        set sys-tbl-type = "PG"
+        do i85codes-table-help
+        set ws-end-group-code = sys-tbl-code
+        reenter optional
+    endon
+    validation
+    	if ws-end-group-code = SPACES
+    		set ws-end-group-code = max-value(stock-group)
+    	endif
+    	if ws-end-group-code <> max-value(stock-group)
+			get system-table lookup
+				on index sys-tbl-type sys-tbl-code
+				key is "PG" ws-end-group-code
+			on error
+				message concat("Group Code " strconcat(ws-end-group-code) " does not exist")
+				reenter ws-end-group-code
+			endon
+		endif
+	endvalidation
+	//
+	accept ws-start-size @12,32
+        default ws-start-size
+        title 'Start Size Code:'
+        help "Enter Start Size Code"
+        uppercase					//rc 04sep09
+    accept ws-end-size @13,32
+        default ws-end-size
+        title 'End Size Code:'
+        help "Enter End Size Code"
+        uppercase					//rc 04sep09
+	//
+	accept ws-start-retail @15,32
+        default ws-start-retail
+        title 'Start Retail Price:'
+        help "Enter Start Retail Price"
+    accept ws-end-retail @16,32
+        default ws-end-retail
+        title 'End Retail Price:'
+        help "Enter End Retail Price"
+	//
+    accept ws-blank-lines @18,42
+        default ws-blank-lines
+        title 'Do you want blank line between each stock code:'
+        help "Enter Y/N"
+        uppercase
+        allow YES NO
+	//
+confirm auto
+confirmed
+   // RBTCHPROC_EXECUTION
+    do rbtchproc-report-detail
+endconfirm
+endscreen //rbtchproc-report-parameters --------------------------------------
+
+procedure start-report
+	report rbtchproc-report-name
+		header
+			print-report-heading
+		depth 60
+		width 143
+		no-message
+	set ws-report-started = TRUE
+	display "Report :" @20,59 background
+	display spool-file-name() @20,68 pic x(12) foreground prompts
+endprocedure //start-report --------------------------------------------------
+
+procedure rbtchproc-set-parameters
+endprocedure //rbtchproc-set-parameters --------------------------------------
+
+procedure print-report-heading
+	print
+        "stkavalrpt" in col 1
+        "STOCK AVAILABLE REPORT IN PRODUCT GROUP SEQUENCE" in col 27
+        today() in col 100
+        "Pageno." in col 115
+        pageno() in col 122
+    skip 2
+    print
+        "Stock" in col 2 no newline
+        if ws-start-whse != ws-end-whse
+        	print "Whse" in col 15 no newline
+        endif
+    print   "On" in col 22
+            "|" in col 26
+            "On" in col 29
+            "|" in col 33
+            "|Back" in col 40
+            "|" in col 47
+            "Stock" in col 50 bold
+            "Last Buy" in col 105
+			"Retail(inc GST)" in col 116
+    print
+        "Code" in col 2 no newline
+        if ws-start-whse != ws-end-whse
+            print "Code" in col 15 no newline
+        endif
+    print
+        "Hand" in col 21
+        "|" in col 26
+        "Order|Commit|Order" in col 28
+        "|Available" in col 47 bold
+        "Description" in col 69
+        "Size" in col 99
+        "(inc tax)" in col 105
+		"Metro" in col 115
+		"Regional" in col 122
+    print "================================================================================================================================="
+endprocedure //print-report-heading ------------------------------------------
+
+procedure rbtchproc-report-detail
+local
+		new-stock-group 					pic 9
+		new-sys-description 				pic 9
+	 	new-stock-code 						pic 9
+	 	sub-tot-whse-qty-on-hand 			like whse-qty-on-hand
+	 	sub-tot-whse-current-orders 		like whse-current-orders
+	 	sub-tot-whse-back-orders 			like whse-back-orders
+	 	sub-tot-whse-qty-on-order 			like whse-qty-on-order
+	 	sub-tot-ws-stock-avail 				like ws-stock-avail
+    //
+    window @19,44 to @23,80
+        title is "Report Progress"
+        color white
+        no-hide
+    //
+    do start-report
+    //
+    if not rbtchproc-in-background
+	    display bitmap concat(getenv('BMS')'/images/repedge.gif') @19,44
+	    display 'Report :' @20,59 background right
+	    display "Now at :" @23,45 background prompts left
+    endif
+    //
+	select
+		stock-code
+		stock-group
+		stk-description
+		stk-desc-line-2
+		ws-description = concat (sub-string (stk-description 1 30) " " sub-string (stk-desc-line-2 1 30))
+		whse-code
+		whse-qty-on-hand
+		whse-current-orders
+		whse-back-orders
+		whse-qty-on-order
+		ws-stock-avail = whse-qty-on-hand - whse-current-orders
+		sys-tbl-type
+		sys-tbl-code
+		sys-description
+		ws-stk-supp = substring (stock-code 1 3)
+		prc-recommend-retail
+		cre-accountcode
+		sup-last-buy-price
+		stk-pack-desc
+		prc-wholesale-price
+		prc-sales-tax-code
+	from
+		stock-master
+		stock-warehouse-detail
+		system-table
+		stock-price
+		stock-supplier
+	where
+		sys-tbl-type = 'PG'
+		and sys-tbl-code = stock-group
+		and whse-code between ws-start-whse and ws-end-whse
+		and (whse-qty-on-hand != 0 or whse-current-orders != 0 or whse-back-orders != 0 or
+		whse-qty-on-order != 0 or ws-stock-avail != 0 )
+		and stock-code between ws-start-stockcode and ws-end-stockcode
+		and stock-group between ws-start-group-code and ws-end-group-code
+		and prc-recommend-retail between ws-start-retail and ws-end-retail
+		and stk-pack-desc between ws-start-size and ws-end-size
+	//group by stock-code
+	order by stock-group ws-stk-supp stock-code whse-code
+before stock-group
+        set new-stock-group = 1
+        page
+before sys-description
+        set new-sys-description = 1
+before stock-code
+        set new-stock-code = 1
+before stock-code
+        set sub-tot-whse-qty-on-hand = 0
+        set sub-tot-whse-current-orders = 0
+        set sub-tot-whse-back-orders = 0
+        set sub-tot-whse-qty-on-order = 0
+        set sub-tot-ws-stock-avail = 0
+detail
+	display stock-code @23,57 foreground prompts
+	//
+    if (new-stock-group)
+    endif
+    if (new-sys-description)
+       	print
+            "|" in col 26
+            "|" in col 33
+            "|" in col 40
+            "|" in col 47
+            sys-description in col 56 bold underlined
+    	print "|" in col 26
+            "|" in col 33
+            "|" in col 40
+            "|" in col 47
+    endif
+    if (new-stock-code)
+    	print
+            stock-code in col 2 pic x(12)
+            no newline
+    endif
+    if ws-start-whse != ws-end-whse
+    	print whse-code in col 16 no newline
+    endif
+    print
+        whse-qty-on-hand in col 21 pic is zzz9-
+        "|" in col 26
+        whse-current-orders in col 35 pic is zzz9-
+        "|" in col 40
+        whse-back-orders in col 42 pic is zzz9-
+        "|" in col 47
+        whse-qty-on-order in col 28 pic is zzz9-
+        "|" in col 33
+        ws-stock-avail in col 49 pic is zzz9- bold no newline
+        if (new-stock-code)
+            print
+            ws-description in col 57 pic x(41)
+            stk-pack-desc in col 99
+            sup-last-buy-price in col 104 pic z,zz9.99 no newline
+           	if prc-sales-tax-code = 1
+				print
+				(prc-recommend-retail * 1.1) in col 113 pic z,zz9.99
+				(prc-wholesale-price * 1.1) in col 122 pic z,zz9.99
+    		else
+				print
+				prc-recommend-retail in col 113 pic z,zz9.99
+				prc-wholesale-price in col 122 pic z,zz9.99
+			endif
+			if stk-desc-line-2 <> SPACES
+				print stk-desc-line-2 in col 57 pic x(41)
+			endif
+       	else
+            skip
+        endif
+        set new-stock-group = 0
+        set new-sys-description = 0
+        set new-stock-code = 0
+        set sub-tot-whse-qty-on-hand += whse-qty-on-hand
+        set sub-tot-whse-current-orders += whse-current-orders
+        set sub-tot-whse-back-orders += whse-back-orders
+        set sub-tot-whse-qty-on-order += whse-qty-on-order
+        set sub-tot-ws-stock-avail += ws-stock-avail
+after stock-code
+        if ws-start-whse != ws-end-whse
+        	display stock-code @23,57 foreground prompts
+        	print
+	            "TOTAL" in col 14 bold
+	            sub-tot-whse-qty-on-hand in col 21 pic is zzz9- bold
+	            "|" in col 26
+	            sub-tot-whse-current-orders in col 35 pic is zzz9- bold
+	            "|" in col 33
+	            sub-tot-whse-back-orders in col 42 pic is zzz9- bold
+	            "|" in col 40
+	            sub-tot-whse-qty-on-order in col 28 pic is zzz9- bold
+	            "|" in col 47
+	            sub-tot-ws-stock-avail in col 49 pic is zzz9- bold
+	            print "|" in col 26
+	                    "|" in col 33
+	                    "|" in col 40
+	                    "|" in col 47
+        endif
+        if ws-blank-lines = "Y"
+	        print "|" in col 26
+	                "|" in col 33
+	                "|" in col 40
+	                "|" in col 47
+	        print "|" in col 26
+	                "|" in col 33
+	                "|" in col 40
+	                "|" in col 47
+	        print "|" in col 26
+	                "|" in col 33
+	                "|" in col 40
+	                "|" in col 47
+        elseif ws-blank-lines = "N"
+        endif
+    endselect
+        skip
+        report section finished // detail
+    //
+    do report-finished
+    RBTCHPROC_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+endprocedure //rbtchproc-report-detail ---------------------------------------
+
+procedure report-finished
+    if ws-report-started
+         report section "Finish"
+       //  page
+        skip 2
+        print "Program name:    stkavalrpt" in col 4
+        skip 2
+        print "Parameters:" in col 4
+                "Warehouse Range      :" in col 21
+                ws-start-whse in col 44 pic x(3)
+                "-" in col 50
+                ws-end-whse in col 54 pic x(3)
+        skip
+        print
+                "Stock Code Range     :" in col 21
+                ws-start-stockcode in col 44 pic x(15)
+                "-" in col 62
+                ws-end-stockcode in col 66 pic x(15)
+        skip
+        print "Product Group Range  :" in col 21
+                ws-start-group-code in col 44 pic x(4)
+                "-" in col 51
+                ws-end-group-code in col 55 pic x(4)
+        skip
+        print "Size Code Range      :" in col 21
+                ws-start-size in col 44 pic x(4)
+                "-" in col 51
+                ws-end-size in col 55 pic x(4)
+        skip
+        print "Retail Price Range   :" in col 21
+                ws-start-retail in col 44 pic zz,zz9
+                "-" in col 53
+                ws-end-retail in col 57 pic zz,zz9
+         skip
+         report section finished //finish
+    endif
+endprocedure //report-finished -----------------------------------------------

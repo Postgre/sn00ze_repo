@@ -1,0 +1,111 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/deb/verifyacct
+//  Program Desc:	
+//  Requested By:	
+//  Request Date:	
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03apr14	rmd			upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+// verifyacct.spl
+
+// 07feb08	rmd -transfer mode to return customers with price code I (Internal)
+// 21jan08	rmd	add -transfer mode, only allow ZCS~ accounts
+
+
+//#include "../../../../bms/include/m1enqdeb.spl"
+#include "/pro/pronto/bms/include/m1enqdeb.spl"
+
+mode md-select
+	prompt "&Select"
+	
+procedure main
+window @3,3 to @7,33 title is "Enter Account"
+returning
+	lr-accountcode						like accountcode
+
+local field
+	lf-selected							type boolean
+	lf-lookup-mode						pic x(20)
+	display box @3,3 to @7,32 title is "Enter Customer Account"
+
+	if get-param(1) = "-transfer"
+		set lf-lookup-mode = "TRANSFER"
+	endif
+		set lf-selected = FALSE
+	accept lr-accountcode @5,18 title is "Account:"
+		uppercase
+		on help-key
+			if lf-lookup-mode = "TRANSFER"
+				do transfer-account-lookup
+					returning
+						lr-accountcode
+			else
+        		do m1enqdeb-enquire-on-debtors
+        		        parameters lr-accountcode //spaces spaces
+        		        returning lr-accountcode
+        	endif
+		endon
+	if lf-lookup-mode = "TRANSFER"
+		if substring(lr-accountcode,1,3) != "ZCS"
+		get deb-master
+			on index accountcode
+			key is lr-accountcode
+			on error
+			else
+				//if warehouse = SPACES and price-code = "I"
+				if price-code = "I"
+				else
+					message concat(strconcat(lr-accountcode) " is not a Transfer account")
+					reenter lr-accountcode		
+				endif
+			endon
+        	
+		endif
+	endif
+	get deb-master
+	on index accountcode
+	key is lr-accountcode
+	on error
+		message concat(strconcat(lr-accountcode) " not found")
+		reenter lr-accountcode
+	else
+		set lr-accountcode = accountcode
+		if lf-selected = TRUE
+			exit
+		else
+			set lf-selected = TRUE
+			reenter lr-accountcode optional
+		endif
+	endon
+endprocedure // main ----------------------------------------------------------
+
+screen transfer-account-lookup
+window @10,10 to @24,64 title is concat("Transfer Account")
+	primary deb-master
+	//where substring(accountcode,1,3) = "ZCS"		// 07feb08
+	//where warehouse = SPACES and price-code = "I"
+	where price-code = "I"
+	datagrid occurs 10
+	allowed md-select search
+returning
+	lr-accountcode			like accountcode
+detail
+	display accountcode		@11,12	title is "Account Code"
+	display shortname 		@11,14	title is "Name"
+confirm
+	auto
+confirmed
+	if screen-mode() = md-select
+		set lr-accountcode = accountcode
+		exit
+	endif
+endconfirm
+endscreen // transfer-account-lookup ------------------------------------------
+// verifyacct.spl

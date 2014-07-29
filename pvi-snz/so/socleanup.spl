@@ -1,0 +1,117 @@
+// socleanup.spl
+// 23may14	rmd {2} pvi-snz/so/socleanup upgrade to 710.3
+// 29jan10	rmd	HD12943 if order type Q, set to 98 (quote lost) instead of 99 cancelled
+// 11mar09	rmd	want no report if nothing repaired
+
+procedure main
+	get system-control first
+	do scan-orders
+endprocedure // main ----------------------------------------------------------
+
+procedure scan-orders
+local field
+	lf-valid-line-count					type numeric
+	lf-errors-exist						type boolean
+	//print
+	//	"                   SO Cleanup Report"		bold
+	//
+	//print
+	//	today()
+	//	tod()
+	//	user-id
+	//print
+	//	"---------------------------------------------------------------------------"
+	// test pass
+	extract sales-order //lock
+	detail
+		set lf-valid-line-count = 0
+		if so-order-status in {"99"}
+			continue
+		endif
+		extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix	0
+		next same so-order-no so-bo-suffix
+		detail
+			//if sol-line-type in {"SC" "SN" "KN" "WN" "DN"}
+				set lf-valid-line-count += 1
+			//endif
+		endextract
+		if lf-valid-line-count = 0
+			set lf-errors-exist = TRUE
+		endif
+	endextract
+	//
+	if lf-errors-exist
+		report "SO Cleanup" spool-only
+		header is top-of-page
+		page
+		extract sales-order lock
+		detail
+			set lf-valid-line-count = 0
+			if so-order-status in {"99"}
+				continue
+			endif
+			extract sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is so-order-no so-bo-suffix	0
+			next same so-order-no so-bo-suffix
+			detail
+				//if sol-line-type in {"SC" "SN" "KN" "WN" "DN"}
+					set lf-valid-line-count += 1
+				//endif
+			endextract
+			if lf-valid-line-count = 0
+				//message concat(str(so-order-no) " has no valid lines")
+				set so-user-only-alpha4-1 = so-order-status
+				//rmd29jan10 test order type code, if Q for quote set to 98 quote lost
+				if so-order-type-code = "Q"
+					set so-user-only-alpha20-1 = "No lines, set to 98"
+					set so-order-status = "98"
+				else
+					set so-user-only-alpha20-1 = "No lines, set to 99"
+					set so-order-status = "99"
+				endif
+				print
+					//concat(strconcat(str(so-order-no)) so-bo-suffix)	 	in col 03
+					so-order-no												in col 01
+					so-bo-suffix											in col 10
+					so-user-only-alpha4-1									in col 20
+					so-order-status											in col 30
+					"No valid lines"										in col 40
+				update sales-order
+			endif
+		endextract
+		report finished
+	endif
+endprocedure // scan-orders ---------------------------------------------------
+
+procedure top-of-page
+		print
+			company-name in col 1 pic x(20)
+			"Sales Order Cleanup" in col 60
+			"Page:" in col 119 // 120
+			page-no pic zzz
+		print
+			"Date:" in col 1
+	       	today() in col 7
+			"Time:" in col 21
+			tod() in col 27
+			"User:" in col 41
+			login-id() in col 47
+		skip
+		print
+			"Order"			in col 3
+			"BO"			in col 10
+			"Old"		 	in col 20
+			"New" 			in col 30
+			"Reason"		in col 40
+		print
+			"Number"		in col 3
+			"Suffix"		in col 10
+			"Status"	 	in col 20
+			"Status"		in col 30
+		print
+			127"="
+endprocedure // top-of-page ---------------------------------------------------
+// socleanup.spl

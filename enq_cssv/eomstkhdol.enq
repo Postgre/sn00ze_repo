@@ -1,0 +1,365 @@
+select
+	stock-code
+	stock-group
+	sys-tbl-code
+	sys-tbl-alpha-1
+	ash-value
+	ash-whse
+	ws-period = input
+		numeric
+		prompt is "Enter period number:"
+from
+	stock-master
+	system-table
+	stock-aged-sales-history
+where
+	ash-type = 'Q' 
+	and ash-years-ago = 2000 
+	and sys-tbl-type = 'PG' 
+	and stock-group = sys-tbl-code 
+order by ash-whse sys-tbl-alpha-1 
+format is rpt
+field total-ash-value like ash-value
+field sub-tot-ash-value like ash-value
+field sub-tot1-ash-value like ash-value
+report header
+	page
+	set total-ash-value[1] = 0
+	set total-ash-value[2] = 0
+	set total-ash-value[3] = 0
+	set total-ash-value[4] = 0
+	set total-ash-value[5] = 0
+	set total-ash-value[6] = 0
+	set total-ash-value[7] = 0
+	set total-ash-value[8] = 0
+	set total-ash-value[9] = 0
+	set total-ash-value[10] = 0
+	set total-ash-value[11] = 0
+	set total-ash-value[12] = 0
+header
+	print 
+		"STOCK HOLDINGS REPORT" in col 5
+		today() in col 83
+		tod() in col 96
+		"Pageno." in col 106
+		pageno() in col 114
+	skip 1
+	if ws-period = 1
+		print "Period number:  1 - July " in col 33 bold 
+	elseif
+	ws-period = 2
+		print "Period number:  2 - August " in col 33 bold 
+	elseif
+	ws-period = 3
+		print "Period number:  3 - September " in col 33 bold 
+	elseif
+	ws-period = 4
+		print "Period number:  4 - October " in col 33 bold 
+	elseif
+	ws-period = 5
+		print "Period number:  5 - November " in col 33 bold 
+	elseif
+	ws-period = 6
+		print "Period number:  6 - December " in col 33 bold 
+	elseif
+	ws-period = 7
+		print "Period number:  7 - January " in col 33 bold 
+	elseif
+	ws-period = 8
+		print "Period number:  8 - February " in col 33 bold 
+	elseif
+	ws-period = 9
+		print "Period number:  9 - March " in col 33 bold 
+	elseif
+	ws-period = 10
+		print "Period number:  10 - April " in col 33 bold 
+	elseif
+	ws-period = 11
+		print "Period number:  11 - May " in col 33 bold 
+	elseif
+	ws-period = 12
+		print "Period number:  12 - June " in col 33 bold 
+	endif
+	skip
+	print
+		"W/House" in col 8
+		"Class" in col 25
+		"Amount" in col 58
+	print "==========================================================================================================================" in col 1
+before sys-tbl-alpha-1
+	set sub-tot-ash-value[1] = 0
+	set sub-tot-ash-value[2] = 0
+	set sub-tot-ash-value[3] = 0
+	set sub-tot-ash-value[4] = 0
+	set sub-tot-ash-value[5] = 0
+	set sub-tot-ash-value[6] = 0
+	set sub-tot-ash-value[7] = 0
+	set sub-tot-ash-value[8] = 0
+	set sub-tot-ash-value[9] = 0
+	set sub-tot-ash-value[10] = 0
+	set sub-tot-ash-value[11] = 0
+	set sub-tot-ash-value[12] = 0
+
+before ash-whse 
+	set sub-tot1-ash-value[1] = 0
+	set sub-tot1-ash-value[2] = 0
+	set sub-tot1-ash-value[3] = 0
+	set sub-tot1-ash-value[4] = 0
+	set sub-tot1-ash-value[5] = 0
+	set sub-tot1-ash-value[6] = 0
+	set sub-tot1-ash-value[7] = 0
+	set sub-tot1-ash-value[8] = 0
+	set sub-tot1-ash-value[9] = 0
+	set sub-tot1-ash-value[10] = 0
+	set sub-tot1-ash-value[11] = 0
+	set sub-tot1-ash-value[12] = 0
+
+detail
+	set total-ash-value[1] += ash-value[1]
+	set total-ash-value[2] += ash-value[2]
+	set total-ash-value[3] += ash-value[3]
+	set total-ash-value[4] += ash-value[4]
+	set total-ash-value[5] += ash-value[5]
+	set total-ash-value[6] += ash-value[6]
+	set total-ash-value[7] += ash-value[7]
+	set total-ash-value[8] += ash-value[8]
+	set total-ash-value[9] += ash-value[9]
+	set total-ash-value[10] += ash-value[10]
+	set total-ash-value[11] += ash-value[11]
+	set total-ash-value[12] += ash-value[12]
+	set sub-tot-ash-value[1] += ash-value[1]
+	set sub-tot-ash-value[2] += ash-value[2]
+	set sub-tot-ash-value[3] += ash-value[3]
+	set sub-tot-ash-value[4] += ash-value[4]
+	set sub-tot-ash-value[5] += ash-value[5]
+	set sub-tot-ash-value[6] += ash-value[6]
+	set sub-tot-ash-value[7] += ash-value[7]
+	set sub-tot-ash-value[8] += ash-value[8]
+	set sub-tot-ash-value[9] += ash-value[9]
+	set sub-tot-ash-value[10] += ash-value[10]
+	set sub-tot-ash-value[11] += ash-value[11]
+	set sub-tot-ash-value[12] += ash-value[12]
+	set sub-tot1-ash-value[1] += ash-value[1]
+	set sub-tot1-ash-value[2] += ash-value[2]
+	set sub-tot1-ash-value[3] += ash-value[3]
+	set sub-tot1-ash-value[4] += ash-value[4]
+	set sub-tot1-ash-value[5] += ash-value[5]
+	set sub-tot1-ash-value[6] += ash-value[6]
+	set sub-tot1-ash-value[7] += ash-value[7]
+	set sub-tot1-ash-value[8] += ash-value[8]
+	set sub-tot1-ash-value[9] += ash-value[9]
+	set sub-tot1-ash-value[10] += ash-value[10]
+	set sub-tot1-ash-value[11] += ash-value[11]
+	set sub-tot1-ash-value[12] += ash-value[12]
+after sys-tbl-alpha-1
+	if ws-period = 1
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[1] in col 56
+	elseif
+			ws-period = 2
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[2] in col 56
+	elseif
+			ws-period = 3
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[3] in col 56
+	elseif
+			ws-period = 4
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[4] in col 56
+	elseif
+			ws-period = 5
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[5] in col 56
+	elseif
+			ws-period = 6
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[6] in col 56
+	elseif
+			ws-period = 7
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[7] in col 56
+	elseif
+			ws-period = 8
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[8] in col 56
+	elseif
+			ws-period = 9
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[9] in col 56
+	elseif
+			ws-period = 10
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[10] in col 56
+	elseif
+			ws-period = 11
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[11] in col 56
+	elseif
+			ws-period = 12
+		print
+			ash-whse in col 10
+			sys-tbl-alpha-1 in col 25
+			sub-tot-ash-value[12] in col 56
+	endif
+after ash-whse 
+	print
+		"---------------" in col 56
+	if ws-period = 1
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[1] in col 56
+		skip
+	elseif
+	ws-period = 2
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[2] in col 56
+		skip
+	elseif
+	ws-period = 3
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[3] in col 56
+		skip
+	elseif
+	ws-period = 4
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[4] in col 56
+		skip
+	elseif
+	ws-period = 5
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[5] in col 56
+		skip
+	elseif
+	ws-period = 6
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[6] in col 56
+		skip
+	elseif
+	ws-period = 7
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[7] in col 56
+		skip
+	elseif
+	ws-period = 8
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[8] in col 56
+		skip
+	elseif
+	ws-period = 9
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[9] in col 56
+		skip
+	elseif
+	ws-period = 10
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[10] in col 56
+		skip
+	elseif
+	ws-period = 11
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[11] in col 56
+		skip
+	elseif
+	ws-period = 12
+		print
+			ash-whse in col 10
+			"Total" in col 25
+			sub-tot1-ash-value[12] in col 56
+		skip
+	endif
+report footer
+	print
+		"---------------" in col 56
+	if ws-period = 1
+		print
+			total-ash-value[1] in col 56
+	elseif
+	ws-period = 2
+		print
+			total-ash-value[2] in col 56
+	elseif
+	ws-period = 3
+		print
+			total-ash-value[3] in col 56
+	elseif
+	ws-period = 4
+		print
+			total-ash-value[4] in col 56
+	elseif
+	ws-period = 5
+		print
+			total-ash-value[5] in col 56
+	elseif
+	ws-period = 6
+		print
+			total-ash-value[6] in col 56
+	elseif
+	ws-period = 7
+		print
+			total-ash-value[7] in col 56
+	elseif
+	ws-period = 8
+		print
+			total-ash-value[8] in col 56
+	elseif
+	ws-period = 9
+		print
+			total-ash-value[9] in col 56
+	elseif
+	ws-period = 10
+		print
+			total-ash-value[10] in col 56
+	elseif
+	ws-period = 11
+		print
+			total-ash-value[11] in col 56
+	elseif
+	ws-period = 12
+		print
+			total-ash-value[12] in col 56
+	endif
+

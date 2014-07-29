@@ -1,0 +1,17 @@
+// stats02.eng
+// to list the products for a particular product group and status
+select
+	stock-code
+	stock-group
+	stk-stock-status
+	stk-user-group
+	stk-description
+	ws-status = stk-user-group[2] 
+	ws-status-inp = input alpha "Enter status code to select upon"
+	ws-prod-group = input alpha "Enter the product group "
+from
+	stock-master
+where
+	ws-status = ws-status-inp 
+	and stock-group = ws-prod-group 
+format is lst

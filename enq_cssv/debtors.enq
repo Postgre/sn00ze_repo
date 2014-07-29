@@ -1,0 +1,10 @@
+select
+	accountcode
+	shortname
+	open-bal
+	warehouse
+	rep-code
+	last-payment
+from
+	deb-master
+format is lst

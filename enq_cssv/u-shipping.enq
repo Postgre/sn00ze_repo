@@ -1,0 +1,16 @@
+// Update the field sup-shipping-method-code to a value of A for 
+// shipping charges maintenance.
+
+update stock-supplier
+set
+	sup-shipping-method-code = 'R'
+where
+	sup-shipping-method-code in
+	(
+	select
+		stk-user-group[2]
+	from
+		stock-master
+	where
+		stk-user-group[2] = 'C'
+	)

@@ -1,0 +1,6 @@
+update bankrec-cash-trans
+set
+	bct-bank-gl-account = "3M3461230" 
+where
+	( ( bct-bank-gl-account = "3M3051230"  ) AND
+	( bct-date > 28/6/09  ) )

@@ -1,0 +1,16 @@
+// Stock Available Report ZUSR.E108
+// Reports on Stock Available to Sell not Stock on Hand 
+select
+	stock-code
+	stock-group
+	stk-description
+	stk-desc-line-2
+	stk-apn-number
+	whse-code
+	whse-qty-on-hand - whse-current-orders
+from
+	stock-master
+	stock-warehouse-detail
+where
+	((whse-qty-on-hand - whse-current-orders)> 0)and(stock-group = input alpha prompt is "Enter Product Group (F-FC-IN-IS-L-MP-P-PP-Q-S-SA-SF-SL-U") and ((whse-code >= input alpha prompt is "Start Territory " ) and (whse-code <= input alpha prompt is "End Territory " ))
+order by stk-apn-number

@@ -1,0 +1,10 @@
+select
+	stock-code
+	sw-stk-sort-key
+	stock-group
+	sw-territory
+	sw-rep-code
+	sw-sales-year
+from
+	stock-weekly-sales-history
+format is lst

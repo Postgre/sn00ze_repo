@@ -1,0 +1,12 @@
+select
+	stock-code
+	cre-accountcode
+	sup-last-buy-price
+	stk-user-group
+from
+	stock-master
+	stock-supplier
+where
+	sup-last-buy-price = 0.00
+	and (stk-user-group[2] = 'B' or stk-user-group[2] = 'A')
+format is lst

@@ -1,0 +1,44 @@
+// stock valuation by condition code and warehouse
+select
+	stock-code
+	stk-description
+	stk-condition-code
+	stock-group
+	whse-code
+	whse-qty-on-hand
+	whse-avg-cost
+	prc-recommend-retail-inc-tax
+	calc1 = whse-qty-on-hand 
+	calc2 = whse-avg-cost 
+	calc4 = prc-recommend-retail-inc-tax 
+	calc5 = (calc1 ) * (calc4 ) 
+	calc3 = (calc1 ) * (calc2 ) 
+from
+	stock-master
+	stock-price
+	stock-warehouse-detail
+where
+	((stk-condition-code = input alpha 
+	help is "Enter Required Condition Code" 
+	prompt is "Please enter Required Condition Code" ) and 
+	(whse-code = input alpha help is "Enter Warehouse code" 
+	prompt is "Please Enter Warehouse Code" ) and 
+	(whse-qty-on-hand != 0 ) ) 
+order by stock-group whse-code 
+format is lst
+report width is 160
+suppress calc1
+suppress calc2
+suppress calc4
+field title of stock-code is "Item Code"
+field title of stk-description is "Description"
+field title of stk-condition-code is "Condition"
+field title of stock-group is "Item Group"
+field title of whse-code is "W/house"
+field title of whse-qty-on-hand is "QOH"
+field title of prc-recommend-retail-inc-tax is "Price Inc Tax"
+field title of whse-avg-cost is "Average Cost"
+field title of calc5 is "Total Retail"
+field title of calc3 is "Total Cost"
+total on calc5
+total on calc3

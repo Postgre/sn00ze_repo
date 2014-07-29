@@ -1,0 +1,338 @@
+////////////////////////////////////////////////////////////////////////////////
+//
+// Modification history
+//
+// Date		Who		Details
+// 21feb14	rmd		upgrade for 710
+// 02jun09	rc		Fixed the comma in the wrong place
+// 03apr09	rmd		add login-id, date range and gl codes to printout
+// 13aug08	rmd		capability to print
+// 06aug01	rjb		excluded 'BF' (brought forward) trans from calculation
+// 03jan00	sgr		exclude 1454 ledger from balance
+////////////////////////////////////////////////////////////////////////////////
+//#include "/usr/pronto/bms/include/bmsdef.spl"
+#include "../../bms/include/bmsdef.spl"
+
+mode md-print
+	prompt "Print"
+	help "Print BAS details"
+
+mode md-exit
+	prompt "Exit"
+	help "Exit this screen"
+
+
+field	ws-start-date		type date
+		ws-end-date			type date
+		1a-total			type numeric
+		1b-total			type numeric
+		1g-total			type numeric
+		2a-total			type numeric
+		2b-total			type numeric
+		ws-prev-account		like gl-accountcode
+		i					type numeric pic 99
+		ws-create-report	pic x
+		//03apr09
+		ws-gl-codes-1a		pic x(60)
+		ws-gl-codes-1b		pic x(60)
+		ws-whse				like whse-code			//rc 02jun09
+
+procedure main
+	window @1,1 to @24,90					//rc 02jun09
+	//allowed md-print md-exit
+	clear
+	get system-control first
+	DO_SCREEN_HEADER()
+	//box @9,15 to @13,52				//rc 02jun09
+	box @9,15 to @15,70					//rc 02jun09
+		title " "
+	//display 'Start Date : ' 	@10,20     background
+	//display 'End   Date : ' 	@11,20     background
+	//display "Create Report:" 	@12,18     background
+	accept ws-start-date @10,38               title is "Start Date:"
+		default sys-period-start[sys-gl-per]
+	accept ws-end-date @11,38                 title is "End Date:"
+		default today()
+	accept ws-create-report @12,38            title is "Create Report Y/N?:"
+		uppercase
+		allowed "Y" "N"
+		default "Y"
+	//start -----------------------------------------  //rc 02jun09
+	accept ws-whse @13,38
+		title "Company Code:"
+		default ws-whse
+		help "Enter the Company Code you wish to report on, SPACE for ALL. [HELP]"
+	validations
+		get system-table lookup
+			on index sys-tbl-type sys-tbl-code
+			key is "WH" ws-whse
+		on error
+			if ws-whse = SPACES
+			else
+				message "Warehouse entered is not defined."
+				reenter ws-whse
+			endif
+		endon
+	endvalidations
+	//end -------------------------------------------- //rc 02jun09
+	clear @8,14 to @16,85
+	box @2,3 to @23,90							//rc 02jun09
+		title " "								//rc 02jun09
+	//display 'A.B.N. : ' @3,4
+	//display company-sales-tax-no @3,13
+	display sys-spare-30-3 @3,4 background
+
+	display 'Date Range' @3,42 background
+	display ws-start-date @3,53 background
+	display 'to' @3,65 background
+	display ws-end-date @3,68 background
+	do bas-2a
+	do bas-2b
+	do bas-3
+	do bas-z-bal
+	pause
+	if ws-create-report = "Y"
+		do print-details
+		//pause
+	else
+		//pause
+	endif
+
+//confirm auto
+//confirmed
+//	if screen-mode() = md-exit
+//		exit
+//	elseif screen-mode() = md-print
+//		do print-details
+//	endif
+//endconfirm
+endprocedure // main -------------------------------------------------------------
+
+procedure bas-2a
+	display '1A : ' @5,18
+	display 'GST payable' @5,38
+	display '2A : ' @7,18
+	display 'Total' @7,38
+	set 1a-total = 0
+	set 2a-total = 0
+	set ws-prev-account = spaces
+//	select *
+//	from special-accounts
+//	where substring(s-acc-name,1,4) = 'STAX'
+//	detail
+//		if gl-accountcode != ws-prev-account
+			set i = 5
+			select *
+			from gl-trans
+//			where gl-accountcode = :gl-accountcode
+			where substring(gl-accountcode,6,9) between '1455' and '1459'
+				and gl-trans-date between :ws-start-date and :ws-end-date
+				and gl-trans-type != "BF"
+			detail
+				if (substring(gl-accountcode,3,5) = ws-whse			//rc 02jun09
+					or ws-whse = SPACES)							//rc 02jun09
+						set 1a-total -= gl-amount
+				endif						//rc 02jun09
+			after gl-accountcode
+				if (substring(gl-accountcode,3,5) = ws-whse			//rc 02jun09
+					or ws-whse = SPACES)							//rc 02jun09
+					display gl-accountcode @i,65 background
+					set i += 1
+					set ws-gl-codes-1a = concat(strconcat(ws-gl-codes-1a) " " gl-accountcode)
+				endif												//rc 02jun09
+			endselect
+			set ws-prev-account = gl-accountcode
+//		endif
+//	endselect
+	set 2a-total += 1a-total
+	display 1a-total @5,25 pic $$,$$$,$$9- bold
+	display 10'-' @6,25 bold
+	display 2a-total @7,25 pic $$,$$$,$$9- inverse bold
+endprocedure //bas-2a
+
+procedure bas-2b
+	display '1B : ' @9,18
+	display 'Credit for GST paid' @9,38
+	display '1G : ' @10,18
+	display 'Special Credit for WST' @10,38
+	display '2B : ' @12,18
+	display 'Total' @12,38
+	set 1b-total = 0
+	set 1g-total = 0
+	set ws-prev-account = spaces
+//	select *
+//	from special-accounts
+//	where substring(s-acc-name,1,4) = 'ITAX'
+//	detail
+//		if gl-accountcode != ws-prev-account
+			set i = 9
+			select *
+			from gl-trans
+			//where gl-accountcode = :gl-accountcode
+			//where substring(gl-accountcode,6,9) between '1450' and '1454'
+			where substring(gl-accountcode,6,9) between '1450' and '1453'
+				and gl-trans-date between :ws-start-date and :ws-end-date
+				and gl-trans-type != 'BF'
+			detail
+				if (substring(gl-accountcode,3,5) = ws-whse			//rc 02jun09
+					or ws-whse = SPACES)							//rc 02jun09
+					if (gl-trans-type = 'JE' and gl-trans-date = 01/07/00 and
+						substring(gltr-special-account-name,1,2) = 'IN') or
+						(gl-reference = 'WST-CREDIT') or
+						(gl-reference = 'WST ADJ') or
+						(gl-reference = 'WST ADJ 2')
+						set 1g-total += gl-amount
+					else
+						set 1b-total += gl-amount
+					endif
+				endif												//rc 02jun09
+				after gl-accountcode
+				if (substring(gl-accountcode,3,5) = ws-whse			//rc 02jun09
+					or ws-whse = SPACES)							//rc 02jun09
+					display gl-accountcode @i,65 background
+					set i += 1
+					set ws-gl-codes-1b = concat(strconcat(ws-gl-codes-1b) " " gl-accountcode)
+				endif												//rc 02jun09
+			endselect
+			set ws-prev-account = gl-accountcode
+//		endif
+//	endselect
+	set 2b-total = 1b-total + 1g-total
+	display 1b-total @9,25 pic $$,$$$,$$9- bold
+	display 1g-total @10,25 pic $$,$$$,$$9- bold
+	display 10'-' @11,25 bold
+	display 2b-total @12,25 pic $$,$$$,$$9- inverse bold
+endprocedure //bas-2b
+
+procedure bas-3
+	display 15'=' @15,35
+	display '3  : ' @15,18
+	display 'GST Nett Amount' @15,38
+	//display 2a-total - 2b-total @15,25 pic $$,$$$,$$9--		//rc 02jun09
+	display 2a-total - 2b-total @15,25 pic $$,$$$,$$9- bold		//rc 02jun09
+	display 'Notes:' @16,4 background
+	display '1- If the result in (3) is postive, this is your net amount of GST to remit' @17,4 background
+	display '2- If the result in (3) is negative, this is your net amount of GST credit' @18,4 background
+	display '3- This does not take into consideration company tax, PAYG etc...' @19,4 background
+	display '4- Use Report 613-GL Transactions by Account to validate the balances displayed' @20,4 background
+endprocedure //bas-3
+
+procedure bas-z-bal
+	select *
+	from gl-trans
+	where gl-accountcode = 'Z8STAX'
+		and gl-trans-date between :ws-start-date and :ws-end-date
+	detail
+		display 'Errors :' @21,4 inverse
+		display 'Z8STAX has transactions you MUST contact IT Support' @21,14 flashing
+	endselect
+	select *
+	from gl-trans
+	where gl-accountcode = 'Z6ITAX'
+		and gl-trans-date between :ws-start-date and :ws-end-date
+	detail
+		display 'Errors :' @22,4 inverse
+		display 'Z6ITAX has transactions you MUST contact IT Support' @22,14 flashing
+	endselect
+endprocedure //bas-z-bal
+
+procedure print-details
+//local field
+	//i			type numeric
+
+	report "BAS Enquiry"
+	//FULL-PAGE
+	print
+		company-name col 1 SCALE 200 BOLD
+		concat("BAS Enquiry") col 53 bold
+		today() in col 99
+		tod() in col 111 pic HH:MM
+		"Page :" col 117
+		left-justify(str(page-no())) col 124
+	//03apr09
+	print
+		"User:"						bold
+		login-id		in col 15
+	print
+		"Date Range:"				bold
+		ws-start-date 	in col 15
+		"-"
+		ws-end-date
+	//03apr09
+
+	print
+		//'A.B.N. : ' 			in col 2
+		//company-sales-tax-no
+		sys-spare-30-3			in col 4
+
+	print
+		'1A : ' 				in col 18
+		1a-total 				in col 25 pic $$,$$$,$$9-
+		'GST payable' 			in col 38
+		ws-gl-codes-1a			in col 65				//03apr09
+
+	print
+		'2A : '					in col 18
+		2a-total				in col 25 pic $$,$$$,$$9-
+		'Total'					in col 38
+
+
+
+	print
+		'1B : '					in col 18
+		1b-total				in col 25 pic $$,$$$,$$9-
+		'Credit for GST paid'	in col 38
+		ws-gl-codes-1b			in col 65				//03apr09
+
+	print
+		'1G : '					in col 18
+		1g-total				in col 25 pic $$,$$$,$$9-
+		'Special Credit for WST' in col 38
+
+	print
+		'2B : '					in col 18
+		2b-total 				in col 25 pic $$,$$$,$$9-
+		'Total'					in col 38
+
+	print
+		'3  : '					in col 18
+		2a-total - 2b-total		in col 25 pic $$,$$$,$$9-
+		'GST Nett Amount'		in col 38
+
+	print
+		'Notes:'				in col 4
+	print
+		'1- If the result in (3) is postive, this is your net amount of GST to remit'     in col 4
+	print
+		'2- If the result in (3) is negative, this is your net amount of GST credit'      in col 4
+	print
+		'3- This does not take into consideration company tax, PAYG etc...'               in col 4
+	print
+		'4- Use Report 613-GL Transactions by Account to validate the balances displayed'    in col 4
+
+
+	select *
+	from gl-trans
+	where gl-accountcode = 'Z8STAX'
+		and gl-trans-date between :ws-start-date and :ws-end-date
+	detail
+		print
+			'Errors :' in col 4
+			'Z8STAX has transactions you MUST contact IT Support'	in col 14
+		break
+	endselect
+
+	select *
+	from gl-trans
+	where gl-accountcode = 'Z6ITAX'
+		and gl-trans-date between :ws-start-date and :ws-end-date
+	detail
+		print
+			'Errors :' in col 4
+			'Z6ITAX has transactions you MUST contact IT Support' in col 14
+		break
+	endselect
+
+	report finished
+
+endprocedure // print-details -------------------------------------------------

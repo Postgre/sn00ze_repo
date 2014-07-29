@@ -1,0 +1,22 @@
+// Program: q-sal-cust.enq
+// author: Ellen Gallagher
+// purpose: To derive the number of customer /transactions for the pronto
+// stores as nothing is automated to retrieve them
+// date:    19-Oct-94
+select
+distinct
+	so-order-no
+	so-bo-suffix
+	so-order-date
+	so-order-status
+	so-territory-code
+	ws-so-order-date = input date "Please enter the starting date"
+	ws-so-end-order-date = input date "Please enter the ending date"
+from
+	sales-order
+where
+	so-order-date between ws-so-order-date and ws-so-end-order-date 
+	and 
+	so-order-status != '99' 
+order by so-territory-code
+format is lotus

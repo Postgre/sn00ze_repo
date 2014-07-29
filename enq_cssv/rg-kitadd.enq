@@ -1,0 +1,15 @@
+// show stock item movements where stock type is kit
+select
+	stock-code
+	stk-trans-type
+	stk-trans-whse
+	stk-trans-date
+	stk-trans-qty
+	stk-trans-value
+	stk-stock-status
+from
+	stock-movements
+	stock-master
+where
+	( stk-stock-status = "K"  )
+format is lst

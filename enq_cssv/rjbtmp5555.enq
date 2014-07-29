@@ -1,0 +1,15 @@
+select
+	gl-accountcode
+	gl-subledger-code
+	gl-trans-type
+	gl-trans-date
+	gl-reference
+	gl-details
+	gl-batch-ref
+	gl-amount
+	gltr-special-account-name
+from
+	gl-trans
+where
+	gl-accountcode = "5M8301991"  
+format is external

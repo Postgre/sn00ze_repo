@@ -1,0 +1,8 @@
+select
+	cre-accountcode
+	cr-tr-date
+	cr-tr-reference
+	cr-tr-batch-ref
+	cr-tr-amount
+from
+	cre-trans

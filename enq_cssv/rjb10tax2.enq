@@ -1,0 +1,17 @@
+select
+	po-order-no
+	po-backorder-flag
+	cre-accountcode
+	po-order-status
+	stock-code
+	stk-description
+	stk-sales-tax-paid-rate
+from
+	purchase-order
+	purchase-order-line
+	stock-master
+where
+	stk-sales-tax-paid-rate != 0 
+	and po-order-status < '70'
+order by stock-code po-order-no 
+format is lst

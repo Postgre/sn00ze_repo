@@ -1,0 +1,11 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+from
+	stock-master
+where
+	(stk-description like "%STE%" or stk-desc-line-2 like "%STE%" ) 
+	and stk-stock-status != 'K' 
+format is lst
+report width is 80

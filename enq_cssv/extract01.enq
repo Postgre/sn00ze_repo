@@ -1,0 +1,16 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	stk-desc-line-3
+	stk-pack-desc
+	stk-sales-tax-paid-rate
+	stock-group
+	stk-sort-analysis-code
+	stk-user-group
+	stk-stock-status
+	stk-condition-code
+	stk-movement-code
+from
+	stock-master
+format is external

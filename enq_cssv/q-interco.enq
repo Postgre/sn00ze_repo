@@ -1,0 +1,8 @@
+select
+	s-acc-name
+	gl-accountcode
+	sys-account-name
+	sys-account-type
+from
+	special-accounts
+format is lst

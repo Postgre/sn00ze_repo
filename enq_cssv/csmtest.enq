@@ -1,0 +1,3 @@
+select *
+from sales-audit-file
+where so-order-date between 02072012 and 30062013

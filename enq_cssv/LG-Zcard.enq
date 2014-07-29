@@ -1,0 +1,18 @@
+select
+	accountcode
+	shortname
+	dr-cust-type
+	trans-date
+	trans-ref
+trans-type
+tr-amount
+perioda = format-picture (trans-date "mmm-yyyy")
+from
+deb-master
+deb-trans
+deb-trans-archive
+where
+( ( dr-cust-type = "S1" ) AND
+( trans-type = "IN" ) AND
+( trans-date BETWEEN 01/07/2005 AND 31/08/2005 ) )
+format is lst

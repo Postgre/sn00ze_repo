@@ -1,0 +1,75 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-value
+	ws-ytd-sales = sum-array (ash-value 1 12) 
+	stock-group
+	ws-supp-code = substring (stock-code 1 3) 
+	company-name
+	ash-cost
+	ws-ash-cost = sum-array (ash-cost 1 12)
+	ws-ash-gp = sum-array (ash-value 1 12) - sum-array (ash-cost 1 12)
+from
+	stock-aged-sales-history
+	stock-master
+	system-control
+where
+	ash-type = 'S' 
+	and ash-years-ago = 0 
+	and stock-group = "IS" 
+format is rpt
+field total-ws-ytd-sales like ws-ytd-sales
+field total-ws-ash-cost like ws-ash-cost
+field total-ws-ash-gp like ws-ash-gp
+field sub-tot-ws-ytd-sales like ws-ytd-sales
+field sub-tot-ws-ash-cost like ws-ash-cost
+field sub-tot-ws-ash-gp like ws-ash-gp
+report header
+	page
+	set total-ws-ytd-sales = 0
+	set total-ws-ash-cost = 0
+	set total-ws-ash-gp = 0
+header
+	print company-name in col 1
+		"rjbsash8" in col 70
+	skip 1
+	print "TOTAL SALES FOR INNER SPRINGS" in col 21
+	print "FOR ALL SUPPLIERS" in col 27
+	print 
+		"BETWEEN" in col 20
+		"01-JUN-1994" in col 28 bold 
+		"AND" in col 40
+		"01-MAY-1995" in col 44 bold 
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 2
+	print
+		"ws-ytd-sales" in col 47
+		"COST" in col 67
+		"GP $" in col 32
+		"cre" in col 7
+	print
+		"accountcode" in col 4
+	skip 1
+before ws-supp-code
+	set sub-tot-ws-ytd-sales = 0
+	set sub-tot-ws-ash-cost = 0
+	set sub-tot-ws-ash-gp = 0
+
+detail
+	set total-ws-ytd-sales += ws-ytd-sales
+	set total-ws-ash-cost += ws-ash-cost
+	set total-ws-ash-gp += ws-ash-gp
+	set sub-tot-ws-ytd-sales += ws-ytd-sales
+	set sub-tot-ws-ash-gp += ws-ash-gp
+after ws-supp-code
+report footer
+	skip
+	print
+		"TOTAL" in col 13 bold 
+		total-ws-ytd-sales in col 46 pic -zzz,zzz,zz9.99 bold 
+		total-ws-ash-cost in col 63 pic -zzz,zzz,zz9.99
+		total-ws-ash-gp in col 27 pic -zzz,zzz,zz9.99

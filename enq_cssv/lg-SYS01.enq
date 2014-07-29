@@ -1,0 +1,4 @@
+// system-user-masking remove access for old DSets
+delete from system-user-masking-access
+where
+	suma-comp-code = '107' 

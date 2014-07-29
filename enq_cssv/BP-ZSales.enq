@@ -1,0 +1,20 @@
+// BP aged finance sales report
+select
+	accountcode
+	trans-type
+	tr-details
+	trans-date
+	tr-amount
+	accountshort1 = substring (accountcode 1 1)
+	accountshort = substring (accountcode 1 4)
+from
+	deb-trans
+where
+	accountshort1 = "Z" AND accountshort <> "ZCSM" AND trans-type = "JE" AND tr-details <> "Credit Card Charge" AND (trans-date between 04-JUL-2011 and 01-JUL-2012)
+
+format is lst
+suppress accountshort
+suppress accountshort1
+subtotal on tr-amount
+	with breaks on accountcode
+

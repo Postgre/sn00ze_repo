@@ -1,0 +1,8 @@
+select
+	gl-accountcode
+	gl-desc
+from
+	gl-master
+//where
+//	gl-accountcode between "3" and "3~~~~~~~~~~~~~~"
+format is lst

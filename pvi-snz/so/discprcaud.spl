@@ -1,0 +1,1021 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/discprcaud.spl
+//  Program Desc:	Discount/Price Override auditing
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	28mar13	rmd	{7}		upgrade to 710
+//	17apr13	rmd	{5}		cloned from rmd/so/discprcaud7
+//				{6}		authority check
+//	04sep10	rmd			insert datestamp into disc record
+//						set sol-user-only-date1 = date-time(today(),tod(),1)
+//	23aug10	rmd			force soln seq to begin at 1.1 for PS entry
+//	10aug10	rmd			cater for special SC transaction MW (members weekend)
+//	29jul10	rmd			allow for multiple price overrides
+//	26jul10	rmd			if all reasons accounted for do not 're' prompt user
+///////////////////////////////////////////////////////////////////////////////
+
+
+//#include "../../../../bms/include/i85codes.spl"	//{7}
+#include "../../../bms/include/i85codes.spl"		//{7}
+mode md-help
+	prompt "Help"
+
+mode md-set-reason
+	prompt "Set Reason"
+	help "Set reason for tagged items"
+	currency
+
+mode md-tag
+	prompt "Tag"
+	help "Tag this item"
+	currency
+
+mode md-tag-all
+	prompt "Tag All"
+	help "Tag All items"
+
+mode md-exit
+	prompt "Finish"
+	help "Closes screen once all reasons have been supplied"
+
+mode md-one-reason
+	prompt "Individual"
+	help "Set reason for this item only"
+	currency
+
+mode md-all-reason
+	prompt "Overall"
+	help "Same reason for all items"
+
+
+object tmp-price-audit like sales-order-line
+	type memory
+	//key is so-order-no so-bo-suffix sol-line-seq
+	//key is sol-spare-num2
+
+object rmd-audit
+	type external
+	file "rmd-audit"
+	record
+		ra-event			pic x(80)
+	endrecord
+
+field
+	ws-sycas-card-name	pic x(20)
+	ws-sycas-card-no    pic x(20)
+	ws-membership-club  pic x(20)
+	ws-auth-thresh-doll	type numeric    //{6}
+	ws-auth-thresh-perc type numeric	//{6}
+
+procedure main
+parameters
+	lp-so-order-no      		like so-order-no
+	lp-so-bo-suffix				like so-bo-suffix
+local field
+	lf-accept					pic x
+	lf-so-order-no      		like so-order-no
+	lf-so-bo-suffix				like so-bo-suffix
+	lf-sol-line-seq				like sol-line-seq
+	lf-stock-code				like stock-code
+	lf-audit-required			type boolean
+	lf-all-reasons-supplied		type boolean					//rmd26jul10
+	lf-sol-user-only-alpha4-1	like sol-user-only-alpha4-1
+	lf-sol-user-only-num1		like sol-user-only-num1			//rmd29jul10 to store original 'full' price in sol-user-only-num1
+	lf-sol-user-only-num2		like sol-user-only-num2
+window @1,1 to @15,45 title "pvi-snz/so/discprcaud"
+	display lp-so-order-no 		@2,20 title "SO"
+    display lp-so-bo-suffix 	@3,20 title "BO"
+    open tmp-price-audit truncate temporary
+    open rmd-audit create permanent
+    //check order for signs of price override
+    get system-control first
+    set sol-spare-num2 = 1
+    set lf-audit-required = FALSE
+    set lf-all-reasons-supplied = TRUE	//rmd26jul10
+    extract sales-audit-file
+    	on index so-order-no so-bo-suffix sol-line-seq order-log-date order-log-time saf-dedup-seq
+    	key is lp-so-order-no lp-so-bo-suffix 0 0 0 0
+    	next same so-order-no so-bo-suffix
+    detail
+    	set lf-so-order-no  	= so-order-no
+    	set lf-so-bo-suffix	    = so-bo-suffix
+    	set lf-sol-line-seq 	= sol-line-seq
+    	set lf-stock-code		= stock-code
+    	if ordlog-type = 1 // Price Override
+    		//message "1:" so-order-no so-bo-suffix sol-line-seq
+    		get sales-order-line // need stock-code
+    			on error
+    				//message "2.5"
+    				set stock-code = "NOT FOUND"
+    			endon
+			set sol-line-type 			= "DN"
+			set sol-print-line			= "Y"
+			set stock-code 				= stock-code //"Price Override:"
+			set lf-sol-user-only-num1	= ordlog-old-value
+			set lf-sol-user-only-num2	= ordlog-new-value
+			set sol-user-only-alpha4-1	= "~~" // reason code
+			set sol-user-only-alpha4-2	= "P"
+			set sol-line-seq			= lf-sol-line-seq + 0.22
+			//get sales-order-line
+			//on error
+			//	insert sales-order-line
+			//else
+			//	update sales-order-line
+			//endon
+	   		initialise tmp-price-audit
+	   			leaving
+	   				so-order-no
+	   				so-bo-suffix
+	   				sol-line-seq
+	   				sol-line-type
+					sol-print-line
+					stock-code
+					sol-user-only-num1
+					sol-user-only-num2
+					sol-user-only-alpha4-1
+					sol-user-only-alpha4-2
+					sol-line-seq
+			set sol-spare-num2 += 1
+			set lf-audit-required = TRUE
+			//rmd29jul10 need to allow for multiple price overrides and take most recent change
+			//insert tmp-price-audit
+			get tmp-price-audit
+			on error
+				set sol-user-only-num1 = lf-sol-user-only-num1 //new price change, pickup the starting price
+				set sol-user-only-num2 = lf-sol-user-only-num2 //and change price
+				set ra-event = strconcat(str(so-order-no) ":" so-bo-suffix ":" str(sol-line-seq) ":" sol-line-type ":" stock-code ":N1-" str(sol-user-only-num1) ":N2-" str(sol-user-only-num2) ":A1-" sol-user-only-alpha4-1 ":A2-" sol-user-only-alpha4-2 ":SAF insert:")
+				insert rmd-audit
+				insert tmp-price-audit
+			else
+				// subsequent price change sol-user-only-num1 should hold the original full price, leave untouched
+				set sol-user-only-num2 = lf-sol-user-only-num2 //only pickup change price
+				set ra-event = strconcat(str(so-order-no) ":" so-bo-suffix ":" str(sol-line-seq) ":" sol-line-type ":" stock-code ":N1-" str(sol-user-only-num1) ":N2-" str(sol-user-only-num2) ":A1-" sol-user-only-alpha4-1 ":A2-" sol-user-only-alpha4-2 ":SAF update:")
+				insert rmd-audit
+				update tmp-price-audit
+			endon
+			set sol-line-seq			= lf-sol-line-seq
+		//elseif ordlog-type = 11
+		//	message "11:" so-order-no so-bo-suffix sol-line-seq
+		//	get sales-order-line
+		//	on error
+		//	endon
+		//	set sol-line-type 			= "DN"
+		//	set sol-print-line			= "Y"
+		//	set stock-code 				= "Disc Applied:"
+		//	set sol-user-only-num1		= sol-item-price
+		//	set sol-user-only-num2		= sol-line-amount / sol-ordered-qty
+		//	set sol-user-only-alpha4-1	= "~~" // reason code
+		//	set sol-user-only-alpha4-2	= "D"
+		//	set sol-line-seq			= lf-sol-line-seq + 0.33
+		//	//get sales-order-line
+		//	//on error
+		//	//	insert sales-order-line
+		//	//else
+		//	//	update sales-order-line
+		//	//endon
+		//	insert tmp-price-audit
+		//	set sol-line-seq			= lf-sol-line-seq
+		//	//get sales-order-line
+		endif
+    endextract
+    extract sales-order-line
+    	on index so-order-no so-bo-suffix sol-line-seq
+    	key is lp-so-order-no lp-so-bo-suffix 0
+    	next same so-order-no so-bo-suffix
+    detail
+    	if sol-line-type not in {"KN" "SN" "WN"}
+    		continue
+    	endif
+    	if sol-disc-rate = 0
+    		continue
+    	endif
+   		//initialise tmp-price-audit
+   		//	leaving
+   		//		so-order-no
+   		//		so-bo-suffix
+   		//		sol-line-seq
+    	set lf-sol-line-seq 		= sol-line-seq
+		set sol-line-type 			= "DN"
+		set sol-print-line			= "Y"
+		set stock-code 				= stock-code //"Disc Applied:"
+		set sol-user-only-num1		= sol-item-price
+		set sol-user-only-num2		= sol-line-amount / sol-ordered-qty
+		set sol-user-only-alpha4-1	= "~~" // reason code
+		set sol-user-only-alpha4-2	= "D"
+		set sol-line-seq			= lf-sol-line-seq + 0.33
+		//fields to clear
+   		initialise tmp-price-audit
+   			leaving
+   				so-order-no
+   				so-bo-suffix
+   				sol-line-seq
+   				sol-line-type
+				sol-print-line
+				stock-code
+				sol-user-only-num1
+				sol-user-only-num2
+				sol-user-only-alpha4-1
+				sol-user-only-alpha4-2
+				sol-line-seq
+		set sol-spare-num2 += 1
+		set lf-audit-required = TRUE
+		insert tmp-price-audit
+		on error
+			set ra-event = strconcat(str(so-order-no) ":" so-bo-suffix ":" str(sol-line-seq) ":" sol-line-type ":" stock-code ":" str(sol-user-only-num1) ":" str(sol-user-only-num2) ":" sol-user-only-alpha4-1 ":" sol-user-only-alpha4-2 ":SA PASS:")
+			insert rmd-audit
+		endon
+		set sol-line-seq			= lf-sol-line-seq
+		get sales-order-line
+		on error
+			//
+		endon
+    endextract
+
+    //set sol-user-only-alpha4-1	= lf-reason-code
+    set lf-accept = "Y"
+    //accept lf-accept			@13,20 title "Accept"
+    //	uppercase
+    //	allowed "Y" "N"
+    //	default "Y"
+    if lf-accept = "Y" and lf-audit-required
+    	//test for existing codes
+    	//message "1"
+    	extract tmp-price-audit
+    	detail
+    		set lf-sol-user-only-alpha4-1 = SPACES
+    		save tmp-price-audit
+    		get sales-order-line
+    			on index so-order-no so-bo-suffix sol-line-seq
+    			key is so-order-no so-bo-suffix sol-line-seq
+    		on error
+    			//message "Can't find " so-order-no so-bo-suffix sol-line-seq
+    			set lf-all-reasons-supplied = FALSE	//rmd26jul10
+    		else
+    			//message "Found " so-order-no so-bo-suffix sol-line-seq
+    			set lf-sol-user-only-alpha4-1	= sol-user-only-alpha4-1
+    		endon
+    		restore tmp-price-audit
+    		if lf-sol-user-only-alpha4-1 != SPACES
+    			set sol-user-only-alpha4-1 = lf-sol-user-only-alpha4-1
+    			update tmp-price-audit
+    		endif
+    	endextract
+    	if not lf-all-reasons-supplied	//rmd26jul10
+	    	do display-in-grid
+	    endif							//rmd26jul10
+    else
+    	//message "2"
+    endif
+endprocedure // main ----------------------------------------------------------
+
+screen display-in-grid
+local field
+	lf-reasons-captured			type boolean
+	lf-action-description		pic x(20)
+	lf-next-sol-line-seq		like sol-line-seq
+	lf-prev-sol-line-seq		like sol-line-seq
+	//window @1,1 to @10,75
+	window @1,1 to @22,75
+		title concat("Please provide reasons for all events")
+		colour is white on black
+		primary tmp-price-audit
+		//on index sol-spare-num2
+		datagrid occurs 20 //8
+	//allowed search md-tag md-tag-all md-set-reason md-exit	//v1 tag to set
+	allowed search md-one-reason md-all-reason md-exit md-help  //v2 one or all
+	review-from-start
+before
+	//display "Please provide reasons for"	@21,15 bold colour is red scale 130
+	//display "Discounts/Price Overrides"     @22,15 bold colour is red scale 130
+	display "Please provide reasons for Discounts/Price Overrides"	@9,15 bold colour is white scale 110
+detail
+	if sol-user-only-alpha4-2 = "D"
+		set lf-action-description = "Disc Applied"
+	elseif sol-user-only-alpha4-2 = "P"
+		set lf-action-description = "Price Override"
+	endif
+	//display sol-spare-num2        	@1,01 title "ssn" 								//"so-bo-suffix          "
+
+	//need this if led for v1
+	//accept sol-rep-code			@1,02 title "Tag" 						pic xxxx
+	//	default sol-rep-code
+	//	read-only
+	display strconcat(str(so-order-no) so-bo-suffix) @1,04 title "S/O" 						//"so-order-no           "
+	display integer(sol-line-seq)  	@1,06 title "Line #" 				pic zzzzz9			//"sol-line-seq          "
+	//display sol-line-type 		  	@1,08 title "" 										//"sol-line-type 		   "
+	//display sol-print-line		  	@1,10 title "" 										//"sol-print-line		   "
+	display stock-code 			  	@1,14 title "Stock Code"  			pic x(16)			//"stock-code 		"
+	display lf-action-description	@1,16 title "Change" 				pic x(17) 			//"sol-user-only-alpha4-1"
+	display sol-user-only-num1	  	@1,22 title "Old Value" 			pic zzzzz9.99		//"sol-user-only-num1	   "
+	display sol-user-only-num2	  	@1,24 title "New Value" 			pic zzzzz9.99		//"sol-user-only-num2	   "
+	display sol-user-only-alpha4-1	@1,26 title "Reason Code" 			pic x(13)			//"sol-user-only-alpha4-2"
+	//display sol-line-seq  			@1,36 title "Seq"
+after
+	do test-reasons
+		returning
+			lf-reasons-captured
+	if lf-reasons-captured
+		do insert-sol
+		exit
+	else
+		message "Please provide reasons for all events."
+		back-to-detail
+	endif
+confirm
+	auto
+confirmed
+       	switch on screen-mode()
+       		case md-tag
+       			if sol-rep-code = SPACES
+       				set sol-rep-code = "*"
+       				update tmp-price-audit
+       				//refresh sol-rep-code
+       				refresh review
+       				//set sol-spare-num2 += 1
+       				set lf-prev-sol-line-seq = sol-line-seq
+       				if fraction(sol-line-seq) = .22
+       					set sol-line-seq += .11
+       				elseif fraction(sol-line-seq) = .33
+       					set sol-line-seq += .89
+       				endif
+       				get tmp-price-audit
+       				on error
+       					set sol-line-seq = lf-prev-sol-line-seq
+       					get tmp-price-audit
+       				else
+       					//set lf-next-sol-line-seq		= sol-line-seq
+       				endon
+       				//set sol-line-seq = lf-next-sol-line-seq
+       				//get tmp-price-audit
+       			elseif sol-rep-code = "*"
+       				set sol-rep-code = SPACES
+       				update tmp-price-audit
+       				//refresh sol-rep-code
+       				refresh review
+       				set lf-prev-sol-line-seq = sol-line-seq
+       				if fraction(sol-line-seq) = .22
+       					set sol-line-seq += .11
+       				elseif fraction(sol-line-seq) = .33
+       					set sol-line-seq += .89
+       				endif
+       				get tmp-price-audit
+       				on error
+       					set sol-line-seq = lf-prev-sol-line-seq
+       					get tmp-price-audit
+       				else
+       					//set lf-next-sol-line-seq		= sol-line-seq
+       				endon
+       				//set sol-spare-num2 += 1
+       				//get tmp-price-audit
+       				//on error
+       				//	set sol-spare-num2 -= 1
+       				//	get tmp-price-audit
+       				//else
+       				//	//set lf-next-sol-line-seq		= sol-line-seq
+       				//endon
+       			endif
+       		case md-tag-all
+       			extract tmp-price-audit
+       			detail
+       				set sol-rep-code = "*"
+       				update tmp-price-audit
+       			endextract
+       			get tmp-price-audit first
+       		case md-set-reason
+       			do set-reason entry-once
+	       			parameters
+	       				so-order-no
+	       				so-bo-suffix
+	       				sol-line-seq
+	       				"T"
+       			refresh review
+       		case md-one-reason
+       			do set-reason entry-once
+	       			parameters
+	       				so-order-no
+	       				so-bo-suffix
+	       				sol-line-seq
+	       				"O"
+       		case md-all-reason
+       			do set-reason entry-once
+	       			parameters
+	       				so-order-no
+	       				so-bo-suffix
+	       				sol-line-seq
+	       				"A"
+       		case md-exit
+				do test-reasons
+					returning
+						lf-reasons-captured
+				if lf-reasons-captured
+					do insert-sol
+					exit
+				else
+					message "Please provide reasons for all events."
+					//back-to-detail
+				endif
+			case md-help
+				do help-display-in-grid
+       	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+procedure help-display-in-grid
+local field
+	lf-accept			pic x
+window @10,15 to @14,70 title "Help"
+	//display "Individual:"										@11,16 background
+	display "Supply individual reasons for each item"			@11,27 background title "Individual:"
+	//display "Overall:"						 					@12,16 background
+	display "Supply one reason for all items"					@12,27 background title "Overall:"
+	//display "Finish:"											@13,16 background
+	display "Closes screen once all reasons have been supplied"	@13,27 background title "Finish:"
+	accept lf-accept @14,27 title "Continue?:"
+		uppercase
+		allowed "Y" "N"
+		default "Y"
+	if lf-accept = "Y"
+		exit
+	endif
+endprocedure // help-display-in-grid ------------------------------------------
+
+screen set-reason
+parameters
+	lp-so-order-no      	like so-order-no    //1.
+	lp-so-bo-suffix     	like so-bo-suffix   //2.
+	lp-sol-line-seq     	like sol-line-seq   //3.
+	lp-mode					pic x
+local field
+	lf-reason-code			pic xxx
+	lf-reason-code-cnf		pic xxx
+	lf-reason				like sys-description
+	//lf-accept				pic x
+	lf-name-confirmed		pic x
+	lf-name-not-confirmed	type boolean
+	lf-sycas-card-no-num	type numeric
+	lf-sycas-card-no		pic x(20)
+	lf-sycas-card-name		pic x(20)
+	lf-alternate-id			pic x(20)
+	lf-confirmed			type boolean
+	lf-reason-code-ok		type boolean
+	//lf-old-value        	type numeric
+	//lf-new-value        	type numeric
+	lf-restore-sol			like sol-line-seq
+	lf-items-tagged			type boolean
+window @1,1 to @6,40 title "Set Reason"
+box @1,1 to @5,40 title SPACES
+	set lf-restore-sol		= sol-line-seq
+	//message lf-restore-sol
+	if lp-mode = "T"
+		set lf-items-tagged		= FALSE
+	else
+		set lf-items-tagged		= TRUE
+	endif
+	extract tmp-price-audit
+	detail
+		if sol-rep-code = "*"
+			set lf-items-tagged = TRUE
+		endif
+	endextract
+	set sol-line-seq = lf-restore-sol
+	if not lf-items-tagged
+		message "Cannot set reason, no tagged items."
+		exit
+	endif
+	get tmp-price-audit
+	accept lf-reason-code @2,20 title "Reason Code:"
+			help "Reason code for price change"
+			uppercase
+			//allowed "Y" "N"
+			default lf-reason-code
+		on help-key
+			set sys-tbl-type = "VU"
+			do i85codes-table-help
+			if sys-tbl-code > SPACES
+				set lf-reason-code = sys-tbl-code
+			endif
+			reenter lf-reason-code optional
+		endon
+		validation
+			get system-table //lookup (had to comment to get currency to obtain sys-description)
+				on index sys-tbl-type sys-tbl-code
+				key is "VU" lf-reason-code
+			on error
+				//if lf-reason-code = SPACES
+				//else
+					message "Reason is not defined."
+					reenter lf-reason-code
+				//endif
+			else
+				set lf-reason = sys-description
+			endon
+			//display "Reason:" 	@10,07 background
+			//accept lf-reason 	@10,15 //title "Reason:"
+			accept lf-reason 	@3,5 //title "Reason:"
+				default lf-reason
+				read-only // comment this and reenable validation to allow override of reason
+			display "Reason Code:"   			@2,7 background
+			accept lf-reason-code-cnf  	@2,20 // title "Code:"
+				uppercase
+				default lf-reason-code
+				if lf-reason-code-cnf != lf-reason-code
+					set lf-reason-code = lf-reason-code-cnf
+					//
+					get system-table //lookup (had to comment to get currency to obtain sys-description)
+						on index sys-tbl-type sys-tbl-code
+						key is "VU" lf-reason-code
+					on error
+						//if lf-reason-code = SPACES
+						//else
+							message "Reason is not defined."
+							reenter lf-reason-code
+						//endif
+					else
+						set lf-reason = sys-description
+					endon
+					//display "Reason:" 	@10,07 background
+					//accept lf-reason 	@10,15 //title "Reason:"
+					accept lf-reason 	@3,5 //title "Reason:"
+						default lf-reason
+						read-only // comment this and reenable validation to allow override of reason
+					//
+					reenter lf-reason-code
+				else
+					set lf-reason-code-ok = TRUE
+				endif
+			//message "1:" lf-reason ":"
+			// Is this a discount for 'Show Your Card and Save'?
+			if lf-reason-code in {"SC" "MW"}//= "SC"	//10aug10
+				////01jul10 ensure 15% disc minimum
+				//if lp-effective-disc > 14.998
+				//	message "Disc % OK: " lp-effective-disc
+				//else
+				//	message "Disc % Not OK: " lp-effective-disc
+				//	set lr-reason-captured = FALSE
+				//	exit
+				//endif
+				get sales-order
+					on index so-order-no so-bo-suffix
+					key is lp-so-order-no lp-so-bo-suffix
+				on error
+					get sales-order-archive
+						on index so-order-no so-bo-suffix
+						key is lp-so-order-no lp-so-bo-suffix
+					on error
+						set so-cust-code = SPACES
+					endon
+				endon
+				do collect-sycas-detail entry-once
+					parameters
+						so-cust-code
+					returning
+						ws-sycas-card-name
+						ws-sycas-card-no
+						ws-membership-club
+			endif
+		endvalidation
+confirm
+	auto
+confirmed
+	if lp-mode = "O"
+		get tmp-price-audit
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lp-so-order-no lp-so-bo-suffix lp-sol-line-seq
+		on error
+			message "Cannot find line:" lp-so-order-no lp-so-bo-suffix lp-sol-line-seq
+		else
+			set sol-user-only-alpha4-1 = lf-reason-code
+			update tmp-price-audit
+		endon
+	else
+		extract tmp-price-audit
+		detail
+			if lp-mode = "A" or (lp-mode = "T" and sol-rep-code = "*")
+				set sol-user-only-alpha4-1 = lf-reason-code
+				update tmp-price-audit
+			endif
+		endextract
+	endif
+	//get tmp-price-audit first
+	set sol-line-seq = lf-restore-sol
+endconfirm
+endscreen // set-reason -------------------------------------------------------
+
+procedure insert-sol
+local field
+	lf-reason					like sys-description
+	report "insert-sol"
+		spool-only
+	extract tmp-price-audit
+	detail
+		get system-table
+			on index sys-tbl-type sys-tbl-code
+			key is "VU" sol-user-only-alpha4-1
+		on error
+			set lf-reason		= SPACES
+		else
+			set lf-reason		= sys-description
+		endon
+		set sol-line-description 	= lf-reason
+		if sol-user-only-alpha4-2 = "P"
+			set stock-code 				= "Price Override:"
+			//set sol-line-seq			+= 0.22
+		elseif sol-user-only-alpha4-2 = "D"
+			set stock-code 				= "Disc Applied:"
+			//set sol-line-seq			+= 0.33
+		endif
+		//07jul10 rmd allow changes to existing lines if order re-edited
+		//insert sales-order-line
+		//on error
+		//	print
+		//		"cannot ins"
+		//		so-order-no
+		//		so-bo-suffix
+		//		sol-line-seq
+		//		stock-code
+		//		sol-user-only-num1
+		//		sol-user-only-num2
+		//		sol-user-only-alpha4-2
+		//		sol-user-only-alpha4-1
+		//	message "debug: insert-sol error"
+		//else
+		//	print
+		//		"insert sol"
+		//		so-order-no
+		//		so-bo-suffix
+		//		sol-line-seq
+		//		stock-code
+		//		sol-user-only-num1
+		//		sol-user-only-num2
+		//		sol-user-only-alpha4-2
+		//		sol-user-only-alpha4-1
+		//	do write-sol-notes                             //procedure write-sol-notes
+		//		parameters                                 //parameters
+		//			so-order-no                            //	lp-so-order-no      	like so-order-no    //1.
+		//			so-bo-suffix                           //	lp-so-bo-suffix     	like so-bo-suffix   //2.
+		//			integer(sol-line-seq)                  //	lp-sol-line-seq     	like sol-line-seq   //3.
+		//			sol-user-only-alpha4-2                 //	lp-mode					pic x
+		//			sol-user-only-alpha4-1                 //	lp-reason-code			pic xx
+		//			sol-user-only-num1                     //	lp-old-price			type numeric
+		//			sol-user-only-num2                     //	lp-new-price			type numeric
+		//endon
+		get sales-order-line
+		on error
+			//04sep10
+			//#| insert datestamp to record disc, will use in cssc to determine which disc's to include
+			set sol-user-only-date1 = date-time(today(),tod(),1)
+			insert sales-order-line
+			print
+				"inserted"
+				so-order-no
+				so-bo-suffix
+				sol-line-seq
+				stock-code
+				sol-user-only-num1
+				sol-user-only-num2
+				sol-user-only-alpha4-2
+				sol-user-only-alpha4-1
+			//message "debug: insert-sol error"
+		else
+			update sales-order-line
+			print
+				"updated"
+				so-order-no
+				so-bo-suffix
+				sol-line-seq
+				stock-code
+				sol-user-only-num1
+				sol-user-only-num2
+				sol-user-only-alpha4-2
+				sol-user-only-alpha4-1
+		endon
+		do write-sol-notes                             //procedure write-sol-notes
+			parameters                                 //parameters
+				so-order-no                            //	lp-so-order-no      	like so-order-no    //1.
+				so-bo-suffix                           //	lp-so-bo-suffix     	like so-bo-suffix   //2.
+				integer(sol-line-seq)                  //	lp-sol-line-seq     	like sol-line-seq   //3.
+				sol-user-only-alpha4-2                 //	lp-mode					pic x
+				sol-user-only-alpha4-1                 //	lp-reason-code			pic xx
+				sol-user-only-num1                     //	lp-old-price			type numeric
+				sol-user-only-num2                     //	lp-new-price			type numeric
+	endextract
+	report finished
+endprocedure // insert-sol ----------------------------------------------------
+
+procedure test-reasons
+returning
+	lr-reasons-captured			type boolean
+	set lr-reasons-captured = TRUE
+	extract tmp-price-audit
+	detail
+		//if sol-rep-code != "*"
+		if sol-user-only-alpha4-1 = "~~"
+			set lr-reasons-captured = FALSE
+		endif
+	endextract
+	get tmp-price-audit first
+endprocedure // test-reasons --------------------------------------------------
+
+
+
+screen collect-sycas-detail
+parameters
+	lp-so-cust-code					like so-cust-code
+returning
+	lr-sycas-card-name				pic x(20)
+	lr-sycas-card-no				pic x(20)
+	lr-sycas-club					pic x(4)
+	//lr-alternate-id					pic x(20)
+local field
+	lf-accept						pic x
+	lf-name-confirmed				pic x
+	lf-name-not-confirmed			type boolean
+	lf-sycas-card-no-num			type numeric
+window @10,5 to @16,50 title "Show Your Card and Save"
+box @10,5 to @15,50 title concat("Enter Details for " lp-so-cust-code)
+	//check if customer already has a membership #
+	get deb-master
+		on index accountcode
+		key is lp-so-cust-code
+	on error
+	endon
+	//ignore SYCAS if CASH account
+	if accountcode = territory // cash account
+		set dr-user-only-alpha4-2 	= SPACES
+		set dr-user-only-alpha20-1	= SPACES
+		set dr-user-only-alpha20-2  = SPACES
+		update deb-master
+	elseif dr-user-only-alpha4-2 != SPACES
+		display strconcat("Current Card [" dr-user-only-alpha4-2 "] #" dr-user-only-alpha20-2) @11,15 background
+		set lr-sycas-card-name = dr-user-only-alpha20-1
+		set lr-sycas-card-no = dr-user-only-alpha20-2
+		set lr-sycas-club = dr-user-only-alpha4-2
+	else
+		set lr-sycas-card-name = shortname
+	endif
+	accept lr-sycas-card-name @11,20 title "Name on Card:"
+		uppercase
+		default lr-sycas-card-name
+	accept lr-sycas-card-no @12,20 title "Member #:"
+		default lr-sycas-card-no
+		validation
+			if substring(lr-sycas-card-no,1,2) = "SF"
+			else
+				//18jun10 only test if shorter than 12 chars, numbers longer than that
+				// break with num(lr-sycas-card-no) conversion
+				if strlen(lr-sycas-card-no) < 12
+					set lf-sycas-card-no-num = num(lr-sycas-card-no)
+						if lf-sycas-card-no-num = 0
+							message "Card Number needs to be numeric"
+							reenter lr-sycas-card-no
+						endif
+				endif
+			endif
+		endvalidation
+		// needs to be numeric between 7 and 16 digits
+// Card Formats
+// NRMA		7 digit member number followed by a 2 digit member suffix.  Therefore the member number can be either just the 7 digits, 9 digits with suffix or 10 digits including a space between the member number and suffix.  GR will take any combination, 7, 9, or 10
+// RACV		From 1 up to 7 digits all numeric
+// RAA		8 digits all numeric. Staff cards have 6 numeric's and 2 alphabetic (SF) preceding the 6 numeric
+// RACT		7 digits all numeric, padded with leading 0'sf-reason
+
+// RAC(WA)	9 digits all numeric. e.g. 12-012345-1 (where the 12 represents the month that the person took out membership and the numbers are generated randomly)
+// RACQ		9 digits all numeric
+
+
+	accept lr-sycas-club 	@13,20 title "Club:"
+		uppercase
+		default lr-sycas-club
+		on help-key
+			set sys-tbl-type = "ZM"
+			do i85codes-table-help
+			if sys-tbl-code > SPACES
+				set lr-sycas-club = sys-tbl-code
+			endif
+			reenter lr-sycas-club optional
+		endon
+		validation
+			get system-table //lookup (had to comment to get currency to obtain sys-description)
+				on index sys-tbl-type sys-tbl-code
+				key is "ZM" lr-sycas-club
+			on error
+				//if lf-reason-code = SPACES
+				//else
+					message "Club is not defined."
+					reenter lr-sycas-club
+				//endif
+			endon
+		endvalidation
+	accept lf-name-confirmed @14,20 title "Name Confirmed:"
+		uppercase
+		allowed "Y" "N"
+		default "N"
+		validation
+			if not lf-name-not-confirmed
+				if lf-name-confirmed = "N"
+					message "Warning: Name on card NOT confirmed"
+					set lf-name-not-confirmed = TRUE
+					reenter lf-name-confirmed optional
+				endif
+			endif
+		endvalidation
+	//rmd18may10 too many accepts
+	//accept lf-accept		@14,39 title "Accept ?:"
+	//	uppercase
+	//	allowed "Y" "N"
+	//	default "Y"
+	set lf-accept = "Y"
+	if lf-accept = "Y"
+		get deb-master
+			on index accountcode
+			key is lp-so-cust-code
+		on error
+		else
+			set dr-user-only-alpha20-1 = lr-sycas-card-name
+			set dr-user-only-alpha20-2 = lr-sycas-card-no
+			set dr-user-only-alpha4-2 = lr-sycas-club
+			update deb-master
+		endon
+	endif
+after
+	if escape()
+		back-to-detail
+	endif
+confirm
+	auto
+confirmed
+endconfirm
+endscreen // collect-sycas-detail ------------------------------------------
+
+procedure write-sol-notes
+parameters
+	lp-so-order-no      	like so-order-no    //1.
+	lp-so-bo-suffix     	like so-bo-suffix   //2.
+	lp-sol-line-seq     	like sol-line-seq   //3.
+	lp-mode					pic x
+	lp-reason-code			pic xx
+	//lp-reason				pic x(20)
+	lp-old-price			type numeric
+	lp-new-price			type numeric
+local field
+	lf-reason				like sys-description
+
+
+	get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "VU" lp-reason-code
+	on error
+	else
+		set lf-reason		= sys-description
+	endon
+
+
+
+	extract sales-order-line-notes
+			on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+			key is lp-so-order-no lp-so-bo-suffix lp-sol-line-seq "PA" 0 //Price Audit
+			next same so-order-no so-bo-suffix sol-line-seq soln-type
+		detail
+			//getting last soln-seq-no
+		endextract
+		//message "debug soln-seq-no:" so-order-no so-bo-suffix soln-seq-no
+		set so-order-no 	= lp-so-order-no
+		set so-bo-suffix	= lp-so-bo-suffix
+		set sol-line-seq	= lp-sol-line-seq
+		//set soln-seq-no 	+= 1 							//23aug10 need whole number to start PR
+		set soln-seq-no 	= integer(soln-seq-no) + 1 		//23aug10 need whole number to start PR
+		set soln-text		= concat(strconcat(lp-mode) "|" strconcat(lp-reason-code) "|O|O" str(lp-old-price) "|N" str(lp-new-price) "|")
+		insert sales-order-line-notes
+		print
+			so-order-no
+			so-bo-suffix
+			sol-line-seq
+			soln-type
+			soln-seq-no
+			soln-text
+		// insert a record containg the reason, lookup using
+		// so-order-no so-bo-suffix sol-line-seq "PR" soln-seq-no
+		set soln-type		= "PR" // Price Audit Reason
+		set soln-text		= lf-reason
+		insert sales-order-line-notes
+		print
+			so-order-no
+			so-bo-suffix
+			sol-line-seq
+			soln-type
+			soln-seq-no
+			soln-text
+		//SYCAS?
+		if lp-reason-code in {"SC" "MW"} //= "SC"	//10aug10
+			// we have a SYCAS entry to capture, need three 20 char lines
+			// use dec place in seq, x.10, x.20 and x.30
+			// and x.40 for membership type lr-sycas-club
+			set soln-type		= "PS" // Price SYCAS detail
+			set soln-seq-no		+= 0.1 // (x.10)
+			set soln-text		= strconcat(ws-sycas-card-no)
+			insert sales-order-line-notes
+				on error
+					update sales-order-line-notes
+				endon
+			print
+				so-order-no
+				so-bo-suffix
+				sol-line-seq
+				soln-type
+				soln-seq-no
+				soln-text
+			set soln-seq-no		+= 0.1 // (x.20)
+			set soln-text		= strconcat(ws-sycas-card-name)
+			insert sales-order-line-notes
+				on error
+					update sales-order-line-notes
+				endon
+			print
+				so-order-no
+				so-bo-suffix
+				sol-line-seq
+				soln-type
+				soln-seq-no
+				soln-text
+			set soln-seq-no		+= 0.1 // (x.20)
+			set soln-text		= strconcat(lf-reason)
+			insert sales-order-line-notes
+				on error
+					update sales-order-line-notes
+				endon
+			set soln-seq-no		+= 0.1 // (x.20)
+			set soln-text		= strconcat(ws-membership-club)
+			insert sales-order-line-notes
+				on error
+					update sales-order-line-notes
+				endon
+			print
+				so-order-no
+				so-bo-suffix
+				sol-line-seq
+				soln-type
+				soln-seq-no
+				soln-text
+		endif
+endprocedure // write-sol-notes -----------------------------------------------
+
+
+//		//write sol-notes
+//		extract sales-order-line-notes
+//			on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+//			key is lp-so-order-no lp-so-bo-suffix lp-sol-line-seq "PA" 0 //Price Audit
+//			next same so-order-no so-bo-suffix sol-line-seq soln-type
+//		detail
+//			//getting last soln-seq-no
+//		endextract
+//		//message "debug soln-seq-no:" so-order-no so-bo-suffix soln-seq-no
+//		set so-order-no 	= lp-so-order-no
+//		set so-bo-suffix	= lp-so-bo-suffix
+//		set sol-line-seq	= lp-sol-line-seq
+//		set soln-seq-no 	+= 1
+//		set soln-text		= concat(strconcat(lp-mode) "|" strconcat(lp-reason-code) "|O|O" str(lp-old-price) "|N" str(lp-new-price) "|")
+//		insert sales-order-line-notes
+//		// SYCAS??
+//		// insert a record containg the reason, lookup using
+//		// so-order-no so-bo-suffix sol-line-seq "PR" soln-seq-no
+//		set soln-type		= "PR" // Price Audit Reason
+//		set soln-text		= lf-reason
+//		insert sales-order-line-notes
+//		if lf-reason-code = "SC"
+//			// we have a SYCAS entry to capture, need three 20 char lines
+//			// use dec place in seq, x.10, x.20 and x.30
+//			// and x.40 for membership type lr-sycas-club
+//			set soln-type		= "PS" // Price SYCAS detail
+//			set soln-seq-no		+= 0.1 // (x.10)
+//			set soln-text		= strconcat(lf-sycas-card-no)
+//			insert sales-order-line-notes
+//			set soln-seq-no		+= 0.1 // (x.20)
+//			set soln-text		= strconcat(lf-sycas-card-name)
+//			insert sales-order-line-notes
+//			set soln-seq-no		+= 0.1 // (x.20)
+//			set soln-text		= strconcat(lf-reason)
+//			insert sales-order-line-notes
+//			set soln-seq-no		+= 0.1 // (x.20)
+//			set soln-text		= strconcat(lf-alternate-id)
+//			insert sales-order-line-notes
+//		endif
+
+procedure authority-routine //{6}
+	message "authority-routine"
+	//check if auth required system-control something or other
+	//get thresholds
+	//if line by line test require test each line for dollar/perc threshold
+	//calc overall old and new value and test for dollar/perc threshold
+	//if any of the tests show threshold exceeded, request PIN to continue..
+	//At this point, not sure if we can go back to the order line screen - need to have a think about this..
+	//maybe run a running sum using SO_OP_LINE and somehow perform the auth test BEFORE they exit the screen
+	//Chris said he'd be happy if we set the order to suspended at this point and NOT call the cash receipt routine
+endprocedure // authority-routine ---------------------------------------------

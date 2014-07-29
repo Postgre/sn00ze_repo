@@ -1,0 +1,5 @@
+update stock-master
+set
+	stk-movement-code = "T"
+where
+	stk-stock-status = "K"

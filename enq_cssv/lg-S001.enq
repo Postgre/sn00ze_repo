@@ -1,0 +1,10 @@
+// stock movements Query
+select
+	stock-code
+	stk-trans-type
+	stk-trans-whse
+	stk-trans-date
+from
+	stock-movements
+where ( stk-trans-whse NOT LIKE "113" )
+format is lst

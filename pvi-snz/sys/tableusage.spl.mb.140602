@@ -1,0 +1,134 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/tableusage.spl
+//  Program Desc:	Report showing which tables have been used by showing
+//					how many records are in each
+//  Requested By:	Chris Ward
+//  Request Date:	24oct12
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	24oct12	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+//namm spam
+
+object tmp-query-file type external
+	file "tmp-query-file.enq"
+	record
+		tqf-line		pic x(80)
+	endrecord
+
+object tmp-result-file type external
+	file "tmp-result-file"
+	record
+		trf-line		pic x(80)
+	endrecord
+
+object tmp-table-usage
+	type memory
+	record
+		tmp-scd					like sys-consolidation-division
+		tmp-obj-name			like obj-name
+		tmp-timestamp			type datetime
+		tmp-obj-doc				like obj-doc
+		tmp-obj-file			like obj-file
+		tmp-record-count		type numeric
+	endrecord
+	key is tmp-scd tmp-obj-name
+
+procedure main
+local field
+	//i					type numeric
+	record-count		type numeric
+	acknowledge "Do you want to run the table usage extract?"
+	//title "Confirm"
+	//message-buttons MSG_BOX_YES_NO
+	//default MSG_BOX_NO
+	//icon MSG_BOX_STOP
+	//if message-status = MSG_BOX_YES
+		open tmp-table-usage truncate temporary
+		get system-control first
+		set tmp-scd	= sys-consolidation-division
+		extract dict-object
+			on index obj-name
+			key is SPACES //"stock-master"
+			finish when obj-name > "~"
+		detail
+			//set i += 1
+			//if i > 10
+				//break
+			//endif
+			do analyse-table
+				parameters
+					obj-name
+					//obj-file
+				returning
+					record-count
+			set tmp-obj-name	   	= obj-name
+			set tmp-obj-doc		   	= obj-doc
+			set tmp-obj-file		= strconcat(obj-file obj-version)
+			set tmp-record-count	= record-count
+			set tmp-timestamp		= gmt()
+			insert tmp-table-usage
+		endextract
+		do display-in-grid
+	//elseif message-status = MSG_BOX_NO
+	//	exit
+	//endif
+endprocedure // main ----------------------------------------------------------
+
+procedure analyse-table
+parameters
+	lp-obj-name     	like obj-name
+	//lp-obj-file			like obj-file
+returning
+	lr-record-count		type numeric
+	open tmp-query-file truncate permanent
+	open tmp-result-file truncate permanent
+	set tqf-line = "select *"
+	insert tmp-query-file
+	set tqf-line = concat("from " strconcat(lp-obj-name))
+	insert tmp-query-file
+	set tqf-line = "format is external"
+	insert tmp-query-file
+	command "prosql"
+		parameters
+			"-nb"
+			"tmp-query-file.enq"
+	command "sh"
+		parameters
+			"-c"
+			"cat tmp-query-file.txt | wc -l > tmp-result-file"
+	open tmp-result-file
+	get tmp-result-file first
+	//message trf-line
+	set lr-record-count = num(strconcat(trf-line))
+endprocedure // analyse-table -------------------------------------------------
+
+screen display-in-grid
+	window @1,1 to @24,90
+		title concat("Table Usage")
+		primary tmp-table-usage
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+detail
+	display tmp-scd				@1,004 title "Div"
+	display tmp-obj-name	    @1,010 title "Name"
+	display tmp-timestamp		@1,014 title "Time"
+	display tmp-obj-doc		    @1,020 title "Desc"
+	display tmp-obj-file	    @1,030 title "File"
+	display tmp-record-count	@1,040 pic zzzzzzzzz9 title "Records"
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------

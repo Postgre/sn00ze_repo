@@ -1,0 +1,53 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	ash-qty
+	ws-sum = sum-array (ash-qty 1 12) 
+	ash-type
+	ash-years-ago
+	ash-whse
+from
+	stock-aged-sales-history
+	stock-master
+where
+	stock-group in { "IN" "IS" } 
+	and ash-type = 'O' 
+	and ash-years-ago = 0 
+format is rpt
+field total-ws-sum like ws-sum
+field sub-tot-ws-sum like ws-sum
+report header
+	page
+	set total-ws-sum = 0
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"stock-code" in col 7
+		"stk-description" in col 31
+		"stk-desc-line-2" in col 69
+		"ws-sum" in col 107
+	skip 1
+before stock-code
+	set sub-tot-ws-sum = 0
+
+detail
+	set total-ws-sum += ws-sum
+	set sub-tot-ws-sum += ws-sum
+after stock-code
+	if sub-tot-ws-sum != 0
+	print
+		stock-code in col 7
+		stk-description in col 31
+		stk-desc-line-2 in col 69
+		sub-tot-ws-sum in col 107
+	endif
+report footer
+	print
+		"-----------------" in col 107
+	print
+		total-ws-sum in col 107

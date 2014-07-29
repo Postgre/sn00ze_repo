@@ -1,0 +1,5 @@
+update stock-price
+set
+	prc-price-type-code = spaces
+where
+	prc-price-type-code <> spaces

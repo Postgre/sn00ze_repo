@@ -1,0 +1,133 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	ws-desc = concat (stk-description stk-desc-line-2) 
+	whse-code
+	whse-qty-on-hand
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-qty
+	ws-qty-sold = sum-array (ash-qty 1 12) 
+	ws-start-whse = input
+		string
+		prompt is "Enter Start Warehouse code:"
+	ws-end-whse = input
+		string
+		prompt is "Enter End   Warehouse code:"
+	prc-wholesale-price
+	prc-recommend-retail
+	ws-regional = (prc-wholesale-price * 1.1 ) 
+	ws-metro = (prc-recommend-retail * 1.1 ) 
+	ash-value
+	ws-value = sum-array (ash-value 1 12) 
+	ash-cost
+	ws-cost = sum-array (ash-cost 1 12) 
+	ws-gp = ((ws-value - ws-cost ) / ws-value ) * 100 
+	ws-year = input
+		numeric
+		prompt is "Enter financial year (ie: 2001=Jul01 to Jun02, 2002=Jul02 to Jun03):"
+	company-name
+from
+	stock-master
+	stock-warehouse-detail
+	stock-aged-sales-history
+	stock-price
+	system-control
+where
+	whse-code between ws-start-whse and ws-end-whse 
+	and ash-whse = whse-code 
+	and whse-qty-on-hand > 0 
+	and ash-type = 'O' 
+	and ash-years-ago = ws-year 
+order by stock-code whse-code 
+format is rpt
+field sub-tot-whse-qty-on-hand like whse-qty-on-hand
+field sub-tot-ws-qty-sold like ws-qty-sold
+field sub-tot-ws-value like ws-value
+field sub-tot-ws-cost like ws-cost
+field new-stock-code pic 9
+report header
+	page
+header
+	print 
+		company-name in col 1
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	print "STOCK HOLDINGS VS SALES REPORT" in col 48
+	print
+		"Qty" in col 84
+		"YTD" in col 90
+	print
+		"Stock" in col 6
+		"Whse" in col 78
+		"On" in col 84
+		"Units" in col 90
+		"YTD" in col 99
+		"YTD" in col 112
+		"YTD" in col 124
+	print
+		"Code" in col 6
+		"Description" in col 20
+		"Code" in col 78
+		"Hand" in col 84
+		"Sold" in col 90
+		"Sales" in col 99
+		"Cost" in col 112
+		"GP%" in col 124
+	print "==================================================================================================================================" in col 1
+before stock-code
+	set sub-tot-whse-qty-on-hand = 0
+	set sub-tot-ws-qty-sold = 0
+	set sub-tot-ws-value = 0
+	set sub-tot-ws-cost = 0
+	set new-stock-code = 1
+
+detail
+	if (new-stock-code)
+	print
+		stock-code in col 1
+		ws-desc in col 20 pic x(50) no newline
+	endif
+	print
+		whse-code in col 78
+		whse-qty-on-hand in col 84 pic is zzz9-
+		ws-qty-sold in col 90 pic is zzz9-
+		ws-value in col 96 pic is zzz,zz9.99-
+		ws-cost in col 109 pic is zzz,zz9.99-
+		ws-gp in col 122 pic is zzz9.99-
+	set sub-tot-whse-qty-on-hand += whse-qty-on-hand
+	set sub-tot-ws-qty-sold += ws-qty-sold
+	set sub-tot-ws-value += ws-value
+	set sub-tot-ws-cost += ws-cost
+	set new-stock-code = 0
+after stock-code
+	print
+		"-----" in col 84
+		"-----" in col 90
+		"-----------" in col 96
+		"-----------" in col 109
+		"--------" in col 122
+	print
+		sub-tot-whse-qty-on-hand in col 84 pic is zzz9-
+		sub-tot-ws-qty-sold in col 90 pic is zzz9-
+		sub-tot-ws-value in col 96 pic is zzz,zz9.99-
+		sub-tot-ws-cost in col 109 pic is zzz,zz9.99-
+		(((sub-tot-ws-value - sub-tot-ws-cost) / sub-tot-ws-value) * 100) in col 122 pic zzz9.99- 
+	skip
+report footer
+	skip 2
+	print
+		"Program Name    : stkvssales.enq" in col 10
+	print
+		"Start Warehouse :" in col 10
+		ws-start-whse in col 28 pic x(4)
+	print
+		"End   Warehouse :" in col 10
+		ws-end-whse in col 28 pic x(4)
+	print
+		"Year            :" in col 10
+		ws-year in col 28 

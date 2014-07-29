@@ -1,0 +1,5 @@
+select
+	stock-code
+from
+	stock-master
+format is lst

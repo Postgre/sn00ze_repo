@@ -1,0 +1,154 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-date
+	so-order-status
+	so-rep-code
+//	so-whse-code
+	so-territory-code
+	sol-line-type
+	sol-chg-type
+	sol-line-description
+	sol-line-amount
+	accountcode
+	shortname
+	ws-warehouse = input alpha "Warehouse Code: "
+	ws-start-date = input date "Start Date    : "
+	ws-end-date = input date "End Date      : "
+	ws-summary = input alpha "Summary (Y/N) : "
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+from
+	sales-order
+	sales-order-line
+	deb-master
+	system-table
+where
+	so-order-status != '99' 
+	and so-order-date between ws-start-date and ws-end-date 
+	and so-cust-code = accountcode 
+	and sol-line-type = 'SC' 
+	and ws-warehouse = so-territory-code 
+	and sys-tbl-type = 'WH' 
+	and sys-tbl-code = so-territory-code 
+order by sol-chg-type so-order-date so-order-no 
+format is rpt
+field total-sol-line-amount like sol-line-amount
+field sub-tot-sol-line-amount like sol-line-amount
+report header
+	page
+	set total-sol-line-amount = 0
+header
+	print 
+		"chargrep" in col 1
+		"CHARGES REPORT FOR WAREHOUSE:" in col 26
+		so-territory-code in col 56 pic x(3) bold 
+		"-" in col 60
+		sys-description in col 62 pic x(15) bold 
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	print "FOR THE PERIOD FROM:" in col 28
+		ws-start-date in col 49 bold 
+		"TO" in col 61
+		ws-end-date in col 64 bold 
+	skip 1
+	print
+		"Order" in col 23
+		"Order" in col 38
+		"Customer" in col 52
+		"Customer" in col 67
+		"Rep" in col 103
+		"Charge" in col 114
+	print
+		"Date" in col 23
+		"No." in col 39
+		"Code" in col 54
+		"Name" in col 69
+		"Code" in col 103
+		"Amount" in col 114
+	print "==================================================================================================================================" in col 1
+before sol-chg-type
+	set sub-tot-sol-line-amount = 0
+	print "Charge Type:" in col 2
+		sol-chg-type in col 15 bold 
+		"-" in col 17
+		sol-line-description in col 19 bold 
+	skip
+
+detail
+	if ws-summary = "N"
+	print
+		so-order-date in col 20
+		so-order-no in col 37
+		so-cust-code in col 51
+		shortname in col 67
+		so-rep-code in col 103
+		sol-line-amount in col 112 pic zz,zz9.99-
+	set total-sol-line-amount += sol-line-amount
+	set sub-tot-sol-line-amount += sol-line-amount
+	else
+		set total-sol-line-amount += sol-line-amount
+		set sub-tot-sol-line-amount += sol-line-amount
+	endif
+after sol-chg-type
+	if ws-summary = "N"
+	print
+		"----------" in col 112
+	print
+		"Total for" in col 80 bold
+		sol-line-description in col 90 pic x(20) bold
+		sub-tot-sol-line-amount in col 112 pic zz,zz9.99- bold 
+	skip
+	skip
+	else
+	print
+		"Total for" in col 20 bold
+		sol-line-description in col 30 pic x(20) bold
+		sub-tot-sol-line-amount in col 52 pic zz,zz9.99- bold 
+	skip
+	skip
+	endif	
+report footer
+	skip
+	skip
+	if ws-summary = "N"
+	print
+		"----------" in col 112
+	print
+		"TOTAL CHARGES" in col 95 bold
+		total-sol-line-amount in col 112 pic zz,zz9.99- bold 
+	skip 4
+	print "Program Name   : " in col 5
+		"chargrep.enq" in col 23 bold 
+	print "Warehouse Code :" in col 5
+		ws-warehouse in col 23 pic x(3) bold 
+		sys-description in col 27 bold 
+	print "Start Date     :" in col 5
+		ws-start-date in col 23 bold 
+	print "End Date       :" in col 5
+		ws-end-date in col 23 bold 
+	print "Summary        :" in col 5
+		ws-summary in col 23 pic x(1) bold 
+	else
+	print
+		"----------" in col 52
+	print
+		"TOTAL CHARGES" in col 35 bold
+		total-sol-line-amount in col 52 pic zz,zz9.99- bold 
+	skip 4
+	print "Program Name   : " in col 5
+		"chargrep.enq" in col 23 bold 
+	print "Warehouse Code :" in col 5
+		ws-warehouse in col 23 pic x(3) bold 
+		sys-description in col 27 bold 
+	print "Start Date     :" in col 5
+		ws-start-date in col 23 bold 
+	print "End Date       :" in col 5
+		ws-end-date in col 23 bold 
+	print "Summary        :" in col 5
+		ws-summary in col 23 pic x(1) bold 
+	endif

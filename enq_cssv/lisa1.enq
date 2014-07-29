@@ -1,0 +1,76 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	stk-unit-desc
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ash-qty
+	ws-start-whse = input string "Enter start warehouse code:"
+	ws-end-whse = input string "Enter   end warehouse:"
+from
+	stock-master
+	stock-aged-sales-history
+where
+	ash-years-ago = 0 
+	and ash-type = 'O' 
+	and stock-group in { "IN" "IS" "SS" "WB" } 
+	and ash-whse between ws-start-whse and ws-end-whse 
+order by stock-code 
+format is rpt
+field sub-tot-ash-value like ash-value
+field sub-tot-ash-cost like ash-cost
+field sub-tot-ash-qty like ash-qty
+report header
+	page
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"stock-code" in col 1
+		"stock" in col 21
+		"stk-description" in col 30
+		"stk" in col 64
+		"ash-value" in col 72
+		"ash-cost" in col 91
+		"ash-qty" in col 110
+	print
+		"group" in col 21
+		"unit" in col 64
+	print
+		"desc" in col 64
+	skip 1
+before stock-code
+	set sub-tot-ash-value[1] = 0
+	set sub-tot-ash-cost[1] = 0
+	set sub-tot-ash-qty[1] = 0
+
+detail
+	set sub-tot-ash-value[1] += ash-value[1]
+	set sub-tot-ash-cost[1] += ash-cost[1]
+	set sub-tot-ash-qty[1] += ash-qty[1]
+after stock-code
+	skip
+	print
+		stock-code in col 1
+		stock-group in col 21
+		stk-description in col 30
+		stk-unit-desc in col 64
+		sub-tot-ash-value[1] in col 72
+		sub-tot-ash-cost[1] in col 91
+		sub-tot-ash-qty[1] in col 110
+	skip
+	skip 4
+	print 
+		"Start W/H: " in col 11
+		ws-start-whse in col 23 pic x(4)
+	print "End   W/H:" in col 11
+		ws-end-whse in col 23 pic x(4)
+	print ws-start-whse in col 10
+report footer

@@ -1,0 +1,10 @@
+// stock codes with 0.00 cost in warehouse record
+select
+	stock-code
+	whse-code
+	whse-avg-cost
+from
+	stock-warehouse-detail
+where
+	( whse-avg-cost = 0.00  )
+format is lst

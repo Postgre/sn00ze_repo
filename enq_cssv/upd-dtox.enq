@@ -1,0 +1,7 @@
+// upd-tox.enq
+// to change a range of product codes to X
+update stock-master
+set
+	stk-user-group[2] = 'X' 
+where
+	stk-user-group[2] = 'D'

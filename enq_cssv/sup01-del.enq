@@ -1,0 +1,3 @@
+delete from stock-supplier
+where
+	sub-string(cre-accountcode,6,6) != ' '

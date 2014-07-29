@@ -1,0 +1,10 @@
+select
+	stock-code
+	prc-region-code
+	prc-wholesale-price
+	prc-recommend-retail
+from
+	stock-price
+where
+	stock-code = "BCR024"
+format is lst

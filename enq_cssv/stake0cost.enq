@@ -1,0 +1,76 @@
+select
+	whse-code
+	stock-code
+	stv-whse-qty
+	stv-count-qty
+	stv-freeze-whse-cost
+	stv-bin-location
+	ws-whse = input
+		string
+		prompt is "Enter Warehouse code:"
+	stk-description
+	stk-pack-desc
+	stk-desc-line-2
+	company-name
+from
+	stock-take-variance
+	stock-master
+	system-control
+where
+	(stv-whse-qty != 0 or stv-count-qty != 0 ) 
+	and stv-freeze-whse-cost = 0 
+	and whse-code = ws-whse 
+format is rpt
+field new-whse-code pic 9
+report header
+	page
+header
+	print 
+		company-name in col 1
+		"STOCK TAKE ZERO COST REPORT" in col 49
+		today() in col 92
+		tod() in col 106
+		"Pageno." in col 117
+		pageno() in col 124
+	print "For Warehouse:" in col 52 bold 
+		ws-whse in col 67 bold
+	skip
+	print "Stock Code" in col 11
+		"Loc" in col 28
+		"Description" in col 37
+		"Size" in col 99
+		"Freeze" in col 105
+		"Count" in col 113
+		"Freeze" in col 122
+	print "Qty" in col 106
+		"Qty" in col 114
+		"Cost" in col 123
+	print "=================================================================================================================================" in col 1
+before whse-code
+	set new-whse-code = 1
+
+detail
+	if (new-whse-code)
+	endif
+	print 
+		"_________" in col 1
+		stock-code in col 11 
+		stv-bin-location in col 28
+		no newline
+	print stk-description in col 37 no newline
+	print stk-desc-line-2 in col 68 no newline
+	print stk-pack-desc in col 99 no newline
+	print stv-whse-qty in col 105 pic zzzz9- no newline
+	print stv-count-qty in col 112 pic zzzz9- no newline
+	print stv-freeze-whse-cost in col 119 pic zz,zzz9.99- 
+		no newline
+	skip
+	set new-whse-code = 0
+after whse-code
+report footer
+	skip
+	print
+		"Report Name   : stake0cost.enq" in col 10
+	print
+		"Warehouse Code:" in col 10 
+		ws-whse in col 26

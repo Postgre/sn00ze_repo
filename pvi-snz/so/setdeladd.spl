@@ -1,0 +1,398 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/setdeladd
+//  Program Desc:	set delivery address against debtor account
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	04apr14	rmd	{3}		update existing delivery fails in 710
+//	01apr14	rmd			upgraded for 710
+// 	19mar13	rmd clone pvi-snz/so/setdeladd from rmd/so/setdeladd
+//					{1} update sales
+// 	07aug08	rmd	correct suburb, state
+//					auto postcode fields
+// 	22jul08	rmd	allow modification of delivery address for an order
+//				input so-order-no so-bo-suffix
+///////////////////////////////////////////////////////////////////////////////
+
+
+#ifndef I85PCODE_POSTCODE_SEARCH
+#define I85PCODE_POSTCODE_SEARCH
+#endif
+
+#include "../../../bms/include/i85pcode.spl"
+#include "../../../bms/include/m1enqdeb.spl"
+
+
+mode md-select
+	prompt "&Select"
+	currency
+
+mode md-exit
+	prompt "&Exit"
+
+
+
+fields
+	ws-so-order-no                                      like so-order-no
+	ws-so-bo-suffix                                     like so-bo-suffix
+	ws-accountcode										like accountcode
+	ws-silent											type boolean
+	ws-state											pic xxx
+	//ws-order-type										pic x(20)
+
+procedure main
+	if get-param(1) = SPACES
+		exit
+	endif
+	if get-param(2) = "DA"
+		set ws-accountcode = get-param(1)
+		do set-da-delivery-address
+	else
+		if get-param(3) = "-silent"
+			set ws-so-order-no = num(get-param(1))
+			set ws-so-bo-suffix = get-param(2)
+			do set-so-delivery-address-silent
+		else
+			set ws-so-order-no = num(get-param(1))
+			set ws-so-bo-suffix = get-param(2)
+			do set-so-delivery-address
+		endif
+	endif
+endprocedure // main ----------------------------------------------------------
+
+procedure set-da-delivery-address
+	window @3,1 to @10,46 title is concat("Delivery Address")
+local field
+	lf-new-record				type boolean
+	i							type numeric
+	f							type numeric
+	lf-accept					pic x
+	//
+	lf-so-dl-text-1				pic x(30)
+	lf-so-dl-text-2				pic x(30)
+	lf-so-dl-text-3				pic x(30)
+	lf-so-dl-text-4				pic x(30)
+	lf-postcode					like postcode
+	set lf-new-record = FALSE
+	get name-and-address-master
+	on index accountcode na-type
+	key is ws-accountcode "DA"
+	on error
+		set lf-new-record = TRUE
+	else
+	endon
+	box @3,2 to @10,45 title is "Delivery Address"
+	//box @3,46 to @8,78 title is "Delivery Time"
+	accept lf-so-dl-text-1 @4,11 title is "Addr 1:"
+		uppercase
+		default na-company
+		optional
+	accept lf-so-dl-text-2 @5,11 title is "Addr 2:"
+		uppercase
+		default na-street
+		optional
+	accept lf-so-dl-text-3 @6,11 title is "Suburb:"
+		uppercase
+		default na-suburb
+		optional
+	accept lf-so-dl-text-4 @7,11 title is "State:" pic xxx
+		uppercase
+		default na-country
+		optional
+		help "Enter State"
+		allowed "ACT" "NSW" "NT" "QLD" "SA" "TAS" "VIC" "WA"
+		on help-key
+			do select-state
+			set na-country = ws-state
+			//reenter na-country optional
+			display na-country      		@7,11 pic x(3)
+		endon
+			extract postcodes
+			on index postcode-desc postcode
+			key is lf-so-dl-text-3 SPACES
+			next same postcode-desc
+			detail
+			//	message postcode-state
+				if postcode-state = substring(lf-so-dl-text-4,1,3)
+					set lf-postcode = postcode
+				endif
+			endextract
+	accept postcode @8,11 title is "Postcode:"
+		default lf-postcode
+		optional
+		help "Enter Postcode"
+		on help-key
+			do i85pcode-enquire-on-postcodes-by-pcode // i85pcode-postcode-search
+			parameters
+				//na-suburb
+				//na-country
+				postcode
+			returning
+				postcode
+			refresh postcode
+		endon
+		// 11feb08
+		validation
+			if strlen(postcode) = 0
+				message "Postcode required"
+				reenter postcode
+			endif
+		endvalidation
+		accept lf-accept @9,11 title is "Accept:"
+			uppercase
+			allowed "Y" "N"
+			default "Y"
+		if lf-accept = "Y"
+			set na-company 		= lf-so-dl-text-1
+			set na-street	 	= lf-so-dl-text-2
+			set na-suburb	 	= lf-so-dl-text-3
+			set na-country		= lf-so-dl-text-4
+			//set postcode 		= lf-postcode
+			set so-text-type 	= "DA"
+			get name-and-address-master lock
+			on index accountcode na-type
+			key is ws-accountcode "DA"
+			on error
+				insert name-and-address-master
+			else
+				update name-and-address-master
+			endon
+		else
+			reenter
+		endif
+endprocedure // set-da-delivery-address ---------------------------------------
+
+procedure set-so-delivery-address-silent
+
+	get sales-order
+	on index so-order-no so-bo-suffix
+	key is ws-so-order-no ws-so-bo-suffix
+	on error
+	else
+	endon
+
+	get name-and-address-master
+	on index accountcode na-type
+	key is so-cust-code "DA"
+	on error
+	else
+		set so-dl-text[1] = na-company
+		set so-dl-text[2] = na-street
+		set so-dl-text[3] = na-suburb
+		set so-dl-text[4] = na-country
+		set so-dl-postcode = postcode
+		set so-text-type 	= "DA"
+	endon
+
+
+    extract sales-order //lock
+    on index so-order-no so-bo-suffix
+    key is ws-so-order-no SPACES
+    next same so-order-no
+    detail
+    	//update sales-order
+    	get sales-order-delivery lock
+    	on error
+    		insert sales-order-delivery
+    	else
+    		update sales-order-delivery
+    	endon
+    endextract
+endprocedure // set-so-delivery-address-silent --------------------------------
+
+procedure set-so-delivery-address
+	window @3,1 to @10,46 title is concat("Delivery Address")
+local field
+	lf-new-record				type boolean
+	i							type numeric
+	f							type numeric
+	lf-accept					pic x
+	lf-so-dl-text-1				pic x(30)
+	lf-so-dl-text-2				pic x(30)
+	lf-so-dl-text-3				pic x(30)
+	lf-so-dl-text-4				pic x(30)
+	lf-postcode					like postcode
+	set lf-new-record = FALSE
+	get sales-order-delivery
+	on index so-order-no so-bo-suffix so-text-type
+	key is ws-so-order-no ws-so-bo-suffix "DA"
+	on error
+		set lf-new-record = TRUE
+	else
+	endon
+	//if lf-new-record // see if customer has a DA to use	//{1}
+	if lf-new-record and get-param(3) != "-delsched"		//{1}
+		get sales-order
+		on index so-order-no so-bo-suffix
+		key is ws-so-order-no ws-so-bo-suffix
+		on error
+		else
+		endon
+
+		get name-and-address-master
+		on index accountcode na-type
+		key is so-cust-code "DA"
+		on error
+		else
+			set so-dl-text[1] = na-company
+			set so-dl-text[2] = na-street
+			set so-dl-text[3] = na-suburb
+			set so-dl-text[4] = na-country
+			set so-dl-postcode = postcode
+		endon
+	endif
+	box @3,2 to @10,45 title is "Sales Order Delivery Address"
+	//box @3,46 to @8,78 title is "Delivery Time"
+	accept lf-so-dl-text-1 @4,11 title is "Addr 1:"
+		uppercase
+		default so-dl-text[1]
+		optional
+	accept lf-so-dl-text-2 @5,11 title is "Addr 2:"
+		uppercase
+		default so-dl-text[2]
+		optional
+	accept lf-so-dl-text-3 @6,11 title is "Suburb:"
+		uppercase
+		default so-dl-text[3]
+		optional
+	//accept lf-postcode @8,11 title is "Postcode:"
+	//	uppercase
+	//	default so-dl-postcode
+	//	optional
+	accept lf-so-dl-text-4 @7,11 title is "State:" pic xxx
+		uppercase
+		default so-dl-text[4]
+		optional
+		help "Enter State"
+		allowed "ACT" "NSW" "NT" "QLD" "SA" "TAS" "VIC" "WA"
+		on help-key
+			do select-state
+			set na-country = ws-state
+			//reenter na-country optional
+			display na-country      		@7,11 pic x(3)
+		endon
+	if so-dl-postcode = spaces
+		extract postcodes
+		on index postcode-desc postcode
+		key is lf-so-dl-text-3 SPACES
+		next same postcode-desc
+		detail
+		//	message postcode-state
+			if postcode-state = substring(lf-so-dl-text-4,1,3)
+				set lf-postcode = postcode
+			endif
+		endextract
+	else
+		set lf-postcode = so-dl-postcode
+	endif
+	//accept postcode @8,11 title is "Postcode:"
+	accept lf-postcode @8,11 title is "Postcode:"
+		default lf-postcode
+		optional
+		help "Enter Postcode"
+		on help-key
+			do i85pcode-enquire-on-postcodes-by-pcode // i85pcode-postcode-search
+			parameters
+				//na-suburb
+				//na-country
+				lf-postcode
+			returning
+				lf-postcode
+			refresh lf-postcode
+		endon
+		// 11feb08
+		validation
+			if strlen(lf-postcode) = 0
+				message "Postcode required"
+				reenter lf-postcode
+			endif
+		endvalidation
+		accept lf-accept @9,11 title is "Accept:"
+			uppercase
+			allowed "Y" "N"
+			default "Y"
+		if lf-accept = "Y"
+			//<{2}
+			//set so-dl-text[1] 	= lf-so-dl-text-1
+			//set so-dl-text[2] 	= lf-so-dl-text-2
+			//set so-dl-text[3] 	= lf-so-dl-text-3
+			//set so-dl-text[4] 	= lf-so-dl-text-4
+			//set so-dl-postcode 	= lf-postcode
+			//set so-text-type 		= "DA"
+			//push sales-order-delivery
+    		extract sales-order //lock
+    		on index so-order-no so-bo-suffix
+    		key is ws-so-order-no SPACES
+    		next same so-order-no
+    		detail
+    			//update sales-order
+    			get sales-order-delivery lock
+    			on error
+					set so-dl-text[1] 	= lf-so-dl-text-1	//{2}
+					set so-dl-text[2] 	= lf-so-dl-text-2   //{2}
+					set so-dl-text[3] 	= lf-so-dl-text-3   //{2}
+					set so-dl-text[4] 	= lf-so-dl-text-4   //{2}
+					set so-dl-postcode 	= lf-postcode       //{2}
+					set so-text-type 	= "DA"              //{2}
+					insert sales-order-delivery
+    			else
+    				//pop sales-order-delivery	//{2}
+					set so-dl-text[1] 	= lf-so-dl-text-1	//{2}
+					set so-dl-text[2] 	= lf-so-dl-text-2   //{2}
+					set so-dl-text[3] 	= lf-so-dl-text-3   //{2}
+					set so-dl-text[4] 	= lf-so-dl-text-4   //{2}
+					set so-dl-postcode 	= lf-postcode       //{2}
+					set so-text-type 	= "DA"              //{2}
+					//>{2}
+    				update sales-order-delivery					
+    			endon
+    		endextract
+		else
+			reenter
+		endif
+endprocedure // set-so-delivery-address ---------------------------------------
+
+menu select-state
+	window @12,12 to @20,20 title is "Select State"
+
+	option "ACT" @13,15
+		set ws-state = "ACT"
+		exit
+
+	option "NSW" @14,15
+		set ws-state = "NSW"
+		exit
+
+	option "NT" @15,15
+		set ws-state = "NSW"
+		exit
+
+	option "QLD" @16,15
+		set ws-state = "QLD"
+		exit
+
+	option "SA" @17,15
+		set ws-state = "SA"
+		exit
+
+	option "TAS" @18,15
+		set ws-state = "TAS"
+		exit
+
+	option "VIC" @19,15
+		set ws-state = "VIC"
+		exit
+
+	option "WA" @20,15
+		set ws-state = "WA"
+		exit
+
+endmenu // select-state -------------------------------------------------------
+// setdeladd.spl

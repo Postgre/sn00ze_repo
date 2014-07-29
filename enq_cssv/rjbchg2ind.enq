@@ -1,0 +1,5 @@
+update stock-master
+set
+	stk-stock-status = "I"
+where
+	stk-stock-status = "S"

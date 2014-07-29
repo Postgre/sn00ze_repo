@@ -1,0 +1,99 @@
+// select
+// stock-code
+// ash-type
+// ash-years-ago
+// ash-whse
+// ash-qty
+// ws-total = sum-array (ash-qty 1 12) 
+// stock-group
+// stk-description
+// stk-desc-line-2
+// sys-tbl-type
+// sys-tbl-code
+// sys-tbl-alpha-1
+// from
+// stock-aged-sales-history
+// stock-master
+// system-table
+// where
+// (ash-years-ago = 2001 or ash-years-ago = 2000 ) 
+// and ash-type = "O" 
+// and sys-tbl-type = "PG" 
+// and stock-group = sys-tbl-code 
+// order by sys-tbl-alpha-1 stock-code stk-description ash-whse ash-years-ago 
+// format is lst
+// suppress ash-type
+// suppress ash-qty[1]
+// suppress ash-qty[2]
+// suppress ash-qty[3]
+// suppress ash-qty[4]
+// suppress ash-qty[5]
+// suppress ash-qty[6]
+// suppress ash-qty[7]
+// suppress ash-qty[8]
+// suppress ash-qty[9]
+// suppress ash-qty[10]
+// suppress ash-qty[11]
+// suppress ash-qty[12]
+// suppress ash-qty[13]
+// suppress stock-group
+// suppress sys-tbl-type
+// suppress sys-tbl-code
+// field order is sys-tbl-alpha-1 stock-code stk-description stk-desc-line-2 ash-years-ago ash-whse ws
+// subtotal on ws-total
+// with breaks on stock-code
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-qty
+	ws-total = sum-array (ash-qty 1 12) 
+	stock-group
+	stk-description
+	stk-desc-line-2
+	sys-tbl-type
+	sys-tbl-code
+	sys-tbl-alpha-1
+from
+	stock-aged-sales-history
+	stock-master
+	system-table
+where
+	(ash-years-ago = 2001 or ash-years-ago = 2000 ) 
+	and ash-type = "S" 
+	and sys-tbl-type = "PG" 
+	and stock-group = sys-tbl-code 
+order by sys-tbl-alpha-1 stock-code stk-description ash-whse ash-years-ago 
+format is rpt
+field sub-tot-ws-total like ws-total
+report header
+	page
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"sys tbl" in col 2
+		"stock-code" in col 15
+		"stk-description" in col 34
+		"stk-desc-line-2" in col 67
+		"ws-total" in col 113
+	print
+		"alpha 1" in col 2
+	skip 1
+before stock-code
+	set sub-tot-ws-total = 0
+
+detail
+	set sub-tot-ws-total += ws-total
+after stock-code
+	print
+		sys-tbl-alpha-1 in col 2
+		stock-code in col 15
+		stk-description in col 34
+		stk-desc-line-2 in col 67
+		sub-tot-ws-total in col 113
+report footer

@@ -1,0 +1,83 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	ash-type
+	ash-years-ago
+	ash-whse
+	sys-description
+	ash-value
+	ash-cost
+	ash-qty
+	ws-qty = sum-array (ash-qty 1 12) 
+	ws-cost = sum-array (ash-cost 1 12) 
+	ws-value = sum-array (ash-value 1 12) 
+	ws-gp% = ((ws-value - ws-cost ) / ws-value ) * 100 
+	sys-tbl-type
+	sys-tbl-code
+from
+	stock-aged-sales-history
+	stock-master
+	system-table
+where
+	ash-type = 'O' 
+	and ash-years-ago = 0 
+	and sys-tbl-type = 'WH' 
+	and ash-whse = sys-tbl-code 
+	and stock-code in { 'MFU0907' 'RBB0629' }
+order by stock-code ash-whse 
+format is lst
+suppress ash-type
+suppress ash-years-ago
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ash-cost[1]
+suppress ash-cost[2]
+suppress ash-cost[3]
+suppress ash-cost[4]
+suppress ash-cost[5]
+suppress ash-cost[6]
+suppress ash-cost[7]
+suppress ash-cost[8]
+suppress ash-cost[9]
+suppress ash-cost[10]
+suppress ash-cost[11]
+suppress ash-cost[12]
+suppress ash-cost[13]
+suppress ash-qty[1]
+suppress ash-qty[2]
+suppress ash-qty[3]
+suppress ash-qty[4]
+suppress ash-qty[5]
+suppress ash-qty[6]
+suppress ash-qty[7]
+suppress ash-qty[8]
+suppress ash-qty[9]
+suppress ash-qty[10]
+suppress ash-qty[11]
+suppress ash-qty[12]
+suppress ash-qty[13]
+suppress ws-gp%
+suppress sys-tbl-type
+suppress sys-tbl-code
+unique stock-code
+unique stk-description
+unique stk-desc-line-2
+field order is stock-code stk-description stk-desc-line-2 ash-whse sys-description ws-qty ws-cost ws-value ws-gp%
+display pic of stk-desc-line-2 is x(12)
+display pic of sys-description is x(20)
+display pic of ws-qty is zzz9-
+display pic of ws-cost is zzz,zz9.99-
+display pic of ws-value is zzz,zz9.99-
+display pic of ws-gp% is zz9.99-

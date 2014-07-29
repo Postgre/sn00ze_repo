@@ -1,0 +1,39 @@
+select
+	so-order-no
+	so-bo-suffix
+	sol-line-type
+	sol-chg-type
+	sol-line-amount
+	so-territory-code
+	so-actual-delivery-date
+	ws-start-date = input
+		date
+		prompt is "Start Date"
+	ws-end-date = input
+		date
+		prompt is "End Date"
+	ws-start-territory = input
+		string
+		uppercase
+		prompt is "Start Store"
+	ws-end-territory = input
+		string
+		uppercase
+		prompt is "End Store"
+from
+	sales-order-line-archive
+	sales-order-archive
+where
+	so-actual-delivery-date between ws-start-date and ws-end-date 
+	and so-territory-code between ws-start-territory and ws-end-territory 
+	and sol-line-type = "SC" 
+order by so-territory-code sol-chg-type 
+format is lst
+suppress sol-line-type
+suppress ws-start-date
+suppress ws-end-date
+suppress ws-start-territory
+suppress ws-end-territory
+total on sol-line-amount
+subtotal on sol-line-amount
+	with breaks on sol-chg-type so-territory-code

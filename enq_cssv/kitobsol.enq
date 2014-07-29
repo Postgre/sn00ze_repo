@@ -1,0 +1,5 @@
+update stock-master
+set
+	stk-condition-code = "N"
+where
+	stk-stock-status = "K"

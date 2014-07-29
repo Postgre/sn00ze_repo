@@ -1,0 +1,454 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/pos/maintconso
+//  Program Desc:	Maintain consolidated sales order
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	04apr14	rmd	{2}		archived orders not printing as they did in 660
+//	03apr14	rmd	{1}		upgrade to 710
+///////////////////////////////////////////////////////////////////////////////
+// maintconso.spl
+
+// 29apr09	rmd	cater for reprint of finished orders
+// 30sep08	rmd re-enable status change for orders at status 70 or higher
+//				use line description for non stock item (usually charge lines)
+// 25mar08	rmd all users now have access to full so maint
+// 16mar08	rmd	add capability to change reps on an order by giving l3 users
+//				access to full so maint
+// 05mar08	rmd	revise ability to edit to use text based comparison
+//				add deb code and name to active so-order lookup
+//				remove confirm delivery mode
+// 16jan08	rmd	remove ability to edit lines or change status of orders
+//				at status 70 or higher.
+// 23aug07	rmd	program to maintain order lines & status as a consolidated set
+//				and allows consolidated printing
+
+
+mode md-edit-status
+	prompt "Chg Status"
+	help concat("Change Status of Order")// str(tsr-so-order-no) tsr-so-bo-suffix)
+	currency
+
+mode md-edit-lines
+	prompt "Edit Lines"
+	help "Edit Order Lines"
+	currency
+
+mode md-print
+	prompt "Print"
+	help "Print Consolidated Invoice"
+	currency
+
+mode md-confirm-delivery
+	prompt "Confirm Delivery"
+	help "Confirm Deliveries"
+
+mode md-select
+	prompt "Select"
+	help "[ENTER] to select this Order."
+	currency
+
+mode md-review-so
+	//prompt "Review &SO"
+	prompt "&Order Maint"
+	help "Maintain Sales Order Header"
+	currency
+
+object distinct-orders
+type is memory
+	record
+		ds-order-no										like so-order-no
+		ds-cust-code									like so-cust-code
+		ds-shortname									like shortname
+	endrecord
+	key is ds-order-no unique
+
+object tmp-sales-order
+type is memory
+	record
+		tso-order-no                    				like so-order-no
+		tso-bo-suffix									like so-bo-suffix
+		tso-open-or-archive								pic x
+	endrecord
+	key is tso-order-no tso-bo-suffix unique
+
+object tmp-sol-review
+type is memory
+	record
+		tsr-so-order-no                                 like so-order-no
+		tsr-so-bo-suffix                                like so-bo-suffix
+		tsr-sol-line-seq                                like sol-line-seq
+		tsr-stock-code                                  like stock-code
+		tsr-stk-description                             like stk-description
+		tsr-sol-ordered-qty                             like sol-ordered-qty
+		tsr-sol-backorder-qty                           like sol-backorder-qty
+		tsr-sol-shipped-qty                             like sol-shipped-qty
+		tsr-sol-shipped-amount                          like sol-shipped-amount
+		tsr-sol-line-amount		                        like sol-line-amount
+		tsr-order-status								pic x(25)
+		tsr-archive-flag								pic x
+	endrecord
+	key is tsr-so-order-no tsr-so-bo-suffix tsr-sol-line-seq unique
+
+field
+	ws-so-order-no                                  like so-order-no
+	ws-finished-order								type boolean
+
+screen maintain-consolidated-order-lines
+window @5,5 to @25,85 title is "Sales Order Edit"
+	primary tmp-sol-review
+	datagrid occurs 17
+	//allowed search md-edit-lines md-edit-status md-print md-confirm-delivery // md-refresh - now running do process-collection after each edit call
+	allowed search md-edit-lines md-review-so md-edit-status md-print // md-confirm-delivery 05mar08 no longer using pronto's conofirm delivery
+	review-from-start
+// 16mar08
+// 25mar08 - commented out
+//mode md-review-so
+//	when substring(login-id(),strlen(login-id()) - 1, strlen(login-id())) = "l3"
+before
+	if ws-so-order-no > 0
+		display ws-so-order-no @6,13 title is "Order #"
+		do process-collection
+	else
+		accept ws-so-order-no @6,13 title is "Order #"
+		on help-key
+			do build-distinct-orders
+			do help-sales-orders
+				// parameters
+				//	ws-so-order-no
+				returning
+					ws-so-order-no
+			reenter ws-so-order-no optional
+		endon
+		do process-collection
+	endif
+detail
+	display concat(str(tsr-so-order-no) tsr-so-bo-suffix) 	@8,8 title is "Sales Order"
+	display tsr-order-status								@8,10 title is "Status"
+	display tsr-stock-code									@8,12 title is "Stock Code"
+	display tsr-stk-description 							@8,14 title is "Description"
+	display tsr-sol-ordered-qty								@8,16 title is "Ordered"
+	display tsr-sol-shipped-qty								@8,18 title is "Shipped"
+	if tsr-archive-flag = "Y"
+		display "Archived Order" 							@25,65 background bold colour is red
+	else
+		clear @25,60 to @25,85
+	endif
+confirm
+	auto
+confirmed
+	if screen-mode() = md-edit-lines
+		if tsr-archive-flag = "Y"
+			message "Cannot edit archived orders"
+		else
+			//message concat("Status:" tsr-order-status)
+			//if tsr-order-status > "69"
+			if tsr-order-status in {"Ready To Print Invoice" "Ready To Update" "Finished" "Cancelled"}
+				message "Order has progressed too far to edit"
+			else
+				spl "so/m50lines"
+				parameters
+					tsr-so-order-no
+					tsr-so-bo-suffix
+					"-d"
+					"N"
+					0 // tsr-sol-line-seq // was 0 in e.g
+					"Y"
+				do maintain-consolidated-order-lines
+				exit
+			endif
+		endif
+	elseif screen-mode() = md-edit-status
+		if tsr-archive-flag = "Y"
+			message "Cannot edit archived orders"
+		else
+			//if tsr-order-status > "69"
+			// if tsr-order-status in {"Ready To Print Invoice" "Ready To Update" "Finished" "Cancelled"} // 30sep08
+			if tsr-order-status in {"Finished" "Cancelled"}
+				message "Order has progressed too far to edit"
+			else
+				spl "so/m50extra"
+				parameters
+					tsr-so-order-no
+					tsr-so-bo-suffix
+					"-st"
+				do maintain-consolidated-order-lines
+				exit
+			endif
+		endif
+	// 16mar08
+	elseif screen-mode() = md-review-so
+		if tsr-archive-flag = "Y"
+			message "Cannot edit archived orders"
+		else
+			//if tsr-order-status > "69"
+			if tsr-order-status in {"Ready To Print Invoice" "Ready To Update" "Finished" "Cancelled"}
+				message "Order has progressed too far to edit"
+			else
+				spl
+					"so/m50ordent"
+				parameters
+					"-E"
+					tsr-so-order-no
+					tsr-so-bo-suffix
+			endif
+		endif
+	elseif screen-mode() = md-print
+		//29apr09
+		if ws-finished-order
+			get sales-order-archive
+			on index so-order-no so-bo-suffix
+			key is tsr-so-order-no SPACES
+			on error
+			else
+			endon
+			//<{2}
+			////spl "rmd/so/x54trans"     //{1}
+			//spl "pvi-snz/so/x54trans"	//{1}
+			//parameters
+			//	tsr-so-order-no
+			//	SPACES
+			//	SPACES
+			//	"-params"
+			//	"-layby"
+			//	tsr-so-order-no
+			//	SPACES
+			//	today()
+			//	so-whse-code
+			//	"114138"
+			//	0
+			//	"-store"
+			//	so-territory-code
+			spl "pvi-snz/so/snzinvprnt"
+			parameters
+				tsr-so-order-no
+				SPACES
+				TRUE
+			//>{2}
+		else
+			//<{2}
+			////spl "rmd/so/x54trans"		//{1}
+			//spl "pvi-snz/so/x54trans"   //{1}
+			//parameters
+			//	tsr-so-order-no
+			spl "pvi-snz/so/snzinvprnt"
+			parameters
+				tsr-so-order-no
+				SPACES
+				TRUE
+			//>{2}			
+		endif
+	elseif screen-mode() = md-confirm-delivery
+		spl "so/m5copyso"
+		parameters
+			"-confirm"
+	endif
+endconfirm
+endscreen // maintain-consolidated-order-lines --------------------------------
+
+procedure process-collection
+	open tmp-sol-review truncate temporary
+		set ws-finished-order = TRUE
+		extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is ws-so-order-no spaces 0
+		next same so-order-no
+		detail
+			initialise tmp-sol-review
+			get stock-master
+			on error
+				// probably a charge line
+				// 30sep08
+				set stk-description = sol-line-description // SPACES
+			else
+			endon
+			get sales-order
+			on error
+				message concat("No sales-order:" str(so-order-no) so-bo-suffix)
+			else
+			endon
+			set tsr-so-order-no                                  = so-order-no
+			set tsr-so-bo-suffix                                 = so-bo-suffix
+			set tsr-sol-line-seq                                 = sol-line-seq
+			set tsr-stock-code                                   = stock-code
+			set tsr-stk-description                              = stk-description
+			set tsr-sol-ordered-qty                              = sol-ordered-qty
+			set tsr-sol-backorder-qty                            = sol-backorder-qty
+			set tsr-sol-shipped-qty                              = sol-shipped-qty
+			set tsr-sol-shipped-amount                           = sol-shipped-amount
+			set tsr-sol-line-amount		                         = sol-line-amount
+			set tsr-archive-flag								 = "N"
+			set ws-finished-order 								 = FALSE
+			switch on so-order-status
+				case "00"
+					set tsr-order-status = "Being Entered"
+				case "02"
+					set tsr-order-status = "Quotation"
+				case "11"
+					set tsr-order-status = "Backorder"
+				case "18"
+					set tsr-order-status = "Lay By"
+				case "20"
+					set tsr-order-status = "Hold"
+				case "30"
+					set tsr-order-status = "Ready For Picking"
+				case "40"
+					set tsr-order-status = "Pickslip Printed"
+				case "44"
+					set tsr-order-status = "Being Purchased"
+				case "70"
+					set tsr-order-status = "Ready To Print Invoice"
+				case "80"
+					set tsr-order-status = "Ready To Update"
+				case "90"
+					set tsr-order-status = "Finished"
+				case "87"
+					set tsr-order-status = "Suspended"
+				case "99"
+					set tsr-order-status = "Cancelled"
+				else
+					set tsr-order-status = concat("Unknown:" so-order-status)
+			endswitch
+			if sol-line-type in {"SN" "SC" "KN"}
+				insert tmp-sol-review
+				on error
+				endon
+			endif
+		endextract
+		extract sales-order-line-archive
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is ws-so-order-no spaces 0
+		next same so-order-no
+		detail
+			initialise tmp-sol-review
+			get stock-master
+			on error
+				// probably a charge line
+				// 30sep08
+				set stk-description = sol-line-description // SPACES
+			else
+			endon
+			set tsr-so-order-no                                  = so-order-no
+			set tsr-so-bo-suffix                                 = so-bo-suffix
+			get sales-order-archive
+			on index so-order-no so-bo-suffix
+			key is tsr-so-order-no tsr-so-bo-suffix
+			on error
+				message concat("No sales-order-archive:" str(so-order-no) so-bo-suffix)
+			else
+			endon
+			set tsr-sol-line-seq                                 = sol-line-seq
+			set tsr-stock-code                                   = stock-code
+			set tsr-stk-description                              = stk-description
+			set tsr-sol-ordered-qty                              = sol-ordered-qty
+			set tsr-sol-backorder-qty                            = sol-backorder-qty
+			set tsr-sol-shipped-qty                              = sol-shipped-qty
+			set tsr-sol-shipped-amount                           = sol-shipped-amount
+			set tsr-sol-line-amount		                         = sol-line-amount
+			set tsr-archive-flag								 = "Y"
+			switch on so-order-status
+				case "11"
+					set tsr-order-status = "Backorder"
+				case "18"
+					set tsr-order-status = "Lay By"
+				case "20"
+					set tsr-order-status = "Hold"
+				case "30"
+					set tsr-order-status = "Ready For Picking"
+				case "40"
+					set tsr-order-status = "Pickslip Printed"
+				case "44"
+					set tsr-order-status = "Being Purchased"
+				case "70"
+					set tsr-order-status = "Ready To Print Invoice"
+				case "80"
+					set tsr-order-status = "Ready To Update"
+				case "90"
+					set tsr-order-status = "Finished"
+				case "87"
+					set tsr-order-status = "Suspended"
+				case "99"
+					set tsr-order-status = "Cancelled"
+				else
+					set tsr-order-status = concat("Unknown A:" so-order-status)
+			endswitch
+			if sol-line-type in {"SN" "SC" "KN"}
+				insert tmp-sol-review
+				on error
+				endon
+			endif
+		endextract
+endprocedure // process-collection --------------------------------------------
+
+procedure build-distinct-orders
+open distinct-orders truncate temporary
+	select distinct
+		so-order-no
+		so-cust-code
+	from
+		sales-order
+	detail
+		set ds-order-no = so-order-no
+		get deb-master
+		on index accountcode
+		key is so-cust-code
+		on error
+			set ds-cust-code = "No Cust"
+			set ds-shortname = "No Customer"
+		else
+			set ds-cust-code = so-cust-code
+			set ds-shortname = shortname
+		endon
+		insert distinct-orders
+	endselect
+endprocedure // build-distinct-orders -----------------------------------------
+
+screen help-sales-orders
+	returning
+		lr-order-no						like so-order-no
+	window @1,30 to @23,75
+		title "Active Sales Orders"
+/*
+	// primary sales-order
+	select distinct
+		so-order-no
+	from
+		sales-order
+	//group by
+	//	so-order-no
+	// a bit groggy grouping by so-order-no, try distinct
+	// still groggy - created a tmp object requiring a single
+	// distinct pass
+*/
+	primary distinct-orders
+	datagrid occurs 20
+	//start-on-current-record
+	review-from-start
+	allowed md-select search
+detail
+	accept ds-order-no @1,30
+		help "Sales Order Number"
+		title "Order No"
+		read-only
+	display ds-cust-code @1,32 title is "Account"
+	display ds-shortname @1,34 title is "Name"
+	//accept so-bo-suffix @1,32
+	//	help "BO Suffix"
+	//	title "BO"
+	//	read-only
+	confirm auto
+	confirmed
+		if screenmode() = md-select
+			set lr-order-no = ds-order-no
+			exit
+		endif
+	endconfirm
+endscreen // help-sales-orders ------------------------------------------------
+// maintconso.spl

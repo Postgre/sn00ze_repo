@@ -1,0 +1,6 @@
+update cre-master
+set
+	cr-def-payment-terms = "A6" 
+
+where
+	cr-def-payment-terms = "7"

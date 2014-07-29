@@ -1,0 +1,34 @@
+select
+	stock-code
+	whse-code
+	whse-qty-on-hand
+	whse-avg-cost
+	stk-sales-tax-paid-rate
+	ws-cost2 = (whse-avg-cost / (1 + (stk-sales-tax-paid-rate / 100)))
+					 * (stk-sales-tax-paid-rate / 100)
+	man-credit = whse-qty-on-hand * ws-cost2
+	whse-avg-tax
+	wst-credit = whse-qty-on-hand * whse-avg-tax 
+from
+	stock-warehouse-detail
+	stock-master
+where
+	whse-qty-on-hand != 0 
+	and ws-cost2 != whse-avg-tax
+order by stk-sales-tax-paid-rate stock-code 
+format is lst
+total on whse-qty-on-hand
+total on whse-avg-cost
+total on ws-cost2
+total on man-credit
+total on wst-credit
+subtotal on whse-qty-on-hand
+	with breaks on stk-sales-tax-paid-rate
+subtotal on whse-avg-cost
+	with breaks on stk-sales-tax-paid-rate
+subtotal on ws-cost2
+	with breaks on stk-sales-tax-paid-rate
+subtotal on man-credit
+	with breaks on stk-sales-tax-paid-rate
+subtotal on wst-credit
+	with breaks on stk-sales-tax-paid-rate

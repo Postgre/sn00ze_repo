@@ -1,0 +1,183 @@
+select
+	stock-code
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ash-qty
+	ws-years-ago = input numeric "Enter number of years ago ( 0 = current):"
+	ws-ash-type = input alpha "Enter record type (O = ordered, S = written, Q = S.O.H )"
+	stock-group
+	sys-tbl-type
+	sys-tbl-code
+	sys-tbl-alpha-1
+	ash-type
+from
+	stock-aged-sales-history
+	stock-master
+	system-table
+where
+	ash-years-ago = ws-years-ago 
+	and ash-type = ws-ash-type 
+	and sys-tbl-type = 'PG' 
+	and stock-group = sys-tbl-code 
+order by ash-whse sys-tbl-alpha-1 
+format is lst
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ash-cost[2]
+suppress ash-cost[3]
+suppress ash-cost[4]
+suppress ash-cost[5]
+suppress ash-cost[6]
+suppress ash-cost[7]
+suppress ash-cost[8]
+suppress ash-cost[9]
+suppress ash-cost[10]
+suppress ash-cost[11]
+suppress ash-cost[12]
+suppress ash-cost[13]
+suppress ash-qty[2]
+suppress ash-qty[3]
+suppress ash-qty[4]
+suppress ash-qty[5]
+suppress ash-qty[6]
+suppress ash-qty[7]
+suppress ash-qty[8]
+suppress ash-qty[9]
+suppress ash-qty[10]
+suppress ash-qty[11]
+suppress ash-qty[12]
+suppress ash-qty[13]
+suppress ws-years-ago
+suppress ws-ash-type
+suppress stock-group
+suppress sys-tbl-type
+suppress sys-tbl-code
+total on ash-value[1]
+total on ash-value[2]
+total on ash-value[3]
+total on ash-value[4]
+total on ash-value[5]
+total on ash-value[6]
+total on ash-value[7]
+total on ash-value[8]
+total on ash-value[9]
+total on ash-value[10]
+total on ash-value[11]
+total on ash-value[12]
+total on ash-value[13]
+total on ash-cost[1]
+total on ash-cost[2]
+total on ash-cost[3]
+total on ash-cost[4]
+total on ash-cost[5]
+total on ash-cost[6]
+total on ash-cost[7]
+total on ash-cost[8]
+total on ash-cost[9]
+total on ash-cost[10]
+total on ash-cost[11]
+total on ash-cost[12]
+total on ash-cost[13]
+total on ash-qty[1]
+total on ash-qty[2]
+total on ash-qty[3]
+total on ash-qty[4]
+total on ash-qty[5]
+total on ash-qty[6]
+total on ash-qty[7]
+total on ash-qty[8]
+total on ash-qty[9]
+total on ash-qty[10]
+total on ash-qty[11]
+total on ash-qty[12]
+total on ash-qty[13]
+subtotal on ash-value[1]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[2]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[3]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[4]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[5]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[6]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[7]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[8]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[9]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[10]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[11]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[12]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-value[13]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[1]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[2]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[3]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[4]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[5]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[6]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[7]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[8]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[9]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[10]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[11]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[12]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-cost[13]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[1]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[2]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[3]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[4]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[5]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[6]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[7]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[8]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[9]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[10]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[11]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[12]
+	with breaks on sys-tbl-alpha-1
+subtotal on ash-qty[13]
+	with breaks on sys-tbl-alpha-1

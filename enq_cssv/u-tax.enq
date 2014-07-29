@@ -1,0 +1,10 @@
+// program - u-tax
+// by: Ellen Gallagher
+// date: 26-Aug-94
+// this program updates teh prc-sales-tax-code to 1 for transmission to
+// breeze as currently we were transmitting 0
+update stock-price
+set
+	prc-sales-tax-code = 1 
+where
+	stock-code between "WAV000" and "WAV000"                   

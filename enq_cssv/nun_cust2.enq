@@ -1,0 +1,31 @@
+select
+	so-order-no
+	so-order-date
+	so-cust-code
+	accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+//	concat (na-suburb	postcode)
+//	na-country-code
+//	na-phone
+//	na-fax-no
+from
+	sales-order-archive
+	name-and-address-master
+where
+	so-cust-code =	accountcode AND
+	(so-order-no = 39125 or so-order-no = 39203 or so-order-no = 39522 or so-order-no = 42113 or so-order-no = 42294 or so-order-no = 42501 or so-order-no = 42647 or so-order-no = 42724 or so-order-no = 43848 or so-order-no = 22395 or so-order-no = 22464 or so-order-no = 22618 or so-order-no = 22655 or so-order-no = 23147 or so-order-no = 23252 or so-order-no = 23849) 
+order by so-order-no
+
+format is lst
+report width is 180 
+unique so-order-no
+unique na-name
+suppress so-cust-code
+suppress accountcode
+//suppress na-suburb
+//suppress postcode

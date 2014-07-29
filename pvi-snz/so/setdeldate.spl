@@ -1,0 +1,758 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/setdeldate
+//  Program Desc:	Set delivery date and instructions
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	29mar14	rmd	{17}	upgraded for 710
+///////////////////////////////////////////////////////////////////////////////
+// setdeldate.spl
+// 03jan13	rmd	apply change for all users
+// 29dec12	rmd break PO link note line function out to pvi-snz/so/polinknote
+// 29apr10	rmd use .11 instead of .99 for note line suffix so PO Order
+//				appears above priceaudit entry on .22
+// 12oct09	rmd	logic to write sol to tmp-sol could allow duplicates
+//				convert two adjacent if-endif's to a combined if-elseif-endif
+// 15jul09	rc	add pickup/delivery question to delivery details
+// 07jul09	rc	removed the date write-po-detail-to-sol
+// 25nov08	rmd	20nov08 fix does not work, so entry sets so-delivery-date=today()
+//				when user specifies so-delivery-date copy value into so-user-only-date1
+//				test for value in so-user-only-date1, if found don't ask again
+//				n.b. so-user-only-date1 mentioned in rmd/so/setdespl which appears to be retired
+//				any issues, switch to so-user-only-date2
+// 20nov08	rmd	hide if so-delivery-date already set
+// 14oct08	rmd hide if so-order-status = 65
+// 18aug08 	rmd	allow delivery address edit for all
+// 25mar08	rmd if cash sale, for taken flag
+// 09mar08	rmd empty delivery date receiving todays date, clear it
+// 09mar08	rmd	if "confirm-delivery" has been called exit quietly
+// 08mar08	rmd if goods in stock and set for delivery, request a del date
+// 08mar08	rmd don't set a default delivery date, leave blank (delivery TBA)
+// 17jan08	rmd	get default lf-so-delivery-date from latest PO delivery + 1
+
+
+
+mode md-select
+	prompt "&Select"
+	currency
+
+mode md-exit
+	prompt "&Exit"
+
+
+object tmp-sol
+type is memory
+record
+	tmp-so-order-no                                     like so-order-no
+	tmp-so-bo-suffix                                    like so-bo-suffix
+	tmp-sol-line-seq                                    like sol-line-seq
+endrecord
+	key is tmp-so-order-no tmp-so-bo-suffix tmp-sol-line-seq unique
+
+
+fields
+	ws-so-order-no                                      like so-order-no
+	ws-so-bo-suffix                                     like so-bo-suffix
+	ws-select-time-mode									pic x(8) // Earliest or Latest
+	ws-show-window										type boolean
+	ws-order-type										pic x(20)
+	ws-charge-only-order								type boolean
+	ws-da-exists										type boolean
+
+
+	//ws-so-delivery-date                   				like so-delivery-date
+	//ws-so-delivery-time                                 like so-delivery-time
+	//ws-so-actual-delivery-time                    		like so-actual-delivery-time
+
+
+procedure main
+	local field
+		lf-so-order-no									like so-order-no
+		lf-so-bo-suffix									like so-bo-suffix
+		lf-ex-stock-delivery							type boolean
+		lf-cash-account									type boolean
+		lf-include-sol									type boolean
+	if get-param(1) = SPACES
+		exit
+	endif
+	set ws-show-window = FALSE
+	set lf-cash-account = FALSE
+	// cash pretest
+	if (num(get-param(1)) > 0)
+		//report "setdeldate" spool-only
+		//print
+		//	get-param(1)
+		//	get-param(2)
+		//	get-param(3)
+		//	get-param(4)
+		//
+		//report finished
+		//29dec12
+		//if login-id() in {"robd" "cward"} //03jan13
+			spl "pvi-snz/so/polinknote"
+				parameters
+					"-setdeldate"
+					num(get-param(1))
+					get-param(2)
+		//endif
+		get sales-order
+		on index so-order-no so-bo-suffix
+		key is num(get-param(1)) get-param(2)
+		on error
+		else
+			//14oct08 test for status 65
+			if so-order-status = "65"
+				exit
+			endif
+			//14oct08
+			//25nov08 test for existing user entered delivery date
+			////20nov08 test for existing delivery date
+			//if so-delivery-date != 0
+			//	exit
+			////else
+			////	message concat(get-param(1) get-param(2) " : " str(so-delivery-date))
+			//endif
+			////20nov08
+			if so-user-only-date1 != 0
+				exit
+			endif
+			//25nov08
+			get deb-master
+			on index accountcode
+			key is so-cust-code
+			on error
+			else
+				if territory = accountcode
+					set lf-cash-account = TRUE
+				endif
+			endon
+			if lf-cash-account
+				extract sales-order-line lock
+				on index so-order-no so-bo-suffix sol-line-seq
+				key is so-order-no so-bo-suffix 0
+				next same so-order-no so-bo-suffix
+				detail
+					if (sol-line-type in {'SN' 'KN'}) and (sol-shipped-qty > 0) // and (sol-print-line = '2')
+						get sales-order-line lock
+						on error
+						else
+							set sol-user-only-alpha4-1 = sol-print-line
+							set sol-user-only-alpha4-2 = so-order-status
+							set sol-print-line = 'T'
+							update sales-order-line
+						endon
+					endif
+				endextract
+			endif
+		endon
+	endif
+	//set ws-show-window = TRUE
+    set ws-so-order-no = num(get-param(1))
+    set ws-so-bo-suffix = get-param(2)
+    if get-param(3) = "L" // Layby order being opened - do not scan lines
+    	message "Layby"
+    	do set-delivery-window
+	    exit
+    endif
+    if get-param(3) = "-laybycheck" // order being paid if so-order-status = 18
+    								// get delivery date
+    	get sales-order
+    	on index so-order-no so-bo-suffix
+    	key is ws-so-order-no ws-so-bo-suffix
+    	on error
+    	else
+    		// 09mar08 test for "confirm delivery" call
+    		if so-user-only-alpha20-1 = "confirm-delivery"
+    			//message "DB: confirm-delivery called"
+    			exit
+    		endif
+    		if so-order-status = "18"
+		    	//message "Layby: Type 18"
+		    	set ws-order-type = "Layby"
+		        do set-delivery-window
+			    exit
+			else
+				//message "-laybycheck called - not an 18"
+				// test for non backordered items being delivered
+				// shifted to the -scanall section
+				/*
+				extract sales-order-line
+				on index so-order-no so-bo-suffix sol-line-seq
+				key is ws-so-order-no ws-so-bo-suffix 0
+				next same so-order-no so-bo-suffix
+				detail
+					if sol-shipped-qty > 0 and sol-print-line = SPACES
+						set lf-ex-stock-delivery = TRUE
+					endif
+				endextract
+				if lf-ex-stock-delivery
+					do set-delivery-window
+				endif
+				*/
+				exit
+		    endif
+		endon
+    endif
+    if (get-param(3) = "-scanall")
+    	//message "db extract all"
+        get sales-order lock
+        on index so-order-no so-bo-suffix
+    	key is ws-so-order-no SPACES
+    	on error
+    		exit
+    	else
+    		// 09mar08 test for "confirm delivery" call
+    		if so-user-only-alpha20-1 = "confirm-delivery"
+    			//message "DB: confirm-delivery called"
+    			exit
+    		endif
+    		//message concat("Incoming status:" so-order-status)
+    		// scan lines to see if it only contains charges or z type items
+    		// if so set to status 80
+    		set ws-charge-only-order = TRUE
+    		extract sales-order-line
+    		on index so-order-no so-bo-suffix sol-line-seq
+    		key is ws-so-order-no ws-so-bo-suffix 0
+    		next same so-order-no so-bo-suffix
+    		detail
+    			if sol-line-type = "SN" and sol-chg-type != "Z" // not a GIFTCERT
+    				set ws-charge-only-order = FALSE
+    			endif
+    		endextract
+    		if ws-charge-only-order
+    			//message "Charge Only order"
+    			set so-order-status = "80"
+    			update sales-order
+    			//message concat("Outgoing status:" so-order-status)
+    		endif
+    		if so-order-status = "18"
+    			exit
+    		elseif so-order-status = "02"
+    			//message "Quote - setting valid date"
+    			set so-delivery-date = today() + 14
+    			update sales-order
+    		endif
+    	endon
+    	extract sales-order
+    	on index so-order-no so-bo-suffix
+    	key is ws-so-order-no SPACES
+    	next same so-order-no
+    	detail
+    		//message concat("SO:" str(so-order-no) "BO:" so-bo-suffix "Stat:" so-order-status)
+       		if so-order-status not in {"11" "44" "70"}
+    			// message so-order-status
+    			//exit
+    		endif
+    		set lf-so-order-no = so-order-no
+    		set lf-so-bo-suffix = so-bo-suffix
+    		open tmp-sol truncate temporary
+    		extract sales-order-line
+    		on index so-order-no so-bo-suffix sol-line-seq
+    		key is lf-so-order-no lf-so-bo-suffix 0
+    		next same so-order-no so-bo-suffix
+    		detail
+				//message concat("SOL:" str(sol-line-seq) "SKU:" stock-code "BOQ:" str(sol-backorder-qty) "SPL:" sol-print-line)
+    			//if sol-backorder-qty > 0
+    			//	set ws-show-window = TRUE
+    			//endif
+    			//rmd12oct09 start -----------------------------------
+				//if (sol-backorder-qty > 0) or (sol-print-line in {"2"}) // 2 = Deliver Y = Taken
+				//	set tmp-so-order-no   = so-order-no
+				//	set tmp-so-bo-suffix  = so-bo-suffix
+				//	set tmp-sol-line-seq  = sol-line-seq
+				//	insert tmp-sol
+    			//	set ws-show-window = TRUE
+				//endif
+				//
+				//// 08mar08 in case of an item in stock being delivered not taken
+				//if sol-shipped-qty > 0 and sol-print-line = SPACES
+				//	set tmp-so-order-no   = so-order-no
+				//	set tmp-so-bo-suffix  = so-bo-suffix
+				//	set tmp-sol-line-seq  = sol-line-seq
+				//	insert tmp-sol
+    			//	set ws-show-window = TRUE
+				//endif
+				if (sol-backorder-qty > 0) or (sol-print-line in {"2"}) // 2 = Deliver Y = Taken
+					set lf-include-sol = TRUE
+				// 08mar08 in case of an item in stock being delivered not taken
+				elseif sol-shipped-qty > 0 and sol-print-line = SPACES
+					set lf-include-sol = TRUE
+    			else
+    				set lf-include-sol = FALSE
+				endif
+				if lf-include-sol
+					set tmp-so-order-no   = so-order-no
+					set tmp-so-bo-suffix  = so-bo-suffix
+					set tmp-sol-line-seq  = sol-line-seq
+					insert tmp-sol
+    				set ws-show-window = TRUE
+				endif
+				//rmd12oct09 end -------------------------------------
+       		endextract
+       		extract tmp-sol
+			detail
+				do
+					write-po-detail-to-sol
+				parameters
+					tmp-so-order-no
+					tmp-so-bo-suffix
+					tmp-sol-line-seq
+       		endextract
+    	endextract
+	else
+    	get sales-order
+    	on index so-order-no so-bo-suffix
+   		key is ws-so-order-no ws-so-bo-suffix
+    	on error
+    	else
+    		if so-order-status not in {"11" "44" "70"}
+    			//message so-order-status
+    			exit
+    		endif
+    		extract sales-order-line
+    		on index so-order-no so-bo-suffix sol-line-seq
+    		key is ws-so-order-no ws-so-bo-suffix 0
+    		next same so-order-no so-bo-suffix
+    		detail
+    			//if sol-backorder-qty > 0
+    			//	set ws-show-window = TRUE
+    			//endif
+				if (sol-backorder-qty > 0) or (sol-print-line in {"2"}) // 2 = Deliver Y = Taken
+    				set ws-show-window = TRUE
+				endif
+    	   	endextract
+    	endon
+    endif
+    if ws-show-window
+	    do set-delivery-window
+	    exit
+	endif
+endprocedure // main ----------------------------------------------------------
+
+procedure set-delivery-window
+	//window @3,1 to @8,79 title is concat("Schedule Delivery")		//rc 15jul09
+	window @2,1 to @13,79 title is concat("Schedule Delivery")		//rc 15jul09
+local field
+	lf-new-record				type boolean
+	i							type numeric
+	f							type numeric
+	lf-accept					pic x
+	lf-so-dl-text-1				pic x(30)
+	lf-so-dl-text-2				pic x(30)
+	lf-so-dl-text-3				pic x(30)
+	lf-so-dl-text-4				pic x(30)
+	lf-so-delivery-date			like so-delivery-date
+	lf-so-delivery-time			like so-delivery-time
+	lf-so-actual-delivery-time	like so-actual-delivery-time
+	lf-edit-da					pic x
+	lf-pick-delv				pic x				//rc 15jul09
+	set lf-new-record = FALSE
+	get sales-order-delivery
+	on index so-order-no so-bo-suffix so-text-type
+	key is ws-so-order-no ws-so-bo-suffix "DI"
+	on error
+		set lf-new-record = TRUE
+	else
+	endon
+	box @3,2 to @8,45 title is "Delivery Notes"
+	box @3,46 to @8,78 title is "Delivery Time"
+	box @9,2 to @12,78 title is "Delivery / Pickup"				//rc 15jul09
+	accept lf-so-dl-text-1 @4,11 title is "Line 1:"
+		uppercase
+		default so-dl-text[1]
+		optional
+	accept lf-so-dl-text-2 @5,11 title is "Line 2:"
+		uppercase
+		default so-dl-text[2]
+		optional
+	accept lf-so-dl-text-3 @6,11 title is "Line 3:"
+		uppercase
+		default so-dl-text[3]
+		optional
+	accept lf-so-dl-text-4 @7,11 title is "Line 4:"
+		uppercase
+		default so-dl-text[4]
+		optional
+		//if so-delivery-date = 0
+		//	set lf-so-delivery-date = 0
+		//endif
+		//if ws-order-type = "Layby"
+		//	set so-delivery-date = today + 14
+		//else
+		//	// 08mar08
+		//	// set so-delivery-date = today
+		//
+		//	// get latest PO expected receipt date and use that
+		//	extract sales-order-line-purchase
+		//	on index so-order-no so-bo-suffix sol-line-seq
+		//	key is ws-so-order-no ws-so-bo-suffix 0
+		//	next same so-order-no so-bo-suffix
+		//	detail
+		//		get purchase-order-line
+		//		on index po-order-no po-backorder-flag po-l-seq
+		//		key is solp-po-order-no solp-backorder-flag solp-l-seq
+		//		on error
+		//		else
+		//			// 09mar08
+		//			if so-delivery-date = 0 // intentional TBA date - leave it
+		//			else
+		//				if po-line-date-expected > so-delivery-date
+		//					set so-delivery-date = po-line-date-expected
+		//				endif
+		//			endif
+		//		endon
+		//	endextract
+		//endif
+		if so-delivery-time = 0
+			set so-delivery-date 		= date2julian(SPACES)
+			set so-user-only-date1		= date2julian(SPACES) //25nov08
+			set so-delivery-time 		= date2julian(SPACES)
+			set so-actual-delivery-time = date2julian(SPACES)
+		endif
+		accept lf-so-delivery-date @4,60 title is "Delivery Date:"
+			// 08mar08
+			default so-delivery-date
+			optional
+		if lf-so-delivery-date = 0
+			display "TBA" @4,73 bold background // 72 to sit next to it
+			// 09mar08
+			set so-delivery-date = 0
+			set so-user-only-date1 = 0	//25nov08
+		endif
+		// 08mar08
+		//if lf-so-delivery-time = 0
+		//	set lf-so-delivery-time = 28800
+		//endif
+		accept lf-so-delivery-time @5,60 title is "Earliest Time:" pic HH:MM
+			when lf-so-delivery-date > 0
+			default so-delivery-time
+			optional
+			on help-key
+				set ws-select-time-mode = "Earliest"
+				do select-time-string
+					parameters
+						concat(zstr(hour(so-delivery-time),2,0) ":" zstr(minute(so-delivery-time),2,0))
+					returning
+						lf-so-delivery-time
+				reenter lf-so-delivery-time optional
+			endon
+		set i = integer(lf-so-delivery-time / 1800)
+		set f = fraction(lf-so-delivery-time / 1800)
+		if f > 0.5
+			set i += 1
+		endif
+		// 08mar08
+		if lf-so-delivery-time > 0
+			set lf-so-delivery-time = i * 1800
+		endif
+		refresh lf-so-delivery-time
+		// 08mar08
+		//if lf-so-actual-delivery-time = 0
+		//	set lf-so-actual-delivery-time = lf-so-delivery-time + 1800
+		//endif
+		accept lf-so-actual-delivery-time @6,60 title is "Latest Time:" pic HH:MM
+			default so-actual-delivery-time
+			when lf-so-delivery-date > 0
+			optional
+			on help-key
+				set ws-select-time-mode = "Latest"
+				do select-time-string
+					parameters
+						concat(zstr(hour(lf-so-actual-delivery-time),2,0) ":" zstr(minute(lf-so-actual-delivery-time),2,0))
+					returning
+						lf-so-actual-delivery-time
+				reenter lf-so-actual-delivery-time optional
+			endon
+		set i = integer(lf-so-actual-delivery-time / 1800)
+		set f = fraction(lf-so-actual-delivery-time / 1800)
+		//message str(i)
+		//message str(f)
+		if f > 0.5
+			set i += 1
+		endif
+		// 08mar08
+		if lf-so-actual-delivery-time > 0
+			set lf-so-actual-delivery-time = i * 1800
+		endif
+		refresh lf-so-actual-delivery-time
+	//endon
+	//start --------------------------------------------- //rc 15jul09
+	get sales-order lock
+		on index so-order-no so-bo-suffix
+		key is ws-so-order-no ws-so-bo-suffix
+	on error
+		set lf-pick-delv = "D"
+	else
+		//set lf-pick-delv = so-spare-flag1     //{17}
+		set lf-pick-delv = so-spare-alpha4-1	//{17}
+	endon
+	accept lf-pick-delv @10,30
+		title "Pickup/Deliver (P/D) :"
+		allow "P" "D"
+		uppercase
+		default "D"
+	//end ----------------------------------------------- //rc 15jul09
+        // 08mar08
+		if lf-so-delivery-date = 0
+			//message "DB: sdd1 = 0"
+			set so-dl-text[5] = 	"Delivery Date To Be Advised"
+		else
+			//message "DB: sdd1 > 0"
+			set so-dl-text[5] = 	concat("Exp Deliv " zstr(DAY(lf-so-delivery-date),2,0) " " substring(month-name(lf-so-delivery-date),1,3) " "
+									zstr(hour(lf-so-delivery-time),2,0) ":" zstr(minute(lf-so-delivery-time),2,0) " - "
+									zstr(hour(lf-so-actual-delivery-time),2,0) ":" zstr(minute(lf-so-actual-delivery-time),2,0))
+		endif
+		//accept lf-accept @7,60 title is "Accept:"			//rc 15jul09
+		accept lf-accept @11,60 title is "Accept:"
+			uppercase
+			allowed "Y" "N"
+			default "Y"
+		//start --------------------------------------------- //rc 15jul09
+		validation
+			if lf-accept = SPACES
+				reenter
+			endif
+		endvalidation
+		//end ----------------------------------------------- //rc 15jul09
+		if lf-accept = "Y"
+			set so-dl-text[1] 	= lf-so-dl-text-1
+			set so-dl-text[2] 	= lf-so-dl-text-2
+			set so-dl-text[3] 	= lf-so-dl-text-3
+			set so-dl-text[4] 	= lf-so-dl-text-4
+			set so-text-type 	= "DI"
+			if (get-param(3) in {"-scanall"})
+    			extract sales-order lock
+    			on index so-order-no so-bo-suffix
+    			key is ws-so-order-no SPACES
+    			next same so-order-no
+    			detail
+    				// 08mar08
+    				if lf-so-delivery-date = 0
+    					//message "DB: sdd2 = 0"
+	    				set so-delivery-date 		= date2julian(SPACES)
+	    				set so-user-only-date1		= date2julian(SPACES)	//25nov08
+   		 				set so-delivery-time 		= date2julian(SPACES)
+   	 					set so-actual-delivery-time = date2julian(SPACES)
+    				else
+    					//message "DB: sdd2 > 0"
+	    				set so-delivery-date 		= lf-so-delivery-date
+	    				set so-user-only-date1		= lf-so-delivery-date	//25nov08
+   		 				set so-delivery-time 		= lf-so-delivery-time
+   	 					set so-actual-delivery-time = lf-so-actual-delivery-time
+					endif
+					//set so-spare-flag1 = lf-pick-delv				//rc 15jul09        //{17}
+					set so-spare-alpha4-1 = lf-pick-delv				//rc 15jul09	//{17}
+    				update sales-order
+    				get sales-order-delivery lock
+    				on error
+    					insert sales-order-delivery
+    				else
+    					update sales-order-delivery
+    				endon
+    			endextract
+    		elseif ws-order-type = "Layby"
+    			set so-text-type 	= "DI"
+    			//message concat("Layby mode - find SO:" str(ws-so-order-no) "BO:" ws-so-bo-suffix "today:" str(today) "del:" str(lf-so-delivery-date) "line1:" so-dl-text[1])
+    			get sales-order lock
+    			on index so-order-no so-bo-suffix
+    			key is ws-so-order-no ws-so-bo-suffix
+    			on error
+    				message "Layby mode: no order"
+    			else
+   					// 08mar08
+    				if so-delivery-date = 0
+    				else
+	    				set so-delivery-date 		= lf-so-delivery-date
+	    				set so-user-only-date1		= lf-so-delivery-date	//25nov08
+   		 				set so-delivery-time 		= lf-so-delivery-time
+   	 					set so-actual-delivery-time = lf-so-actual-delivery-time
+					endif
+					//set so-spare-flag1 = lf-pick-delv				//rc 15jul09    //{17}
+					set so-spare-alpha4-1 = lf-pick-delv			//rc 15jul09	//{17}
+    				update sales-order
+    				get sales-order-delivery lock
+    				on index so-order-no so-bo-suffix so-text-type
+    				key is ws-so-order-no ws-so-bo-suffix "DI"
+    				on error
+    					//message "LB inserting DI"
+    					//message so-dl-text[1]
+    					insert sales-order-delivery
+    				else
+						set so-dl-text[1] 	= lf-so-dl-text-1
+						set so-dl-text[2] 	= lf-so-dl-text-2
+						set so-dl-text[3] 	= lf-so-dl-text-3
+						set so-dl-text[4] 	= lf-so-dl-text-4
+
+						// 08mar08
+						if so-delivery-date = 0
+							set so-dl-text[5] = 	"Delivery Date To Be Advised"
+						else
+							set so-dl-text[5] = 	concat("Exp Deliv " zstr(DAY(lf-so-delivery-date),2,0) " " substring(month-name(lf-so-delivery-date),1,3) " "
+													zstr(hour(lf-so-delivery-time),2,0) ":" zstr(minute(lf-so-delivery-time),2,0) " - "
+													zstr(hour(lf-so-actual-delivery-time),2,0) ":" zstr(minute(lf-so-actual-delivery-time),2,0))
+						endif
+    					update sales-order-delivery
+    				endon
+    			endon
+			else
+				set so-text-type = "DI"
+				if lf-new-record
+					insert sales-order-delivery
+				else
+					update sales-order-delivery
+				endif
+				update sales-order
+			endif
+		else
+			reenter
+		endif
+		// test if customer has a DA record
+		get name-and-address-master
+		on index accountcode na-type
+		key is so-cust-code "DA"
+		on error
+			set lf-edit-da = "N"
+		else
+			set ws-da-exists = TRUE
+			set lf-edit-da = "Y"
+		endon
+		// uncomment to reveal DA edit function
+		// 18aug08 allow del add edit for all
+		//if login-id() in {"robd" "robynb" "lionelvn" "robz" "roxanne"}
+			//start --------------------------------------------- //rc 15jul09
+			//display "Edit Del Addr:" @7,61 background
+			//accept lf-edit-da @7,76 // title is
+			display "Edit Del Addr:" @11,61 background
+			accept lf-edit-da @11,76 // title is
+			//end ----------------------------------------------- //rc 15jul09
+				uppercase
+				allowed "Y" "N"
+				default lf-edit-da
+		    	show-value										//rc 15jul09
+				when lf-pick-delv = "D"						//rc 15jul09
+			if lf-edit-da = "Y"
+				spl
+					"pvi-snz/so/setdeladd"
+				parameters
+					ws-so-order-no
+					ws-so-bo-suffix
+			endif
+			if lf-edit-da = "N" and ws-da-exists
+				spl
+					"pvi-snz/so/setdeladd"					
+				parameters
+					ws-so-order-no
+					ws-so-bo-suffix
+					"-silent"
+			endif
+		//endif
+endprocedure // set-delivery-window ----------------------------------------------
+
+
+procedure write-po-detail-to-sol
+parameters
+	lp-so-order-no                   like so-order-no
+	lp-so-bo-suffix                  like so-bo-suffix
+	lp-sol-line-seq                  like sol-line-seq
+	//message concat("Write PO detail to sol:" str(lp-so-order-no) lp-so-bo-suffix "seq:" str(lp-sol-line-seq))
+	get sales-order-line-purchase
+	on index so-order-no so-bo-suffix sol-line-seq
+	key is lp-so-order-no lp-so-bo-suffix lp-sol-line-seq
+	on error
+		// no po link
+		//message "No SO/PO link"
+		// will happen when goods in stock being delivered - no po required.
+	else
+		get purchase-order-line
+		on index po-order-no po-backorder-flag po-l-seq
+		key is solp-po-order-no solp-backorder-flag solp-l-seq
+		on error
+			// #| should throw an error here.
+			message "No PO line"
+		else
+			initialise sales-order-line
+			set so-order-no		= lp-so-order-no
+			set so-bo-suffix	= lp-so-bo-suffix
+			//set sol-line-seq	= (lp-sol-line-seq + 0.99)
+			set sol-line-seq	= (lp-sol-line-seq + 0.11) //29apr10
+			set sol-line-type	= "DN"
+			//start --------------------------------------------- //rc 07jul09
+			//set sol-line-description = concat("On PO " str(po-order-no) po-backorder-flag " due " zstr(day(po-line-date-expected),2,0) "/" zstr(month(po-line-date-expected),2,0) "/" substring(zstr(year(po-line-date-expected),4,0),3,4))
+			set sol-line-description = concat("On PO " str(po-order-no) po-backorder-flag)
+			//end ----------------------------------------------- //rc 07jul09
+			// check if note line exists. (the .99 entry for the line)
+			get sales-order-line lock
+			//on index so-order-no so-bo-suffix sol-line-seq
+			//key is lp-so-order-no lp-so-bo-suffix (lp-sol-line-seq + 0.99)
+			on error
+				// no so/po note, create one
+				//message "No SO note"
+				insert sales-order-line
+			else
+				// existing so/po note, update it?
+				//message "SO note exists - updating"
+				update sales-order-line
+			endon
+			// reset sol-line-seq on return
+			//set sol-line-seq = lp-sol-line-seq
+		endon
+	endon
+endprocedure // write-po-detail-to-sol ----------------------------------------
+
+procedure write-delivery-instructions
+	//set so-dl-text[1] = concat("Delivery on " julian2date(so-delivery-date))
+	//set so-dl-text[2] = concat(zstr(hour(so-delivery-time),2,0) ":" zstr(minute(so-delivery-time),2,0) " to " zstr(hour(so-actual-delivery-time),2,0) ":" zstr(minute(so-actual-delivery-time),2,0))
+	if so-delivery-date > 0
+		//message "DB: sdd3 > 0"
+		set so-dl-text[5] = 	concat("Exp Deliv " zstr(DAY(so-delivery-date),2,0) " " substring(month-name(so-delivery-date),1,3) " "
+								zstr(hour(so-delivery-time),2,0) ":" zstr(minute(so-delivery-time),2,0) " - "
+								zstr(hour(so-actual-delivery-time),2,0) ":" zstr(minute(so-actual-delivery-time),2,0))
+	else
+		//message "DB: sdd3 = 0"
+		set so-dl-text[5] =		"Delivery Date To Be Advised"
+	endif
+	get sales-order-delivery lock
+	on index so-order-no so-bo-suffix so-text-type
+	key is ws-so-order-no ws-so-bo-suffix "DI"
+	on error
+		set so-order-no  = ws-so-order-no
+		set so-bo-suffix = ws-so-bo-suffix
+		set so-text-type = "DI"
+		insert sales-order-delivery
+	else
+		update sales-order-delivery
+	endon
+
+endprocedure // write-delivery-instructions -----------------------------------
+
+screen select-time-string
+	parameters
+		lp-sys-tbl-code					like sys-tbl-code
+
+	returning
+		lr-seconds-since-midnight		like sys-money-value
+	window @20,36 to @28,48 title is concat("Select " ws-select-time-mode " Time")
+	primary system-table
+	where sys-tbl-type = "ZT"
+	datagrid occurs 8
+	allow md-select search
+detail
+	display sys-tbl-code @20,38 title is "Time"
+confirm
+	auto
+confirmed
+	if screen-mode() = md-select
+		set lr-seconds-since-midnight = sys-money-value
+		// message concat("Ret:" str(lr-seconds-since-midnight))
+		exit
+	endif
+endconfirm
+endscreen // select-time-string -----------------------------------------------
+// setdeldate.spl

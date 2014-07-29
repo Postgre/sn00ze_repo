@@ -1,0 +1,41 @@
+select
+	stock-code
+	stock-group
+	sys-tbl-type
+	sys-tbl-code
+	sys-tbl-alpha-1
+	sys-description
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+from
+	stock-master
+	system-table
+	stock-aged-sales-history
+where
+	sys-tbl-type = 'PG' 
+	and ash-type = 'Q' 
+	and ash-years-ago = 0 
+	and stock-group = sys-tbl-code
+order by ash-whse sys-tbl-alpha-1 
+format is lst
+suppress stock-group
+suppress sys-tbl-type
+suppress ash-type
+suppress ash-years-ago
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+total on ash-value[1]
+subtotal on ash-value[1]
+	with breaks on sys-tbl-alpha-1 ash-whse

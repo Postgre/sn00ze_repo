@@ -1,0 +1,19 @@
+select
+	cre-accountcode
+	cr-shortname
+	cr-type
+	accountcode
+	na-type
+	na-name
+	na-company
+	na-street
+from
+	cre-master
+	name-and-address-master
+where
+	na-type = 'C' 
+	and cre-accountcode = accountcode 
+format is lst
+suppress cr-shortname
+suppress accountcode
+suppress na-type

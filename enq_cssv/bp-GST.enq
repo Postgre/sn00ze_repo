@@ -1,0 +1,5 @@
+update gl-trans
+	set gl-accountcode = "3M3601450"
+		gl-tr-user-only-alpha4-1 = "y"
+where
+	gl-accountcode = "Z6ITAX"

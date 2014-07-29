@@ -1,0 +1,104 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-value
+	ws-period = input numeric "Enter period ago (1=May 2=Apr 3=Mar...8=Oct):"
+	ws-ytd-sales = ash-value[ws-period] 
+	stock-group
+	ws-supp-code = substring (stock-code 1 3) 
+	company-name
+from
+	stock-aged-sales-history
+	stock-master
+	system-control
+where
+	ash-type = 'S' 
+	and ash-years-ago = 0 
+	and stock-group = "IS" 
+	and ws-supp-code in { "SEA" "SIM" "SLE" "SOP" } 
+format is rpt
+field total-ws-ytd-sales like ws-ytd-sales
+field sub-tot-ws-ytd-sales like ws-ytd-sales
+report header
+	page
+	set total-ws-ytd-sales = 0
+header
+	print company-name in col 1
+		"rjbsash5" in col 70
+	skip 1
+	print "TOTAL SALES FOR INNER SPRINGS" in col 21
+	print "FOR SEA, SIM, SLE & SOP" in col 24
+	if ws-period = 1
+		print
+			"FOR THE MONTH OF " in col 23
+			"MAY 1995" in col 40 bold
+	elseif ws-period = 2
+		print
+			"FOR THE MONTH OF " in col 23
+			"APRIL 1995" in col 40 bold
+	elseif ws-period = 3
+		print
+			"FOR THE MONTH OF " in col 23
+			"MARCH 1995" in col 40 bold
+	elseif ws-period = 4
+		print
+			"FOR THE MONTH OF " in col 23
+			"FEBRUARY 1995" in col 40 bold
+	elseif ws-period = 5
+		print
+			"FOR THE MONTH OF " in col 23
+			"JANUARY 1995" in col 40 bold
+	elseif ws-period = 6
+		print
+			"FOR THE MONTH OF " in col 23
+			"DECEMBER 1994" in col 40 bold
+	elseif ws-period = 7
+		print
+			"FOR THE MONTH OF " in col 23
+			"NOVEMBER 1994" in col 40 bold
+	elseif ws-period = 8
+		print
+			"FOR THE MONTH OF " in col 23
+			"OCTOBER 1994" in col 40 bold
+	elseif ws-period = 9
+		print
+			"FOR THE MONTH OF " in col 23
+			"SEPTEMBER 1994" in col 40 bold
+	elseif ws-period = 10
+		print
+			"FOR THE MONTH OF " in col 23
+			"AUGUST 1994" in col 40 bold
+	elseif ws-period = 11
+		print
+			"FOR THE MONTH OF " in col 23
+			"JULY 1994" in col 40 bold
+	elseif ws-period = 12
+		print
+			"FOR THE MONTH OF " in col 23
+			"JUNE 1994" in col 40 bold
+	endif
+	skip 2
+	print
+		"ws-ytd-sales" in col 37
+		"cre" in col 16
+	print
+		"accountcode" in col 13
+	skip 1
+before ws-supp-code
+	set sub-tot-ws-ytd-sales = 0
+
+detail
+	set total-ws-ytd-sales += ws-ytd-sales
+	set sub-tot-ws-ytd-sales += ws-ytd-sales
+after ws-supp-code
+	print
+		ws-supp-code in col 13 pic x(5)
+		sub-tot-ws-ytd-sales in col 37 pic -zzz,zzz,zz9.99
+	skip
+report footer
+	print
+		"---------------" in col 37
+	print
+		"TOTAL FOR THESE SUPPLIERS:" in col 9
+		total-ws-ytd-sales in col 37 pic -zzz,zzz,zz9.99 bold 

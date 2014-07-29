@@ -1,0 +1,10 @@
+// show debtors not in terr 240 or 250
+select
+	accountcode
+	territory
+from
+	deb-master
+where
+	( ( territory != "240"  ) AND
+	( territory != "250"  ) )
+format is lst

@@ -1,0 +1,34 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ws-qty = (ash-qty[1] + ash-qty[2] + ash-qty[3] + ash-qty[4] + 
+ash-qty[5] + ash-qty[6] + ash-qty[7] + ash-qty[8] + 
+ash-qty[9] + ash-qty[10] + ash-qty[11] + ash-qty[12] ) 
+	ws-value = (ash-value[1] + ash-value[2] + ash-value[3] + ash-value[4] + 
+ash-value[5] + ash-value[6] + ash-value[7] + ash-value[8] + 
+ash-value[9] + ash-value[10] + ash-value[11] + ash-value[12] ) 
+	ws-cost = (ash-cost[1] + ash-cost[2] + ash-cost[3] + ash-cost[4] + 
+ash-cost[5] + ash-cost[6] + ash-cost[7] + ash-cost[8] + 
+ash-cost[9] + ash-cost[10] + ash-cost[11] + ash-cost[12] ) 
+	stk-description
+	stock-group
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = 'O' 
+	and 
+	ash-years-ago = 0 
+	and
+	ws-qty > 100
+	and
+	stock-group != spaces
+	and
+	stock-group != 'D'
+order by stock-group ws-qty descending 
+format is lst
+suppress ash-type
+suppress ash-years-ago
+field order is stock-group stock-code stk-description
+display pic of ws-qty is Z,ZZZ,ZZZ

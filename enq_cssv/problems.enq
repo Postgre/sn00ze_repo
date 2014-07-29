@@ -1,0 +1,8 @@
+select
+	log-note
+	log-number
+from
+	problem-log-notes
+where
+	log-note like "%10436%"
+format is lst

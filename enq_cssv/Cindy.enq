@@ -1,0 +1,17 @@
+select
+	accountcode
+	last-sale
+	na-name
+	na-phone
+	postcode
+	na-type
+from
+	deb-master
+	name-and-address-master
+where
+	last-sale > 30/6/96 
+	and 
+	na-type = 'C' 
+order by last-sale descending accountcode 
+format is lst
+suppress na-type

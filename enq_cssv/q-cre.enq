@@ -1,0 +1,7 @@
+select
+	cre-accountcode
+	cr-shortname
+from
+	cre-master
+order by cr-shortname 
+format is lst

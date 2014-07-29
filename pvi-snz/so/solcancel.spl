@@ -1,0 +1,69 @@
+// solcancel.spl
+// 15may14	rmd	upgrade to 710.3
+// 21oct08	rmd this is using a new core object, create if it does not exist.
+//				copy sales-order-line-notes to their -cancel table as well
+// 16oct08	rmd written
+field
+	ws-so-order-no  						like so-order-no
+	ws-so-bo-suffix	                        like so-bo-suffix
+
+procedure main
+	open sales-order-line-cancel create permanent //21oct08
+	open sales-order-line-notes-cancel create permanent //21oct08
+	if strlen(get-param(1)) = 0
+		exit
+	endif
+	set ws-so-order-no = num(get-param(1))
+	set ws-so-bo-suffix = get-param(2)
+	do save-lines
+	do save-notes
+	//parameters
+	//	lp-so-order-no
+	//    lp-so-bo-suffix
+	//returning
+	//	lr-result
+    //
+	//message lr-result
+endprocedure // main ----------------------------------------------------------
+
+procedure save-lines
+	extract sales-order-line
+	on index so-order-no so-bo-suffix sol-line-seq
+	key is ws-so-order-no ws-so-bo-suffix 0
+	//key is lp-so-order-no lp-so-bo-suffix 0
+	next same so-order-no so-bo-suffix
+	detail
+		save sales-order-line
+		get sales-order-line-cancel lock
+		on error
+			insert sales-order-line-cancel
+			//set lr-result = "Inserted"
+		else
+			// replace with current sol as it might have newer values
+			delete sales-order-line-cancel
+			restore sales-order-line
+			insert sales-order-line-cancel
+			//set lr-result = "Updated"
+		endon
+	endextract
+endprocedure // save-lines ----------------------------------------------------
+
+procedure save-notes
+	extract sales-order-line-notes
+	on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+	key is ws-so-order-no ws-so-bo-suffix 0 SPACES 0
+	next same so-order-no so-bo-suffix
+	detail
+		save sales-order-line-notes
+		get sales-order-line-notes-cancel lock
+		on error
+			insert sales-order-line-notes-cancel
+		else
+			// replace with current soln as it might have newer values
+			delete sales-order-line-notes-cancel
+			restore sales-order-line-notes
+			insert sales-order-line-notes-cancel
+		endon
+	endextract
+endprocedure // save-notes ----------------------------------------------------
+// solcancel.spl

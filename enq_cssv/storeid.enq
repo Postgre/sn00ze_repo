@@ -1,0 +1,10 @@
+select
+	user-store-id
+from
+	system-control
+	system-user
+where
+	sys-comp-code = sys-consolidation-division
+	and
+	user-id = login-id()
+format is lst

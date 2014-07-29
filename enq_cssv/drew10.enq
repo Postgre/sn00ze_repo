@@ -1,0 +1,71 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	ash-qty
+	ws-ash-value = sum-array (ash-value 1 12) 
+	ws-ash-cost = sum-array (ash-cost 1 12) 
+	ws-ash-qty = sum-array (ash-qty 1 12) 
+	ws-stock-code = input string "stock-code:"
+from
+	stock-master
+	stock-aged-sales-history
+where
+	ash-type = 'O' 
+	and (ash-years-ago = 2 or ash-years-ago = 1 or ash-years-ago = 0) 
+	and stock-code = ws-stock-code 
+order by ash-whse 
+format is lst
+suppress ash-type
+suppress ash-years-ago
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ash-cost[1]
+suppress ash-cost[2]
+suppress ash-cost[3]
+suppress ash-cost[4]
+suppress ash-cost[5]
+suppress ash-cost[6]
+suppress ash-cost[7]
+suppress ash-cost[8]
+suppress ash-cost[9]
+suppress ash-cost[10]
+suppress ash-cost[11]
+suppress ash-cost[12]
+suppress ash-cost[13]
+suppress ash-qty[1]
+suppress ash-qty[2]
+suppress ash-qty[3]
+suppress ash-qty[4]
+suppress ash-qty[5]
+suppress ash-qty[6]
+suppress ash-qty[7]
+suppress ash-qty[8]
+suppress ash-qty[9]
+suppress ash-qty[10]
+suppress ash-qty[11]
+suppress ash-qty[12]
+suppress ash-qty[13]
+suppress ws-stock-code
+display pic of ws-ash-value is zzz,zzz,zz9.99-
+display pic of ws-ash-cost is zzz,zzz,zz9.99-
+display pic of ws-ash-qty is zzz,zz9-
+total on ws-ash-value
+total on ws-ash-cost
+total on ws-ash-qty

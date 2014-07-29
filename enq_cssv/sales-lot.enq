@@ -1,0 +1,17 @@
+// Sales01.enq
+// Report to list the current month's sales and costs
+// GMR Mar 94
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ws-sales = ash-value[1] 
+	ws-cost = ash-cost[1] 
+	ws-gp = ws-sales - ws-cost 
+from
+	stock-aged-sales-history
+where
+	ash-years-ago = 0 
+order by ash-whse 
+format is lotus

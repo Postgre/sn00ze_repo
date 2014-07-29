@@ -1,0 +1,8 @@
+// stock Control Code Change
+update stock-take-variance
+set
+	stv-control-code = input alpha "What is the New Control Code"
+	stv-user-only-alpha4-1 = "y"
+where
+	stv-control-code = input alpha "What is the OLD Control Code"
+

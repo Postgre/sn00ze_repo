@@ -1,0 +1,7 @@
+select
+	stock-code
+	ws-count  = count ()
+from
+	stock-master
+format is lst
+suppress stock-code

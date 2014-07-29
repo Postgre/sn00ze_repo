@@ -1,0 +1,84 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/stsync.spl
+//  Program Desc:	Sync system-table entries from MAS into current dataset
+//  Requested By:
+//  Request Date:
+//	Usage:			prospl pvi-snz/sys/stsync "XX" (where XX are the type to sync)
+//					e.g. PG for Product Group
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//  USAGE:
+//  Modification History
+//  Date	Who	Chg#	What
+//	05apr14	rmd			upgrade to 710
+//	28jun11	rmd			suppress spoolfiles, are causing grief
+///////////////////////////////////////////////////////////////////////////////
+
+object master-system-table 		like system-table
+	NO-JOINS
+
+field
+	ws-master-dir				pic x(40)
+	ws-sys-tbl-type				like sys-tbl-type
+	ws-accept					pic x
+
+procedure main
+	if strlen(get-param(1)) > 0
+		set ws-sys-tbl-type = get-param(1)
+		get system-control first
+		if sys-consolidation-division = "MAS"	//{710}
+			exit
+		endif
+	else
+		accept ws-sys-tbl-type @3,10 title "Sys Table:"
+			uppercase
+			//allowed "VU" "ZM"
+		accept ws-accept @4,10 title "Accept:"
+			uppercase
+			allowed "Y" "N"
+			default "Y"
+		if ws-accept = "N"
+			exit
+		endif
+	endif
+	//set ws-master-dir = "/data/csmaccounting/mas/"	//{710}
+	set ws-master-dir = "/pro/data/mas/"                //{710}
+	open master-system-table file is strconcat(ws-master-dir "SYS5TBL")
+	// delete existing records
+	get system-control first
+	extract system-table
+		on index sys-tbl-type sys-tbl-code
+		key is ws-sys-tbl-type SPACES
+		next same sys-tbl-type
+	detail
+		if DIR() != ws-master-dir
+			delete system-table
+		endif
+	endextract
+	// inject new records
+	// ensure ZZ record exists for code table being sync'd
+	get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "ZZ" ws-sys-tbl-type
+	on error
+		get master-system-table
+			on index sys-tbl-type sys-tbl-code
+			key is "ZZ" ws-sys-tbl-type
+		on error
+		else
+			set * = master-system-table.*
+			insert system-table
+		endon
+	endon
+	extract master-system-table
+		on index sys-tbl-type sys-tbl-code
+		key is ws-sys-tbl-type SPACES
+		next same sys-tbl-type
+	detail
+		set * = master-system-table.*
+		insert system-table
+	endextract
+endprocedure // main ----------------------------------------------------------

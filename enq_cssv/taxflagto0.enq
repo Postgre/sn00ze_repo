@@ -1,0 +1,2 @@
+update stock-price
+set prc-sales-tax-code = 0

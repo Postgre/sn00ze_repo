@@ -1,0 +1,11 @@
+insert into stock-price
+(
+	prc-region-code
+	prc-wholesale-price
+)
+select
+	
+	
+from
+where
+	stock-code = "BCR013"

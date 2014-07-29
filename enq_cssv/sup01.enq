@@ -1,0 +1,10 @@
+select
+	stock-code
+	cre-accountcode
+	sup-last-buy-price
+	supplier = sub-string (stock-code 1 3) 
+from
+	stock-supplier
+where
+	sub-string (cre-accountcode 6 6) = ' ' 
+format is lst

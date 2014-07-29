@@ -1,0 +1,4 @@
+// reset Suppliers Opening balances to 0
+update cre-master
+set
+	cr-opening-bal = input numeric "input opening balance of 0"

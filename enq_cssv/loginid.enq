@@ -1,0 +1,43 @@
+select
+	stock-code
+	whse-code
+	whse-qty-on-hand
+	whse-avg-cost
+	stock-group
+	stk-description
+	stk-trans-whse
+	stk-trans-date
+	stk-trans-qty
+	total-value = whse-qty-on-hand * whse-avg-cost 
+	from-stk = input alpha "from stock code enter in UPPERCASE"
+	to-stk = input alpha "to stock code enter in UPPERCASE"
+from
+	stock-warehouse-detail
+	stock-master
+	stock-movements
+where
+	stock-code > uppercase (from-stk) and stock-code < uppercase (to-stk) 
+	and whse-qty-on-hand < 0 
+	and whse-code = stk-trans-whse 
+order by whse-code 
+format is lst
+title line 1 is "stock negative on hand report" 
+title line 2 is "Run Date & Time:"today()tod()
+suppress stk-trans-date
+suppress from-stk
+suppress to-stk
+unique stock-code
+unique whse-code
+unique whse-qty-on-hand
+unique whse-avg-cost
+unique stock-group
+unique stk-description
+unique total-value
+field title of stock-code is "stock code"
+field title of whse-code is "whse" "code"
+field title of whse-qty-on-hand is "on hand" "qty"
+field title of whse-avg-cost is "average" "cost"
+display pic of whse-qty-on-hand is z(6)
+display pic of whse-avg-cost is zzz,zzz.99
+subtotal on whse-qty-on-hand
+	with breaks on whse-code

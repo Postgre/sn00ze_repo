@@ -1,0 +1,159 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	whse-code
+	whse-qty-on-hand
+	whse-qty-on-order
+	whse-current-orders
+	whse-back-orders
+	whse-min-stock
+	ws-total = (whse-qty-on-hand + whse-qty-on-order ) - (whse-current-orders + whse-back-orders ) 
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+	company-name
+from
+	stock-master
+	stock-warehouse-detail
+	system-table
+	system-control
+where
+	sys-tbl-type = 'PG' 
+	and sys-tbl-code = stock-group 
+	and stock-group in { "B" "BC" "F" "FC" "IN" "IS" "TC" "TM" } 
+	and (whse-qty-on-hand != 0 or whse-current-orders != 0 or whse-back-orders != 0 or whse-qty-on-order != 0) 
+order by stock-group stock-code 
+format is rpt
+field sub-tot-whse-qty-on-hand like whse-qty-on-hand
+field sub-tot-whse-qty-on-order like whse-qty-on-order
+field sub-tot-whse-current-orders like whse-current-orders
+field sub-tot-whse-back-orders like whse-back-orders
+field sub-tot-whse-min-stock like whse-min-stock
+field sub-tot-ws-total like ws-total
+field new-stock-code pic 9
+field new-sys-description pic 9
+report header
+	page
+header
+	print 
+		company-name in col 1
+		"STOCK HOLDING/YTD SALES COMPARISON REPORT" in col 50
+		today() in col 99
+		"Pageno." in col 116
+		pageno() in col 124
+	skip 1
+	skip
+	print
+		"Whse" in col 47
+		"Min" in col 53
+		"On" in col 61
+		"|" in col 66
+		"On" in col 69
+		"|" in col 74
+		"|" in col 82
+		"|" in col 90
+		"Nett" in col 92 bold 
+		bold 
+	print
+		"Stock Code" in col 1
+		"Description" in col 16
+		"Code" in col 47
+		"Max" in col 53
+		"Hand" in col 60
+		"|" in col 66
+		"Ord" in col 69
+		"|" in col 74
+		"Comm" in col 76
+		"|" in col 82
+		"B/O" in col 85
+		"|" in col 90
+		"Hold" in col 92 bold 
+		bold 
+	print "==================================================================================================================================" in col 1
+before sys-description
+	set new-sys-description = 1
+before stock-code
+	set new-stock-code = 1
+	set sub-tot-whse-qty-on-hand = 0
+	set sub-tot-whse-qty-on-order = 0
+	set sub-tot-whse-current-orders = 0
+	set sub-tot-whse-back-orders = 0
+	set sub-tot-whse-min-stock = 0
+	set sub-tot-ws-total = 0
+
+detail
+	if (new-sys-description)
+        print
+		"|" in col 66
+       		"|" in col 74
+         	"|" in col 82
+         	"|" in col 90
+        	sys-description in col 7 bold underlined
+		print "|" in col 66
+         	"|" in col 74
+         	"|" in col 82
+         	"|" in col 90
+	endif
+	if (new-stock-code)
+	print
+		stock-code in col 1 pic x(13)
+		stk-description in col 16 no newline
+	endif
+	print
+		whse-code in col 48 pic is xxx
+		whse-qty-on-hand in col 61 pic is zz9-
+		"|" in col 66
+		whse-qty-on-order in col 69 pic is zz9-
+		"|" in col 74
+		whse-current-orders in col 77 pic is zz9-
+		"|" in col 82
+		whse-back-orders in col 85 pic is zz9-
+		"|" in col 90
+		ws-total in col 93 pic zz9- bold 
+		whse-min-stock in col 53 pic is zz9
+		bold 
+	set sub-tot-whse-qty-on-hand += whse-qty-on-hand
+	set sub-tot-whse-qty-on-order += whse-qty-on-order
+	set sub-tot-whse-current-orders += whse-current-orders
+	set sub-tot-whse-back-orders += whse-back-orders
+	set sub-tot-whse-min-stock += whse-min-stock
+	set sub-tot-ws-total += ws-total
+	set new-sys-description = 0
+	set new-stock-code = 0
+after stock-code
+	print
+		"---" in col 61
+		"|" in col 66
+		"---" in col 69
+		"|" in col 74
+		"---" in col 77
+		"|" in col 82
+		"---" in col 85
+		"|" in col 90
+		"---" in col 93 bold 
+		"---" in col 53
+		bold 
+	print
+		sub-tot-whse-qty-on-hand in col 61 pic is zz9-
+		"|" in col 66
+		sub-tot-whse-qty-on-order in col 69 pic is zz9-
+		"|" in col 74
+		sub-tot-whse-current-orders in col 77 pic is zz9-
+		"|" in col 82
+		sub-tot-whse-back-orders in col 85 pic is zz9-
+		"|" in col 90
+		sub-tot-ws-total in col 93 pic zz9- bold 
+		sub-tot-whse-min-stock in col 53 pic is zz9
+		bold 
+	skip
+report footer
+        skip 2
+        print "Program name: stkhldytds.enq" in col 4
+        skip 2
+    	print
+		"NOTE:" in col 4 bold underlined
+       		"'Nett Hold' is calculated as follows:" in col 11
+    	print
+	    	"(On Hand + On Ord) - (Comm + B/O)" in col 13
+

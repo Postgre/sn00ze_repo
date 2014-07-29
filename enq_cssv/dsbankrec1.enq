@@ -1,0 +1,6 @@
+update bankrec-deposit-summary
+set
+	bds-recon-count = bds-deposit-count 
+	bds-recon-total = bds-deposit-total 
+where
+	(bds-date between 29/6/09 and 1/6/10 ) 

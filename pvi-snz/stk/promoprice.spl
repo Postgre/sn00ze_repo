@@ -1,0 +1,320 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/stk/promoprice
+//  Program Desc:	Update promotional prices
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	28mar14	rmd	{4}		upgrade to 710
+///////////////////////////////////////////////////////////////////////////////
+
+
+
+// promoprice.spl
+//when		ref		who	notes
+//22Aug13		LG	Added New p7branch Promopricing file Location.
+//19jul10			rmd if routine runs in morning, can clear dates on last day of sale
+//02sep09	11914	rmd	add routine to clear data for expired promo
+//						old values were confusing users
+//20may09			rmd -silent option
+//18may09			rmd	written
+
+// example from /tmp/extract/promoPricing.txt
+//SEA3651,479,529,479,2009-05-11 00:00:00,2009-06-01 00:00:00,Was Now,2009 May - Breathtaking Beds
+//SEA3652,270,270,0,2009-05-11 00:00:00,2009-06-01 00:00:00,Was Now,2009 May - Breathtaking Beds
+//SEA3653,749,799,749,2009-05-11 00:00:00,2009-06-01 00:00:00,Was Now,2009 May - Breathtaking Beds
+
+
+field
+	ws-price-region					pic x(8)
+
+object tmp-promo-price
+	type external
+	separator "|"
+	file "/p710branch/Promo/promoPricing.txt"
+	// Below Out due to it being used from Old Product Database - LG Aug2213
+	//file "/tmp/extract/promoPricing.txt"
+	record
+		tpp-stock-code				like stock-code
+		tpp-promo-price-metro		like prc-prom-price
+		tpp-promo-price-regional	like prc-prom-price
+		tpp-promo-price-wa			like prc-prom-price
+		tpp-prc-start-prom-date		pic x(19) //like prc-start-prom-date
+		tpp-prc-end-prom-date		pic x(19) //like prc-end-prom-date
+		tpp-ticket-type-desc		pic x(100)
+		tpp-promo-desc              pic x(100)
+	endrecord
+
+procedure silent-process
+	local field
+		lf-promo-price						like prc-recommend-retail-inc-tax
+	//
+	get system-control first
+	set ws-price-region = uppercase(get-env("PRCREGION"))
+	//message ws-price-region
+	//
+	if ws-price-region = SPACES
+		set ws-price-region = "METRO"
+	endif
+	report "Promo Pricing"
+		spool-only
+	header is top-of-page
+	page
+	//
+	get system-control first
+	//
+	open tmp-promo-price
+	        //file "/p7branch/Promo/promoPricing.txt" read-only
+	        file "/p710branch/Promo/promoPricing.txt" read-only
+	        // Below Out due to it being used from Old Product Database  - LG Aug2213
+		//file "/tmp/extract/promoPricing.txt" read-only
+		on error
+			print "Cannot open promoPricing.txt, please contact the System Administrator."
+			report finished
+			exit
+		endon
+
+	//
+	extract tmp-promo-price
+	detail
+		//if tpp-stock-code in {"SOP4057"}
+		//	print
+		//		"monitored code encountered:"
+		//		tpp-stock-code
+		//endif
+		switch on ws-price-region
+			case "METRO"
+				set lf-promo-price 			= tpp-promo-price-metro
+			case "REGIONAL"
+				set lf-promo-price 			= tpp-promo-price-regional
+			case "WA"
+				set lf-promo-price 			= tpp-promo-price-wa
+			else
+				set lf-promo-price 			= tpp-promo-price-metro
+		endswitch
+		get stock-master // lock
+			on index stock-code
+			key is tpp-stock-code
+			on error
+				print
+					tpp-stock-code											in col 05
+					"No Stock Record"
+			else
+				set stk-user-only-alpha20-1	= substring(tpp-ticket-type-desc,1,20)
+				set stk-user-only-alpha20-2	= substring(tpp-promo-desc,1,20) //concat(strconcat(ws-price-region) " " substring(tpp-promo-desc,1,11))
+
+				update stock-master
+				on error
+					print
+						tpp-stock-code										in col 05
+						"Master Locked"
+				endon
+			endon
+		get stock-price // lock
+			on index stock-code
+			key is tpp-stock-code
+			on error
+				//
+				print
+					tpp-stock-code											in col 05
+					"No Price Record"
+			else
+				set prc-prom-price 			= lf-promo-price
+				set prc-start-prom-date 	= date2julian(substring(tpp-prc-start-prom-date,1,10))
+				set prc-end-prom-date 		= date2julian(substring(tpp-prc-end-prom-date,1,10))
+				update stock-price
+				//set lf-record-count += 1
+				on error
+					print
+						tpp-stock-code										in col 05
+						"Master Locked"
+				else
+					print
+						tpp-stock-code											in col 05
+						lf-promo-price											in col 25
+						date2julian(substring(tpp-prc-start-prom-date,1,10))    in col 45
+						date2julian(substring(tpp-prc-end-prom-date,1,10))		in col 65
+				endon
+			endon
+			//
+	endextract
+	do clear-expired						//rmd02sep09
+	report finished
+endprocedure // silent-process ------------------------------------------------
+
+procedure clear-expired
+	extract stock-price lock
+	detail
+		//if prc-end-prom-date = 0 or prc-end-prom-date > today()
+		//	continue
+		//endif
+		if prc-end-prom-date = 0 //
+			//print
+			//	"Date:"
+			//	prc-end-prom-date
+			//	stock-code
+			//	"No end date"
+			//if prc-prom-price = 0
+			//	get stock-master lock
+			//		on index stock-code
+			//	on error
+			//		print
+			//			"Cannot retrieve stock-master"
+			//			stock-code
+			//	else
+			//		set stk-user-only-alpha20-1	= SPACES
+			//		set stk-user-only-alpha20-2	= SPACES
+			//		update stock-master
+			//	endon
+			//endif
+			continue
+		//19jul10 if cron runs in AM positioning today test back one day
+		//will ensure promo's are not wiped if they 'end' on the day this
+		//routine runs. e.g. end-prom = 18-JUL-2010 and this runs in AM of
+		//18-JUL-2010, test is if prom-end (18-JUL) > today - 1 (17-JUL)
+		//it WILL be left intact
+		elseif prc-end-prom-date > today() - 1
+			//leave intact
+		else
+			print
+				"Date:"
+				prc-end-prom-date
+				stock-code
+				"Date has expired"
+			set prc-start-prom-date = 0
+			set prc-end-prom-date	= 0
+			set prc-prom-price		= 0
+			update stock-price
+			get stock-master lock
+				on index stock-code
+			on error
+				print
+					"Cannot retrieve stock-master"
+					stock-code
+			else
+				set stk-user-only-alpha20-1	= SPACES
+				set stk-user-only-alpha20-2	= SPACES
+				update stock-master
+			endon
+			//continue
+		endif
+	endextract
+endprocedure // clear-expired
+
+/*
+procedure manual-process
+	window @1,1 to @4,45 title is "Import Promo Pricing"
+
+	local field
+		lf-accept					pic x
+		lf-price-region				pic x(8)
+		lf-record-count				type numeric
+
+	open tmp-promo-price
+                file "/p7branch/Promo/promoPricing.txt" read-only
+                // Below Out due to it being used from Old Product Database  - LG Aug2213
+                //file "/tmp/extract/promoPricing.txt" read-only
+
+		on error
+			message "Cannot open promoPricing.txt, please contact the System Administrator."
+			exit
+		endon
+	set lf-price-region = uppercase(get-env("PRCREGION"))
+
+	if lf-price-region = SPACES
+		set lf-price-region = "METRO"
+	endif
+	box @1,1 to @4,44
+	display lf-price-region	@2,20 title is "Price Region:"
+	accept lf-accept		@3,20 title is "Import Promo Prices?:"
+		uppercase
+		allowed "Y" "N"
+		default "N"
+
+	if lf-accept = "N"
+		exit
+	elseif lf-accept = "Y"
+		extract tmp-promo-price
+		detail
+			//message tpp-stock-code tpp-promo-price-metro tpp-prc-start-prom-date
+			get stock-price lock
+				on index stock-code
+				key is tpp-stock-code
+				on error
+
+				else
+					set prc-prom-price 			= tpp-promo-price-metro
+					set prc-start-prom-date 	= date2julian(substring(tpp-prc-start-prom-date,1,10))
+					set prc-end-prom-date 		= date2julian(substring(tpp-prc-end-prom-date,1,10))
+					update stock-price
+					set lf-record-count += 1
+				endon
+			// 20may09 no longer usig stock-notes, use 20 char user fields in stock-master for desc's
+			//set stock-code 				= tpp-stock-code
+			//set stock-note-type 		= "PT"
+			//set stock-note-sequence     = 1
+			//set stock-note 				= tpp-ticket-type-desc
+			//
+			//get stock-notes lock
+			//	on error
+			//		insert stock-notes
+			//	else
+			//		update stock-notes
+			//	endon
+			//
+			//set stock-code 				= tpp-stock-code
+			//set stock-note-type 		= "PD"
+			//set stock-note-sequence     = 1
+			//set stock-note 				= tpp-promo-desc
+			//
+			//get stock-notes lock
+			//	on error
+			//		insert stock-notes
+			//	else
+			//		update stock-notes
+			//	endon
+
+			get stock-master lock
+				on error
+				else
+					set stk-user-only-alpha20-1	= substring(tpp-ticket-type-desc,1,20)
+					set stk-user-only-alpha20-2	= concat(strconcat(lf-price-region) " " substring(tpp-promo-desc,1,11))
+					update stock-master
+				endon
+
+		endextract
+	endif
+	message concat("Process complete, " str(lf-record-count) " promo prices updated")
+endprocedure // manual-process ------------------------------------------------
+*/
+
+procedure top-of-page
+	print
+		company-name col 1 SCALE 200 BOLD
+		concat("Promo Pricing Upload: " strconcat(ws-price-region)) col 43 bold
+		"User: " in col 84
+		login-id() in col 90
+		today() in col 99
+		tod() in col 111 pic HH:MM
+		"Page :" col 117
+		left-justify(str(page-no())) col 124
+		//no-new-line
+		print
+			"Stock Code"				     	in col 05
+			"Promo Price"		               	in col 29
+			"Promo Start"                       in col 45
+			"Promo End"                         in col 65
+
+		print
+			"inc GST"               			in col 33
+
+	//skip 1
+endprocedure // top-of-page ---------------------------------------------------
+
+// promoprice.spl

@@ -1,0 +1,188 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/soatstatus
+//  Program Desc:	
+//  Requested By:	
+//  Request Date:	
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03apr14	rmd	{1}		upgrade for 710
+///////////////////////////////////////////////////////////////////////////////
+// soatstatus.spl
+// 28oct08	rmd print mode
+// 21oct08	rmd	want to see multiple statuses
+//              show status description i column
+//				"Select" becomes "Enquiry"
+// 15oct08	rmd want to see all orders regardless of whse
+// 06mar08	rmd	list all sales-orders at a given status.
+
+//#include "../../../../bms/include/i5sodesc.spl"
+#include "/pro/pronto/bms/include/i5sodesc.spl"
+
+mode md-select
+	prompt "Select"
+	help "Select this Order"
+	currency
+
+mode md-enquiry
+	prompt "Enquiry"
+	help "Enquire on this Order"
+	currency
+	
+mode md-print
+	prompt "Print"
+	help "Print results"
+	currency
+	
+field
+	ws-order-no						like so-order-no
+	ws-bo-suffix					like so-bo-suffix
+	ws-screen-heading				pic x(50)
+	ws-status						like so-order-status occurs 6
+	ws-status-desc					like i5sodesc-so-status-desc-short occurs 6
+	ws-select-or-enquiry			pic x
+		
+procedure main
+returning
+	lr-order-no						like so-order-no
+	lr-bo-suffix					like so-bo-suffix
+local field
+	i								type numeric
+	get system-control first
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+	//message concat("US:" user-store-id)
+	//message concat("UW:" user-whse)
+	for i = 1 to 6
+		if get-param(i) != SPACES and num(get-param(i)) != 0
+			set ws-status[i] = get-param(i)
+			set so-order-status = ws-status[i]
+			do i5sodesc-get-status-desc
+			set ws-status-desc[i] = i5sodesc-so-status-desc-short
+		endif
+	endfor
+	if strlen(get-param(7)) > 0
+		set ws-screen-heading = get-param(7)
+	else
+		set ws-screen-heading = "Orders"
+	endif
+	if get-param(8) = "-enquiry"
+		set ws-select-or-enquiry = "E"
+	else
+		set ws-select-or-enquiry = "S"
+	endif
+	do display-in-grid
+	set lr-order-no	   = ws-order-no
+	set lr-bo-suffix   = ws-bo-suffix
+	exit
+endprocedure // main ----------------------------------------------------------
+
+screen display-in-grid
+	//window @1,1 to @21,90 title is concat("Sales Orders @ " ws-status[1] " " ws-status[2] " " ws-status[3] " " ws-status[4] " " ws-status[5] " " ws-status[6])
+	//window @1,1 to @21,90 title is concat("Sales Orders @ " ws-status-desc[1] " " ws-status-desc[2] " " ws-status-desc[3] " " ws-status-desc[4] " " ws-status-desc[5] " " ws-status-desc[6])
+	window @1,1 to @21,90 title is concat(ws-screen-heading) //"Pending")
+	primary sales-order
+	when
+		//21oct08
+		//so-order-status = get-param(1)
+		so-order-status in {ws-status[1] ws-status[2] ws-status[3] ws-status[4] ws-status[5] ws-status[6]}
+		//21oct08
+		
+		// 15oct08
+		//and
+		//so-whse-code = user-whse
+		//15oct08
+	datagrid occurs 18
+	allowed md-select md-enquiry md-print search  // md-enquiry md-create-new md-search-again search
+	review-from-start
+mode md-select
+	when ws-select-or-enquiry = "S"
+mode md-enquiry
+	when ws-select-or-enquiry in {"S" "E"}
+detail
+	//accept ws-accountcode @2,18
+	//	uppercase
+	do i5sodesc-get-status-desc
+	display so-order-no 					@1,2  title is "Sales Order"
+	display so-bo-suffix                	@1,4  title is "BO"
+	//display so-order-status					@1,6  title is "Status" pic x(8)
+	display i5sodesc-so-status-desc-short	@1,6  title is "Status"
+	display so-order-date               	@1,8  title is "Ordered"
+	display so-delivery-date            	@1,10 title is "Delivery"
+	display so-cust-code                	@1,12 title is "Account"
+	display so-whse-code                	@1,14 title is "From Whse" pic x(12)
+	display so-order-total-shipped-cost 	@1,16 title is "Cost"
+	display so-order-total-shipped-amount	@1,18 title is "Amount"
+	//display user-store-id @20,18 title is "User Whse:" background
+	//display sys-comp-code @20,58 title is "Comp Code:" background
+confirm
+	auto
+confirmed
+	if screen-mode() = md-select
+		set ws-order-no	 = so-order-no
+		set ws-bo-suffix = so-bo-suffix
+		exit
+	elseif screen-mode() = md-enquiry
+		spl
+			"so/m5ordenq"
+		parameters
+			"-e"
+			so-order-no
+			so-bo-suffix
+	elseif screen-mode() = md-print
+		//28oct08
+		//spl "rmd/so/x54trans"
+		//parameters
+		//	so-order-no
+		do print-results
+		//28oct08
+	endif
+endconfirm
+endscreen // main -------------------------------------------------------------
+
+procedure print-results
+	report concat("Orders " ws-screen-heading)
+	heading is top-of-page	
+	page
+	extract sales-order
+	when so-order-status in {ws-status[1] ws-status[2] ws-status[3] ws-status[4] ws-status[5] ws-status[6]}
+	detail
+		do i5sodesc-get-status-desc
+		print
+			so-order-no 						in col 05
+			i5sodesc-so-status-desc-short		in col 15
+			so-order-date               		in col 30
+			so-delivery-date            		in col 45
+			so-cust-code                		in col 60
+			so-whse-code                		in col 75
+			so-order-total-shipped-cost 		in col 85
+			so-order-total-shipped-amount		in col 105
+	endextract	
+	report finished
+endprocedure //  print-results ------------------------------------------------
+
+procedure top-of-page
+	print
+		company-name col 1 SCALE 200 BOLD
+		concat("ORDER LIST: " UPPERCASE(ws-screen-heading)) col 48 bold 
+		today() in col 99
+		tod() in col 111 pic HH:MM
+		"Page :" col 117
+		left-justify(str(page-no())) col 124
+		print 
+			"Order No"	 						in col 05
+			"Status"							in col 15
+			"Order Date"	              		in col 30
+			"Delivery"	       		     		in col 45
+			"Cust Code"	                		in col 60
+			"From"		                		in col 75
+			"   Shipped Cost"				 	in col 85
+			" Shipped Amount"					in col 105
+endprocedure // top-of-page ---------------------------------------------------
+// soatstatus.spl

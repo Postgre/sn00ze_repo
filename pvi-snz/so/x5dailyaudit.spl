@@ -1,0 +1,250 @@
+//Program		: pvi-snz/so/x5dailyaudit.spl
+//Written By	: Ranjith
+//Written on 	: 02 July 2009
+//Description 	: DAILY SALES AUDIT
+//
+//
+// 15may14	rmd		upgrade to 710.3
+version-number "x5dailyaudit 20140515"
+
+
+//#include "../../../bms/include/rbtchproc.spl"
+//#include "../../../bms/include/i85codes.spl"
+#include "/pro/pronto/bms/include/rbtchproc.spl"
+#include "/pro/pronto/bms/include/i85codes.spl"
+
+fields
+	ws-date							like so-order-date
+	ws-terr							like so-territory-code
+
+procedure main
+	//
+	get system-control first
+	//
+	set rbtchproc-report-name = "DAILY SALES AUDIT"
+	//
+	get system-user
+		on index user-id sys-comp-code
+		key is login-id() sys-consolidation-division
+	//
+	RBTCHPROC_RUN_PROGRAM(rbtchproc-report-name)
+	do rbtchproc-report-parameters once
+endprocedure  //main ------------------------------------------------
+
+screen rbtchproc-report-parameters
+	//
+    window @1,1 to @12,80
+		title "DAILY SALES AUDIT"
+	allow entry
+before
+    box @1,2 to @11,79
+    	title is " "
+detail
+    accept ws-date @3,32
+        default today()
+        title "Enter today's date:"
+        help "Enter today's date"
+	//
+    accept ws-terr @6,32
+        title "Enter store number:"
+		help "Enter the store you wish to report on. [HELP]"
+		default ws-terr
+		uppercase
+	on help-key
+		set sys-tbl-type = "TC"
+		do i85codes-table-help
+		if sys-tbl-code > SPACES
+			set ws-terr = sys-tbl-code
+		endif
+		reenter ws-terr optional
+	endon
+	validations
+		get system-table lookup
+			on index sys-tbl-type sys-tbl-code
+			key is "TC" ws-terr
+		on error
+			if ws-terr = SPACES
+			else
+				message "Store entered is not defined."
+				reenter ws-terr
+			endif
+		endon
+	endvalidations
+	//
+confirm auto
+confirmed
+   // RBTCHPROC_EXECUTION
+    do rbtchproc-report-detail
+endconfirm
+endscreen //rbtchproc-report-parameters --------------------------------------
+
+procedure start-report
+	report rbtchproc-report-name
+		header
+			print-report-heading
+		depth 60
+		width 143
+		no-message
+	set ws-report-started = TRUE
+	display "Report :" @20,59 background
+	display spool-file-name() @20,68 pic x(12) foreground prompts
+endprocedure //start-report --------------------------------------------------
+
+procedure rbtchproc-set-parameters
+endprocedure //rbtchproc-set-parameters --------------------------------------
+
+procedure print-report-heading
+	print
+		today() in col 93
+		tod() in col 106
+		"Page No:" in col 116
+		pageno() in col 125
+	print "DAILY SALES AUDIT" in col 51 bold
+	print
+		"For store:" in col 42 bold
+		so-territory-code in col 53 pic x(3) bold underlined
+		"On:" in col 60 bold
+		so-order-date in col 64 bold underlined
+	print "Rep" in col 1
+		"Cust" in col 7
+		"Order" in col 19
+		"Stock" in col 38
+		"<----- Qty ----->   " in col 96
+	print "Code" in col 1
+		"Code" in col 7
+		"No." in col 19
+		"Whse" in col 31
+		"Code" in col 38
+		"Description" in col 56
+		"Size" in col 88
+		"Ord" in col 97
+		"Ship" in col 103
+		"B/O" in col 110
+		"Tkn" in col 115
+	print
+		"==================================================================================================================================" in col 1
+endprocedure //print-report-heading ------------------------------------------
+
+procedure rbtchproc-report-detail
+local
+	new-so-cust-code 				pic 9
+	new-so-order-date 				pic 9
+	new-so-territory-code 			pic 9
+	new-so-rep-code 				pic 9
+    //
+    window @19,44 to @23,80
+        title is "Report Progress"
+        color white
+        no-hide
+    //
+    do start-report
+    page
+    //
+    if not rbtchproc-in-background
+	    display bitmap concat(getenv('BMS')'/images/repedge.gif') @19,44
+	    display 'Report :' @20,59 background right
+	    display "Now at :" @23,45 background prompts left
+    endif
+    //
+ 	select
+		so-order-no
+		so-bo-suffix
+		so-cust-code
+		so-order-date
+		so-territory-code
+		so-rep-code
+		so-whse-code
+		sol-print-line
+		stock-code
+		sol-stk-unit-desc
+		sol-ordered-qty
+		stk-description
+		sol-shipped-qty
+		sol-backorder-qty
+	from
+		sales-order
+		sales-order-line
+		stock-master
+	where
+		so-order-date = ws-date
+		and so-territory-code = ws-terr
+		and sol-line-type = "SN"
+	order by so-territory-code so-rep-code so-order-no stock-code
+before so-cust-code
+	set new-so-cust-code = 1
+before so-order-date
+	set new-so-order-date = 1
+before so-territory-code
+	set new-so-territory-code = 1
+before so-rep-code
+	set new-so-rep-code = 1
+detail
+	if so-whse-code in { "101" "199" "301" "399" "601" "699" "841" }
+	if (new-so-rep-code)
+		print so-rep-code in col 1 no newline
+	endif
+	if (new-so-cust-code)
+		print so-cust-code in col 7 no newline
+	endif
+	print so-order-no in col 19 bold no newline
+	print so-bo-suffix in col 27 bold no newline
+	print so-whse-code in col 31 bold no newline
+	print stock-code in col 38 bold no newline
+	print stk-description in col 56 bold no newline
+	print sol-stk-unit-desc in col 88 bold no newline
+	print sol-ordered-qty in col 97 pic is z9- bold no newline
+	print sol-shipped-qty in col 103 pic is z9- bold no newline
+	print sol-backorder-qty in col 110 pic is z9- bold no newline
+	print sol-print-line in col 116 bold no newline
+	skip
+	else
+	if (new-so-rep-code)
+		print so-rep-code in col 1 no newline
+	endif
+	if (new-so-cust-code)
+		print so-cust-code in col 7 no newline
+	endif
+	print so-order-no in col 19 no newline
+	print so-bo-suffix in col 27 no newline
+	print so-whse-code in col 31 no newline
+	print stock-code in col 38 no newline
+	print stk-description in col 56 no newline
+	print sol-stk-unit-desc in col 88 no newline
+	print sol-ordered-qty in col 97 pic is z9- no newline
+	print sol-shipped-qty in col 103 pic is z9- no newline
+	print sol-backorder-qty in col 110 pic is z9- no newline
+	print sol-print-line in col 116 no newline
+	skip
+	endif
+	set new-so-cust-code = 0
+	set new-so-order-date = 0
+	set new-so-territory-code = 0
+	set new-so-rep-code = 0
+after so-cust-code
+	print "-----------------------------------------------------------------------------------------------------------------" in col 7
+    endselect
+        skip
+        report section finished // detail
+    //
+    do report-finished
+    RBTCHPROC_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+endprocedure //rbtchproc-report-detail ---------------------------------------
+
+procedure report-finished
+    if ws-report-started
+         report section "Finish"
+       //  page
+        skip 2
+        print "Program Name:" in col 6
+		"pvi-snz/so/x5dailyaudit.spl" in col 20
+	print
+		"Store No.   :" in col 6
+		ws-terr in col 20 pic x(4)
+	print
+		"Date        :" in col 6
+		ws-date in col 20
+	skip
+	skip
+         report section finished //finish
+    endif
+endprocedure //report-finished -----------------------------------------------

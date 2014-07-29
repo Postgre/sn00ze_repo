@@ -1,0 +1,18 @@
+// show stock items with an average cost of 0.00
+select
+	stock-code
+	whse-code
+	whse-qty-on-hand
+	whse-avg-cost
+	sup-last-buy-price
+	calc1 = (whse-qty-on-hand ) * (sup-last-buy-price ) 
+from
+	stock-warehouse-detail
+	stock-supplier
+where
+	( ( whse-code = input alpha prompt is "Pls input warehouse" ) AND
+	( whse-qty-on-hand != 0  ) AND
+	( whse-avg-cost = 0 ) )
+format is lst
+field title of calc1 is "Value"
+total on calc1

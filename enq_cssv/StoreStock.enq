@@ -1,0 +1,9 @@
+select
+	stock-code
+	stk-description
+	test = input string "Enter a store"
+from
+	stock-master
+where
+	stock-code like "%test%" 
+format is lst

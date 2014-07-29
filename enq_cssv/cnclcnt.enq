@@ -1,0 +1,18 @@
+select
+	so-order-no
+	so-order-date
+	so-actual-delivery-date
+	z-so-territory-code = input string "Territory Code"
+	start-trans-date = input date "Start Date"
+	end-trans-date = input date "End Date"
+from
+	sales-order-archive
+where
+	so-order-status = "99"
+	and so-territory-code = z-so-territory-code
+	and so-actual-delivery-date between start-trans-date and end-trans-date
+	and so-order-date not between start-trans-date and end-trans-date
+format is lst
+suppress
+	start-trans-date
+	end-trans-date

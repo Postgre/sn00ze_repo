@@ -1,0 +1,33 @@
+select
+	so-territory-code
+	accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	so-processing-date
+	ws-start-date = 01-oct-97 
+	ws-end-date = 31-oct-97 
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-status
+	stock-code
+	stk-description
+	na-type
+from
+	sales-order
+	sales-order-line
+	stock-master
+	name-and-address-master
+where
+	accountcode = so-cust-code 
+	and na-type = 'C' 
+	and so-order-status = '90' 
+	and so-processing-date between 01/09/99 and 30/09/99
+and stk-description like "%MADISON%" 
+	and sub-string (stock-code 1 3) = 'SOP' 
+group by accountcode
+format is external

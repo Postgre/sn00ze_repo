@@ -1,0 +1,1666 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/x5swmexport.spl
+//  Program Desc:   copied from rc/so/x5soexport, Excelr8 csv output goes to
+//					datestamped file in datadir. This version exists to extract
+//					snooze-written-movements and enhanced version of the persistent
+//					snooze-order-amendments
+//					note - this program is called by rc/so/x5soexport after it
+//					creates the Excelr8 file
+//  Requested By:
+//  Request Date:	20Jan12
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History ====================================================//
+//  Date	Who	Chg#	What
+//	13may14	rmd	{710.3)	upgade to 710.3
+//` 07apr14	rmd	{710}	upgrade to 710
+//	27feb14	rmd	{7}		ensure type 11 audits are included
+//	06mar13	rmd	{6}		sol creation datestamp being written to
+//						sol-user-only-date1 by rc/so/saleslogtrig.
+//						need to scrutinise so lines prior to addition:
+//						1. if sol creation date <> so-order-date,
+//							flag the line prefixing ordlog-new-info with #
+//						2. if edit appears on same date as so-order-date,
+//							flag the line prefixing ordlog-new-info with *
+//				{7}		search sol-cancel when looking to match stock-code of edits
+//				{8} 	need some form of soft-delete/ignore flag, prefix swm-log-type
+//						set swm-log-type to 9900 + swm-log-type, known elsewhere as swm-log-type
+//	18feb13	rmd	{5}		index to contrain both so and saf; so/bo/sol/date/time/dedup
+//						populate all for saf, init date/time/dedup for sol to
+//						constrain so to so/bo/sol. remove all other unique keys as
+//						they may prevent the granularity we require.
+//						test call 1: prospl pvi-snz/so/x5swmexport 181 171112 171112
+//						test call 2: prospl pvi-snz/so/x5swmexport -datagrid
+//						combined: prospl pvi-snz/so/x5swmexport 181 181112 181112; prospl pvi-snz/so/x5swmexport -datagrid
+//	06feb13	rmd	{2}		enhanced persistent object including sol-line-seq and
+//						record timestamp
+//				{3}		handle -datagrid on par 1
+//				{4}		datestamped excelr8 file
+//	14nov12	rmd	{1}		routine and object to store persistent trans
+///////////////////////////////////////////////////////////////////////////////
+
+//	18feb13 rmd 		note to future self: apologies for the apparent complexity
+//						the recent changes have introduced, a full overhaul would
+//						probably been the best move but would have required overhauls
+//						of excelr8 and 214. the new changes are intended to allow
+//						current functionality of 214/excelr8 to coexist with more
+//						efficient indexing. the crux of todays change was to enable
+//						a constraint that would protect the persistent table from
+//						duplicates caused by a rogue script running twice or stuttering.
+//						saf: constrains to so/bo/sol/date/time/dedup
+//						sol: constrains to so/bo/sol
+//						feeling like a neurosurgeon trying to retain existing functionality
+//						while trying to thread these complex keys in.
+
+
+//15oct13 call for 153 today
+//prospl pvi-snz/so/x5swmexport 153 151013 151013
+
+//version-number "CUSTOM rc/so/x5soexport 20120120"
+version-number "pvi-snz/so/x5swmexport 20140513"
+
+#include "/pro/pronto/bms/include/i8dateval.spl"
+#include "/pro/pronto/bms/include/i85codes.spl"
+
+field
+	ws-store							like so-territory-code
+	ws-start-log-date-str				pic x(11)
+	ws-end-log-date-str					pic x(11)
+	ws-start-log-date					like order-log-date
+	ws-end-log-date						like order-log-date
+	ws-order-or-edit					pic x // (O)rders, (E)dits, (B)oth or (T)est
+	//ws-test-mode						pic x
+	ws-page-continuation				type boolean
+	ws-print-continuation				type boolean
+	ws-xml								pic x
+	ws-show-all-stores					type boolean
+	ws-use-orig-rep						type boolean
+
+//<{710.3}
+/*
+object tmp-order-amendments
+	type
+		memory
+	record
+		swm-store-code				like so-territory-code
+		swm-rep-code					like so-rep-code
+		swm-sale-or-edit				pic x // A = S(a)le, D = E(d)it - so the edit falls after the sales on the report
+		swm-rep-type-combo			pic x(4) // concat rep + sale/edit to drive report subgrouping
+		swm-rep-date					pic x(9) // 18aug08 RRRYYMMDD
+		swm-order-no					like so-order-no
+		swm-bo-suffix					like so-bo-suffix
+		swm-line-seq					like sol-line-seq	//{2}  reintroduced field
+		swm-stock-code				like stock-code     //{2}  reintroduced field
+		swm-record-counter			pic 9(8)
+		swm-log-date					like order-log-date
+		swm-log-time					like order-log-time //{5}
+		swm-dedup-seq					like saf-dedup-seq  //{5}
+		swm-customer					like so-cust-code
+		swm-order-date				like so-order-date
+		swm-log-type					like ordlog-type
+		swm-log-old-info				like ordlog-old-info
+		swm-log-new-info				like ordlog-new-info
+		swm-log-old-value				like ordlog-old-value
+		swm-log-new-value				like ordlog-new-value
+		swm-value-extax				like ordlog-new-value
+		swm-average-cost				like whse-avg-cost
+		swm-gross-profit-amount		like ordlog-new-value
+		swm-gross-profit-percent		like ordlog-new-value
+		swm-event-date				like so-order-date
+		swm-rep-code-before-change	like so-rep-code
+		swm-sol-ordered-qty			like sol-ordered-qty
+		swm-capture-date				type date       //{2} additional field
+		swm-capture-time              type time       //{2} additional field
+		swm-time-stamp				type date-time	//{2} additional field
+		swm-user-id                   like user-id    //{2} additional field
+		swm-process-id                type numeric    //{2} additional field
+	endrecord
+	key
+		swm-rep-code
+		swm-order-no
+		swm-bo-suffix
+		swm-record-counter
+	//unique {5}
+	key
+		swm-rep-code
+		swm-rep-type-combo
+		swm-order-no
+		swm-bo-suffix
+		swm-record-counter
+	//unique {5}
+	key
+		swm-order-no
+		swm-bo-suffix
+		swm-sale-or-edit
+	key
+		swm-store-code
+		swm-rep-code
+		swm-order-no
+		swm-bo-suffix
+		swm-record-counter
+	//unique {5}
+	key
+		swm-store-code
+		swm-rep-date
+		swm-order-no
+		swm-bo-suffix
+		swm-record-counter
+	//unique {5}
+	key //{5} new key to cater for sol and saf
+		swm-sale-or-edit
+		swm-order-no
+		swm-bo-suffix
+        swm-line-seq
+        swm-log-date
+        swm-log-time
+        swm-dedup-seq
+        unique //{5} this is the only true constraint now
+*/
+//>{710.3}
+
+object tmp-rep-detail
+	type
+		memory
+	record
+		tmprd-store-code				like so-territory-code
+		tmprd-rep-code					like so-rep-code
+		tmprd-sales-date				type date
+		tmprd-order-count				type numeric
+		tmprd-value-extax				like ordlog-new-value
+		tmprd-average-cost				like whse-avg-cost
+		tmprd-gross-profit-amount		like ordlog-new-value
+		tmprd-gross-profit-percent		like ordlog-new-value
+		tmprd-rep-date					like swm-rep-date
+	endrecord
+	key
+		tmprd-store-code
+		tmprd-rep-code
+		tmprd-sales-date
+	unique
+
+object tmp-prnt-order-amendments
+	//type memory
+	type is prn
+	//file "/nas/data/excelr8/excelr8.csv"	//{2}
+	file "swm.csv"        					//{2}
+        record
+                tmppoa-store-code                       like so-territory-code
+                tmppoa-rep-code                         like so-rep-code
+                tmppoa-sale-or-edit                     pic x // A = S(a)le, D = E(d)it - so the edit falls after the sales on the report
+                tmppoa-rep-type-combo                   pic x(4) // concat rep + sale/edit to drive report subgrouping
+                tmppoa-rep-date                         pic x(9) // 18aug08 RRRYYMMDD
+                tmppoa-order-no                         like so-order-no
+                tmppoa-bo-suffix                        like so-bo-suffix
+                tmppoa-line-seq                        	like sol-line-seq   //{2} reintroduced
+                tmppoa-stock-code                      	like stock-code     //{2} reintroduced
+                tmppoa-record-counter                   pic 9(8)
+                tmppoa-log-date                         like order-log-date
+				tmppoa-log-time							like order-log-time //{5}
+				tmppoa-dedup-seq						like saf-dedup-seq  //{5}
+                tmppoa-customer                         like so-cust-code
+                tmppoa-order-date                       like so-order-date
+                tmppoa-log-type                         like ordlog-type
+                tmppoa-log-old-info                     like ordlog-old-info //stock-code
+                tmppoa-log-new-info                     like ordlog-new-info
+                tmppoa-log-old-value                    like ordlog-old-value
+                tmppoa-log-new-value                    like ordlog-new-value
+                tmppoa-value-extax                      like ordlog-new-value
+                tmppoa-average-cost                     like whse-avg-cost
+                tmppoa-gross-profit-amount              like ordlog-new-value
+                tmppoa-gross-profit-percent             like ordlog-new-value
+                tmppoa-event-date                       like so-order-date
+                tmppoa-rep-code-before-change    		like so-rep-code
+                tmppoa-sol-ordered-qty					like sol-ordered-qty
+                tmppoa-capture-date						type date       	//{2} additional field
+                tmppoa-capture-time              		type time       	//{2} additional field
+                tmppoa-time-stamp						type date-time		//{2} additional field
+                tmppoa-user-id                   		like user-id    	//{2} additional field
+                tmppoa-process-id                		type numeric    	//{2} additional field
+        endrecord
+		//key is tmppoa-order-no
+
+//object snooze-order-amendments like tmp-order-amendments //{1}
+//	type isam file "snooze-order-amendments"
+//<{710.3}
+//object snooze-written-movements like tmp-order-amendments //{1}
+//	type isam file "snooze-written-movementsB"
+object tmp-order-amendments like snooze-written-movements
+//>{710.3}
+
+procedure main
+	set ws-show-all-stores = FALSE //TRUE
+	set ws-use-orig-rep = FALSE
+	get system-control first
+	//get system-user
+	//on index user-id sys-comp-code
+	//key is login-id() sys-consolidation-division
+	//
+	do get-export-params
+endprocedure //main ----------------------------------------------------------
+
+procedure get-export-params
+local fields
+	lf-start-log-date				type string
+    lf-end-log-date 				type string
+
+    //
+    if get-param(4) = "-rebuild" or get-param(1) = "-rebuild-silent"
+    else
+	    report "x5swmexport"
+   	 	spool-only
+   	 print
+   		 	today()
+   		 	tod()
+   		 	login-id()
+   		 	"started"
+	    print
+	   	 	"Parameter 1:"
+    		get-param(1)
+			"Parameter 2:"
+			get-param(2)
+			"Parameter 3:"
+    		get-param(3)
+		do determine-default-store
+			returning
+				ws-store
+    endif
+	//
+	//<{3}
+	if get-param(1) = "-datagrid"
+		do dig-swm
+		exit
+	endif
+	//>{3}
+	if get-param(1) = "-rebuild-silent"
+		set lf-start-log-date   = get-param(2)
+		set lf-end-log-date 	= get-param(3)
+		//
+		set ws-start-log-date	= DATE2JULIAN(lf-start-log-date) //01-JAN-2011  //today())
+		set ws-end-log-date 	= DATE2JULIAN(lf-end-log-date) //10-JAN-2011 //today()
+		//message ws-store
+		set ws-show-all-stores 	= FALSE
+		set ws-order-or-edit 	= "B"
+		do run-historical-silent
+			parameters
+				ws-start-log-date
+			    ws-end-log-date
+	elseif get-param(1) != SPACES
+		set ws-store 			= get-param(1) //"345"  //user-store-id
+		set lf-start-log-date   = get-param(2)
+		set lf-end-log-date 	= get-param(3)
+		//
+		set ws-start-log-date	= DATE2JULIAN(lf-start-log-date) //01-JAN-2011  //today())
+		set ws-end-log-date 	= DATE2JULIAN(lf-end-log-date) //10-JAN-2011 //today()
+		//message ws-store
+		set ws-show-all-stores 	= FALSE
+		set ws-order-or-edit 	= "B"
+		//
+		do rbtchproc-report-detail
+	elseif sys-consolidation-division = "MAS"//dataset = MAS
+		message "About to run historical build as you are in MAS"
+		do run-historical-mas entry-once
+	else
+		do run-historical entry-once
+	endif
+	if get-param(4)= "-rebuild" or get-param(1) = "-rebuild-silent"
+	else
+    	print
+    		today()
+    		tod()
+    		login-id()
+    		"complete"
+    	report finished
+    endif
+endprocedure //get-export-params -----------------------------------------------
+
+screen run-historical
+local field
+	lf-store			like territory
+	lf-start-date		like so-order-date
+	lf-end-date			like so-order-date
+	d					type date
+	lf-command			pic x(100)
+window @1,1 to @7,40 title "Historical Build"
+	set lf-store = "181"
+	//accept lf-store			@2,12 title "Store:"        default lf-store
+	accept lf-start-date	@3,12 title "Start Date:"   default lf-start-date
+	accept lf-end-date		@4,12 title "End Date:"		default lf-end-date
+confirm
+confirmed
+	extract system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "TC" SPACES
+		next same sys-tbl-type
+	detail
+		//message "Running for " sys-tbl-code " " lf-start-date " to " lf-end-date
+		for d = lf-start-date to lf-end-date
+			//message "Running for d = " d
+			set lf-command = concat("prospl pvi-snz/so/x5swmexport " strconcat(sys-tbl-code) " " julian2date(d) " " julian2date(d) " -rebuild")
+			//message lf-command
+			command "sh"
+				parameters
+					"-c"
+					lf-command
+			//e.g. prospl pvi-snz/so/x5swmexport 181 171112 171112
+		endfor
+	endextract
+	do dig-swm
+endconfirm
+endscreen // run-historical ---------------------------------------------------
+
+procedure run-historical-silent
+local field
+	d					type date
+	lf-command			pic x(100)
+parameters
+	lp-start-date		like so-order-date
+	lp-end-date			like so-order-date
+	extract system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "TC" SPACES
+		next same sys-tbl-type
+	detail
+		//message "Running for " sys-tbl-code " " lp-start-date " to " lp-end-date
+		for d = lp-start-date to lp-end-date
+			//message "Running for d = " d
+			set lf-command = concat("prospl pvi-snz/so/x5swmexport " strconcat(sys-tbl-code) " " julian2date(d) " " julian2date(d) " -rebuild")
+			//message lf-command
+			command "sh"
+				parameters
+					"-c"
+					lf-command
+			//e.g. prospl pvi-snz/so/x5swmexport 181 171112 171112
+		endfor
+	endextract
+	//do dig-swm
+endprocedure // run-historical-silent -----------------------------------------
+
+screen run-historical-mas
+local field
+	lf-store			like territory
+	lf-start-date		like so-order-date
+	lf-end-date			like so-order-date
+	d					type date
+	lf-command			pic x(100)
+	i					type numeric
+window @1,1 to @7,40 title "Global Historical Build"
+	set lf-store = "181"
+	//accept lf-store			@2,12 title "Store:"        default lf-store
+	accept lf-start-date	@3,12 title "Start Date:"   default lf-start-date
+	accept lf-end-date		@4,12 title "End Date:"		default lf-end-date
+confirm
+confirmed
+	extract system-companies
+	detail
+		if sys-comp-spare2 = "Y"
+			command "sh"
+				parameters
+					"-c"
+					concat("cd " strconcat(sys-comp-path) ";prospl pvi-snz/so/x5swmexport -rebuild-silent " julian2date(lf-start-date) " " julian2date(lf-end-date))
+			display strconcat(sys-comp-path) @5,2 background
+		endif
+	endextract
+endconfirm
+endscreen // run-historical-mas -----------------------------------------------
+
+procedure determine-default-store
+	returning
+		lr-default-store				like so-territory-code
+	//
+	local field
+		lf-record-count					pic 9
+	//
+	set lf-record-count = ZERO
+	select *
+	from
+		system-table
+	order by
+		sys-tbl-type
+		sys-tbl-code
+	when
+		sys-tbl-type = "TC"
+	detail
+		set lf-record-count += 1
+		set lr-default-store = sys-tbl-code
+		if lf-record-count > 1
+			set lr-default-store = SPACES
+			break
+		endif
+	endselect
+endprocedure //determine-default-store ---------------------------------------
+
+
+procedure rbtchproc-report-detail
+	do create-order-amendments
+	if ws-order-or-edit in {"O" "B" "T"}
+		do scan-sales
+			parameters
+				ws-store
+				ws-start-log-date
+				ws-end-log-date
+	endif
+	if ws-order-or-edit in {"E" "B" "T"}
+		do scan-audit
+			parameters
+				ws-store
+				ws-start-log-date
+				ws-end-log-date
+	endif
+	//
+	if ws-use-orig-rep
+		do repair-rep-code
+	endif
+	//
+	//do build-quick-view
+	//
+	//if get-param(1) = "-eod"
+		do print-order-amendments
+		parameters
+			ws-store
+			ws-start-log-date
+			ws-end-log-date
+		//do display-prnt-csv-quick-view
+	//else
+		//do display-quick-view
+	//endif
+endprocedure //rbtchproc-report-detail ---------------------------------------
+
+procedure create-order-amendments
+	open tmp-order-amendments
+		truncate
+		temporary
+endprocedure //create-order-amendments ---------------------------------------
+
+procedure repair-rep-code
+	extract tmp-order-amendments lock
+	detail
+		get sales-order
+		on index so-order-no so-bo-suffix
+		key is swm-order-no SPACES
+		on error
+			get sales-order-archive
+			on index so-order-no so-bo-suffix
+			key is swm-order-no SPACES
+			on error
+			else
+				set swm-rep-code-before-change = swm-rep-code
+				set swm-rep-code = so-rep-code
+				set swm-rep-type-combo = concat(swm-rep-code substring(swm-rep-type-combo,4,4))
+				update tmp-order-amendments
+			endon
+		else
+			set swm-rep-code-before-change = swm-rep-code
+			set swm-rep-code = so-rep-code
+			set swm-rep-type-combo = concat(swm-rep-code substring(swm-rep-type-combo,4,4))
+			update tmp-order-amendments
+		endon
+	endextract
+endprocedure // repair-rep-code -----------------------------------------------
+
+procedure scan-sales
+	parameters
+		lp-store						like so-territory-code
+		lp-start-log-date				like order-log-date
+		lp-end-log-date					like order-log-date
+	//
+	local field
+		lf-event						pic 9(10)
+		lf-rep-code						like so-rep-code
+		lf-whse-code					like so-whse-code
+		lf-customer						like so-cust-code
+		lf-order-date					like so-order-date
+		lf-process-further				type boolean
+		lf-value-extax					like ordlog-new-value
+		lf-average-cost					like whse-avg-cost
+		lf-gross-profit-amount			like ordlog-new-value
+		lf-gross-profit-percent			like ordlog-new-value
+		lf-value-change					like ordlog-new-value
+		lf-record-counter				pic 9(8)
+	//
+	//do create-order-amendments
+	select *
+	from
+		sales-order-archive
+	order by
+		//so-processing-date
+		so-order-date
+		so-order-no
+	when
+		so-order-status not in {"99" "91"}
+		and
+		// 25aug08
+		so-order-type-code not in {"Q"}
+		and
+		//so-processing-date between :lp-start-log-date and :lp-end-log-date
+		so-order-date between :lp-start-log-date and :lp-end-log-date
+	detail
+		//if not rbtchproc-in-background
+			set lf-event += 1
+			if fraction(lf-event / 1000) = ZERO
+				//display so-processing-date @23,55
+				//display so-order-date @23,55
+			endif
+		//endif
+		do determine-if-sales-record-required
+			parameters
+				so-cust-code
+				so-rep-code
+				so-territory-code
+			returning
+				lf-process-further
+		if not lf-process-further
+			continue
+		endif
+		//
+		extract sales-order-line-archive
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			// 29jun09
+			get stock-master
+				on index stock-code
+				key is stock-code
+			on error
+				continue
+			endon
+			// 29jun09
+			// initialise sales-audit-file
+			if sol-line-type in {"SN" "KN"}
+				set lf-value-extax = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set lf-average-cost = sol-item-cost * sol-ordered-qty // sol-line-cost
+				set lf-gross-profit-amount = lf-value-extax - lf-average-cost
+				if lf-value-extax = 0
+					set lf-gross-profit-percent = 100
+				else
+					set lf-gross-profit-percent = 100 * (1 - (lf-average-cost / lf-value-extax)) //(lf-value-extax - ( lf-average-cost / lf-value-extax)) * 100
+				endif
+				set ordlog-type = 0
+				do update-order-amendments
+					parameters
+						"A"
+						so-territory-code
+						so-rep-code
+						so-order-no
+						so-bo-suffix
+						sol-line-seq    //{2}
+						stock-code		//{2}
+						order-log-date // so-processing-date //order-log-date
+						0	//{5} lp-log-time					like order-log-time	//{5}
+						0	//{5} lp-dedup-seq					like saf-dedup-seq  //{5}
+						so-cust-code//lf-customer
+						so-order-date //so-processing-date // lf-order-date
+						ordlog-type							//rmd04sep09 if it was an 11 and an override appeared in ordlog-spare-num it would carry the override value
+						stock-code // ordlog-old-info
+						SPACES // ordlog-new-info
+						0 // ordlog-old-value
+						0 // ordlog-new-value
+						lf-value-extax // (sol-line-amount / (1 + (sol-tax-rate / 100)))
+						lf-average-cost // sol-line-cost
+						lf-gross-profit-amount
+						lf-gross-profit-percent
+						lf-record-counter
+						sol-ordered-qty
+					returning
+						lf-record-counter
+			endif
+		endextract
+	endselect
+	//
+	select *
+	from
+		sales-order
+	order by
+		//so-processing-date
+		so-order-date
+		so-order-no
+	when
+		so-order-status not in {"99" "25" "35" "45" "55" "65" "75" "85"}
+		and
+		// 25aug08
+		so-order-type-code not in {"Q"}
+		and
+		//so-processing-date between :lp-start-log-date and :lp-end-log-date
+		so-order-date between :lp-start-log-date and :lp-end-log-date
+	detail
+			set lf-event += 1
+			if fraction(lf-event / 1000) = ZERO
+				//display so-processing-date @23,55
+				//display so-order-date @23,55
+			endif
+		do determine-if-sales-record-required
+			parameters
+				so-cust-code
+				so-rep-code
+				so-territory-code
+			returning
+				lf-process-further
+		if not lf-process-further
+			continue
+		endif
+		extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			// 29jun09
+			get stock-master
+				on index stock-code
+				key is stock-code
+			on error
+				continue
+			endon
+			// 29jun09
+			// initialise sales-audit-file
+			if sol-line-type in {"SN" "KN"}
+				set lf-value-extax = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set lf-average-cost = sol-item-cost * sol-ordered-qty // sol-line-cost
+				set lf-gross-profit-amount = lf-value-extax - lf-average-cost
+				if lf-value-extax = 0
+					set lf-gross-profit-percent = 100
+				else
+					set lf-gross-profit-percent = 100 * (1 - (lf-average-cost / lf-value-extax)) //(lf-value-extax - ( lf-average-cost / lf-value-extax)) * 100
+				endif
+				set ordlog-type = 0
+				//<{6}
+				//so-order-date dictates we should take every line from this order but if line was entered after the so-order-date
+				//we need to ignore it as a sAle and let it be picked up as an eDit
+				if sol-user-only-date1 <> 0 and date-from-date-time(sol-user-only-date1,1) <> so-order-date
+					//don't want to discard it, just earmark it for now, we can choose to ignore ordlog-new-info = "#"
+					set ordlog-new-info = "#"
+				else
+					set ordlog-new-info = SPACES
+				endif
+				//now we need the other side of the logic for edits
+				//>{6}
+				do update-order-amendments
+					parameters
+						"A"
+						so-territory-code
+						so-rep-code
+						so-order-no
+						so-bo-suffix
+						sol-line-seq    //{2}
+						stock-code		//{2}
+						order-log-date // so-processing-date //order-log-date
+						0	//{5} lp-log-time					like order-log-time	//{5}
+						0	//{5} lp-dedup-seq					like saf-dedup-seq  //{5}
+						so-cust-code//lf-customer
+						so-order-date//so-processing-date // lf-order-date
+						ordlog-type
+						stock-code // ordlog-old-info
+						ordlog-new-info //SPACES //{6}
+						0 // ordlog-old-value
+						0 // ordlog-new-value
+						lf-value-extax // (sol-line-amount / (1 + (sol-tax-rate / 100)))
+						lf-average-cost // sol-line-cost
+						lf-gross-profit-amount
+						lf-gross-profit-percent
+						lf-record-counter
+						sol-ordered-qty
+					returning
+						lf-record-counter
+			endif
+		endextract
+	endselect
+	//
+	select *
+	from
+		sales-order //-archive
+	order by
+		//so-processing-date
+		so-order-date
+		so-order-no
+	when
+		so-order-status in {"99" "91"}
+		and
+		// 25aug08
+		so-order-type-code not in {"Q"}
+		and
+		//so-processing-date between :lp-start-log-date and :lp-end-log-date
+		so-order-date between :lp-start-log-date and :lp-end-log-date
+	detail
+			set lf-event += 1
+			if fraction(lf-event / 1000) = ZERO
+				//display so-processing-date @23,55
+				//display so-order-date @23,55
+			endif
+		do determine-if-sales-record-required
+			parameters
+				so-cust-code
+				so-rep-code
+				so-territory-code
+			returning
+				lf-process-further
+		if not lf-process-further
+			continue
+		endif
+		//
+		extract sales-order-line-cancel
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			// 29jun09
+			get stock-master
+				on index stock-code
+				key is stock-code
+			on error
+				continue
+			endon
+			// 29jun09
+			// initialise sales-audit-file
+			if sol-line-type in {"SN" "KN"}
+				set lf-value-extax = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set lf-average-cost = sol-item-cost * sol-ordered-qty // sol-line-cost
+				set lf-gross-profit-amount = lf-value-extax - lf-average-cost
+				if lf-value-extax = 0
+					set lf-gross-profit-percent = 100
+				else
+					set lf-gross-profit-percent = 100 * (1 - (lf-average-cost / lf-value-extax)) //(lf-value-extax - ( lf-average-cost / lf-value-extax)) * 100
+				endif
+				set ordlog-type = 0
+				do update-order-amendments
+					parameters
+						"A"
+						so-territory-code
+						so-rep-code
+						so-order-no
+						"*" // so-bo-suffix
+						sol-line-seq    //{2}
+						stock-code		//{2}
+						order-log-date // so-processing-date //order-log-date
+						0	//{5} lp-log-time					like order-log-time	//{5}
+						0	//{5} lp-dedup-seq					like saf-dedup-seq  //{5}
+						so-cust-code//lf-customer
+						so-order-date //so-processing-date // lf-order-date
+						ordlog-type
+						stock-code // ordlog-old-info
+						SPACES // ordlog-new-info
+						0 // ordlog-old-value
+						0 // ordlog-new-value
+						lf-value-extax // (sol-line-amount / (1 + (sol-tax-rate / 100)))
+						lf-average-cost // sol-line-cost
+						lf-gross-profit-amount
+						lf-gross-profit-percent
+						lf-record-counter
+						sol-ordered-qty
+					returning
+						lf-record-counter
+			endif
+		endextract
+	endselect
+	//16oct08
+endprocedure // scan-sales ----------------------------------------------------
+
+procedure scan-audit
+	parameters
+		lp-store						like so-territory-code
+		lp-start-log-date				like order-log-date
+		lp-end-log-date					like order-log-date
+	//
+	local field
+		lf-event						pic 9(10)
+		lf-rep-code						like so-rep-code
+		lf-whse-code					like so-whse-code
+		lf-customer						like so-cust-code
+		lf-order-date					like so-order-date
+		lf-process-further				type boolean
+		lf-value-extax					like ordlog-new-value
+		lf-average-cost					like whse-avg-cost
+		lf-gross-profit-amount			like ordlog-new-value
+		lf-gross-profit-percent			like ordlog-new-value
+		lf-value-change					like ordlog-new-value
+		lf-record-counter				pic 9(8)
+		lf-discount-impact				type numeric				//12jan09
+	//
+	select *
+	from
+		sales-audit-file
+	order by
+		order-log-date
+		order-log-time
+		so-order-no
+		so-bo-suffix
+		sol-line-seq
+		saf-dedup-seq
+	when
+		order-log-date between :lp-start-log-date and :lp-end-log-date
+	detail
+		//if not rbtchproc-in-background
+			set lf-event += 1
+			if fraction(lf-event / 1000) = ZERO
+				//display order-log-date @23,55
+				//display order-log-time @24,55
+			endif
+		//endif
+		do determine-if-record-required
+			parameters
+				ordlog-type
+				ordlog-new-info
+				ordlog-line-type
+			returning
+				lf-process-further
+		if not lf-process-further
+			//print
+			//	"--> failed on: determine-if-record-required"
+			continue
+		endif
+		do examine-order-header
+			parameters
+				so-order-no
+				so-bo-suffix
+				lp-start-log-date
+				lp-store
+			returning
+				lf-rep-code
+				lf-whse-code
+				lf-customer
+				lf-order-date
+				lf-process-further
+		if not lf-process-further
+			//print
+			//	"--> failed on: examine-order-header"
+			continue
+		endif
+		// 20jun08 if the affected order is a quote, do not record this edit
+		get sales-order
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error //If not in open Orders - try the archive
+			get sales-order-archive
+				on index so-order-no so-bo-suffix
+				key is so-order-no so-bo-suffix
+			on error // Should not happen!!
+			end-on
+		endon
+		if so-order-status in { "02" "06" "14" "95" "96" "98" "99"} and so-order-type-code = "Q"   // rmd29jan10 added status 99 to ignore edits to ully cancelled Quotes
+			continue
+		endif
+		do determine-average-cost
+			parameters
+				ordlog-old-info	//stock-code
+				lf-whse-code
+				so-order-no
+				so-bo-suffix
+				sol-line-seq
+			returning
+				lf-average-cost
+		if ordlog-type not in {11}
+			set lf-value-extax =
+				ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+		else
+			//case 11 // Line Discount Change
+				if ordlog-new-info = SPACES // Discount button pressed impact = change in percentage against original price (sol-item-price = full price of one item)
+					set lf-discount-impact = ordlog-new-value - ordlog-old-value
+					set lf-value-extax			= (sol-item-price / (1 + (sol-tax-rate / 100))) * (lf-discount-impact / 100)
+				else // Discount overridden using correct
+					set lf-value-extax 			= sol-ordered-qty * ordlog-item-wholesale-price * (num(substring(ordlog-new-info,1,7)) - num(substring(ordlog-new-info,8,14))) / 100
+					if ordlog-spare-num <> 0
+						set ordlog-type = ordlog-spare-num
+					endif
+				endif
+		endif
+		if lf-value-extax < ZERO
+			set lf-average-cost = (0 - lf-average-cost)
+		endif
+		switch on ordlog-type
+		case 05
+			//05 - Line Quantity change
+			set lf-value-change = (ordlog-new-value - ordlog-old-value)
+			//set lf-gross-profit-amount = (lf-value-extax - (lf-value-change * lf-average-cost))  // 18aug08
+			//24feb09 if value is negative, flip the value change
+			if lf-value-extax < ZERO
+				set lf-value-change = (0 - lf-value-change)
+			endif
+			set lf-gross-profit-amount = (lf-value-extax - (lf-average-cost))
+			if lf-value-extax = ZERO
+				set lf-gross-profit-percent = ZERO
+			else
+				set lf-gross-profit-percent =
+					((lf-value-extax - (lf-value-change * lf-average-cost)) /
+						lf-value-extax) * 100
+			endif
+		case 06
+			//06 - Order Cancellation
+			// 05mar08 rmd - test if lf-value-extax 0 before attempting to divide
+			if lf-value-extax = ZERO
+				set lf-gross-profit-percent = ZERO
+			else
+				//set lf-gross-profit-percent = ((lf-value-extax - (ordlog-new-value * lf-average-cost)) / lf-value-extax) * 100  // 18aug08
+				set lf-average-cost = ordlog-new-value * lf-average-cost
+				set lf-gross-profit-percent = ((lf-value-extax - (lf-average-cost)) / lf-value-extax) * 100
+			endif
+			set lf-gross-profit-amount =
+				(lf-value-extax - (ordlog-new-value * lf-average-cost))
+		case 09 10
+			set lf-average-cost = abs(ordlog-old-value) * lf-average-cost
+			//13apr10 rmd -------------------------------------- end
+			set lf-gross-profit-amount = (lf-value-extax - (lf-average-cost))
+			if lf-value-extax = ZERO
+				set lf-gross-profit-percent = ZERO
+			else
+				//13apr10 rmd lf-average-cost already has qty factored in
+				//was not correct if line add/remove was multiple qty
+				set lf-gross-profit-percent =
+					//((lf-value-extax - (ordlog-old-value * lf-average-cost)) / lf-value-extax) * 100
+					((lf-value-extax - lf-average-cost) / lf-value-extax) * 100
+			endif
+			//#| 130426 in the case of 09 line removal will need to rethink ordered qty
+		case 01 11 12
+			//01 - Line Price change
+			//11 - Line Discount change
+			//12 - Order Discount change
+			set lf-average-cost = 0 // 18aug08
+			set lf-gross-profit-amount = lf-value-extax
+			if lf-value-extax = ZERO
+				set lf-gross-profit-percent = ZERO
+			else
+				set lf-gross-profit-percent =
+					(lf-value-extax / lf-value-extax) * 100
+			endif
+		endswitch
+		//<{2}
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+		on error
+			get sales-order-line-archive
+				on index so-order-no so-bo-suffix sol-line-seq
+			on error
+				get sales-order-line-cancel	//{7}
+					on index so-order-no so-bo-suffix sol-line-seq
+				on error
+					set stock-code = "EDIT: NO SOL"
+					//#|130426 ordered qty will need to be reviewed if this occurs
+				endon
+			endon
+		endon
+		//>{2}
+		//<{6}
+		//#| is this an edit equivalent of sol flagging process when sol appears on different date to so?
+		//we have currency on the related sales-order-header so we could insert * into ordlog-old-info if
+		//order-log-date is EQUAL to so-order-date
+		if order-log-date = so-order-date
+			set ordlog-new-info = concat("*" strconcat(ordlog-new-info))
+		endif
+		//>{6}
+		do update-order-amendments
+			parameters
+				"D"
+				so-territory-code
+				lf-rep-code
+				so-order-no
+				so-bo-suffix
+				sol-line-seq    //{2}
+				stock-code		//{2}
+				order-log-date
+				order-log-time	//{5}
+				saf-dedup-seq  //{5}
+				lf-customer
+				lf-order-date
+				ordlog-type
+				ordlog-old-info
+				ordlog-new-info
+				ordlog-old-value
+				ordlog-new-value
+				lf-value-extax
+				lf-average-cost
+				lf-gross-profit-amount
+				lf-gross-profit-percent
+				lf-record-counter
+				sol-ordered-qty
+			returning
+				lf-record-counter
+			//print
+			//	"--> passed"
+	endselect
+endprocedure // scan-audit ----------------------------------------------------
+
+procedure determine-if-record-required
+	parameters
+		lp-log-type						like ordlog-type
+		lp-log-new-info					like ordlog-new-info
+		lp-line-type					like ordlog-line-type
+	//
+	returning
+		lr-process-further				type boolean
+	//
+	set lr-process-further = TRUE
+	if lp-log-type in { 01 05 06 09 10 11 12 }
+		//We want this one.
+		//01 - Line Price change
+		//05 - Line Quantity change
+		//06 - Order Cancellation
+		//09 - Line Removed
+		//10 - Line Added
+		//11 - Line Discount change
+		//12 - Order Discount change
+	else
+		set lr-process-further = FALSE
+	endif
+	if lp-log-type = 01
+		//01 - Line Price change
+		if lp-log-new-info = SPACES
+			set lr-process-further = FALSE
+		else
+			//We want this one.
+		endif
+	endif
+	// if lp-line-type = "SN" 07oct08
+	if lp-line-type in {"SN" "WN"}
+		//We want this one.
+	else
+		set lr-process-further = FALSE
+	endif
+endprocedure // determine-if-record-required ----------------------------------
+
+procedure determine-if-sales-record-required
+	parameters
+		lp-cust-code					like so-cust-code
+		lp-rep-code						like so-rep-code
+		lp-store-code					like so-territory-code
+
+	returning
+		lr-process-further				type boolean
+	//
+	set lr-process-further = TRUE
+	if substring(lp-cust-code,1,3) = "ZCS"
+		set lr-process-further = FALSE
+	endif
+	if lp-store-code = ws-store
+		//We want this one.
+	else
+		// 12mar08
+		if ws-show-all-stores
+		else
+			set lr-process-further = FALSE
+		endif
+	endif
+endprocedure //determine-if-sales-record-required -----------------------------
+
+procedure examine-order-header
+	parameters
+		lp-order-no						like so-order-no
+		lp-bo-suffix					like so-bo-suffix
+		lp-start-log-date				like order-log-date
+		lp-store						like so-territory-code
+	//
+	returning
+		lr-rep-code						like so-rep-code
+		lr-whse-code					like so-whse-code
+		lr-customer						like so-cust-code
+		lr-order-date					like so-order-date
+		lr-process-further				type boolean
+	//
+	get sales-order
+		on index so-order-no so-bo-suffix
+		key is lp-order-no lp-bo-suffix
+	on error
+		get sales-order-archive
+			on index so-order-no so-bo-suffix
+			key is lp-order-no lp-bo-suffix
+		on error
+			set lr-process-further = FALSE
+		else
+			do examine-order-header-fields
+				parameters
+					lp-store
+					lp-start-log-date
+					so-cust-code
+					so-order-date
+					so-territory-code
+					so-rep-code
+				returning
+					lr-process-further
+		endon
+	else
+		do examine-order-header-fields
+			parameters
+				lp-store
+				lp-start-log-date
+				so-cust-code
+				so-order-date
+				so-territory-code
+				so-rep-code
+			returning
+				lr-process-further
+	endon
+	get tmp-order-amendments
+	on index swm-order-no swm-bo-suffix swm-sale-or-edit
+	key is lp-order-no lp-bo-suffix "A"
+	on error
+	else
+		// order is already present in sales collection
+		// if we are testing show all, else hide this audit
+		if ws-order-or-edit = "T"
+		else
+			set lr-process-further = FALSE
+		endif
+	endon
+	set lr-rep-code = so-rep-code
+	set lr-whse-code = so-whse-code
+	set lr-customer = so-cust-code
+	set lr-order-date = so-order-date
+endprocedure // examine-order-header ------------------------------------------
+
+procedure examine-order-header-fields
+	parameters
+		lp-store						like so-territory-code
+		lp-start-log-date				like order-log-date
+		lp-cust-code					like so-cust-code
+		lp-order-date					like so-order-date
+		lp-order-store					like so-territory-code
+		lp-rep-code						like so-rep-code					//03feb08
+	//
+	returning
+		lr-process-further				type boolean
+	//
+	set lr-process-further = TRUE
+	if lp-order-date < lp-start-log-date
+		//*******************************************************
+		//** Orders later than this have their value reflected **
+		//** correctly on other reports. We only want orders   **
+		//** that have been changed prior to this date.        **
+		//*******************************************************
+	else
+		if ws-order-or-edit = "T"
+		else
+			set lr-process-further = FALSE
+		endif
+	endif
+	//03mar08
+	//if sub-string(lp-cust-code,1,4) = "ZCSM"
+	if sub-string(lp-cust-code,1,3) = "ZCS"
+		set lr-process-further = FALSE
+	endif
+	//
+	if lp-order-store = lp-store
+		//We want this one.
+	else
+		// 12mar08
+		if ws-show-all-stores
+		else
+			set lr-process-further = FALSE
+		endif
+	endif
+endprocedure // examine-order-header-fields -----------------------------------
+
+procedure determine-average-cost
+local field
+		lf-sup-last-buy-price			like sup-last-buy-price
+	parameters
+		lp-stock-code					like stock-code
+		lp-whse-code					like so-whse-code
+		lp-order-no 					like so-order-no
+		lp-bo-suffix					like so-bo-suffix
+		lp-line-seq						like sol-line-seq
+	//
+	returning
+		lr-average-cost					like whse-avg-cost
+	//
+	// attempt to find cost on sales-order first
+	get sales-order-line
+	on index so-order-no so-bo-suffix sol-line-seq
+	key is lp-order-no lp-bo-suffix lp-line-seq
+	on error
+		get sales-order-line-archive
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is lp-order-no lp-bo-suffix lp-line-seq
+		on error
+			// 23dec08 try sol-cancel
+			get sales-order-line-archive
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lp-order-no lp-bo-suffix lp-line-seq
+			on error
+				// now try stock-warehouse-detail
+				get stock-warehouse-detail
+					on index stock-code whse-code
+					key is lp-stock-code lp-whse-code
+				on error
+					set lr-average-cost = ZERO
+				else
+					set lr-average-cost = whse-avg-cost
+				endon
+			else
+				set lr-average-cost = sol-item-cost
+			endon
+		else
+			set lr-average-cost = sol-item-cost
+		endon
+		// 23dec08 if wac contains 0 cost and sol cancel does not exist get slbp
+		if lr-average-cost = 0
+			set lf-sup-last-buy-price = 0
+			extract stock-supplier
+			on index stock-code cre-accountcode
+			key is lp-stock-code SPACES
+			next same stock-code
+			detail
+				if sup-last-buy-price > lf-sup-last-buy-price
+					set lf-sup-last-buy-price = sup-last-buy-price
+				endif
+			endextract
+			set lr-average-cost = lf-sup-last-buy-price
+		endif
+		// 23dec08
+	else
+		set lr-average-cost = sol-item-cost
+	endon
+endprocedure //determine-average-cost ----------------------------------------
+
+procedure update-order-amendments
+	parameters
+		lp-sale-or-edit					pic x
+		lp-territory-code				like so-territory-code
+		lp-rep-code						like so-rep-code
+		lp-order-no						like so-order-no
+		lp-bo-suffix					like so-bo-suffix
+		lp-line-seq						like sol-line-seq	//{2}
+		lp-stock-code					like stock-code     //{2}
+		lp-log-date						like order-log-date
+		lp-log-time						like order-log-time	//{5}
+		lp-dedup-seq					like saf-dedup-seq  //{5}
+		lp-customer						like so-cust-code
+		lp-order-date					like so-order-date
+		lp-log-type						like ordlog-type
+		lp-log-old-info					like ordlog-old-info
+		lp-log-new-info					like ordlog-new-info
+		lp-log-old-value				like ordlog-old-value
+		lp-log-new-value				like ordlog-new-value
+		lp-value-extax					like ordlog-new-value
+		lp-average-cost					like whse-avg-cost
+		lp-gross-profit-amount			like ordlog-new-value
+		lp-gross-profit-percent			like ordlog-new-value
+		lp-record-counter				pic 9(8)
+		lp-sol-ordered-qty				like sol-ordered-qty
+	//
+	returning
+		lr-record-counter				pic 9(8)
+	//
+	set lr-record-counter = lp-record-counter
+	initialise tmp-order-amendments
+	//if lp-log-type <> 11				//rc 14jul09	//{7}
+		set swm-sale-or-edit 		= lp-sale-or-edit
+		set swm-store-code 		= lp-territory-code
+		set swm-rep-code 			= lp-rep-code
+		set swm-rep-type-combo 	= concat(lp-rep-code lp-sale-or-edit)
+		set swm-order-no 			= lp-order-no
+		set swm-bo-suffix 		= lp-bo-suffix
+		set swm-line-seq	    	= lp-line-seq	//{2}
+		set swm-stock-code		= lp-stock-code //{2}
+		set swm-log-date 			= lp-log-date   //{5}
+		set swm-log-time	    	= lp-log-time	//{5}
+		set swm-dedup-seq			= lp-dedup-seq
+		set swm-customer = lp-customer
+		set swm-order-date = lp-order-date
+		// 18aug08
+		//set swm-rep-date = concat(swm-rep-code substring(zstr(year(lp-order-date),4,0),3,4) zstr(month(lp-order-date),2,0) zstr(day(lp-order-date),2,0))
+		set swm-log-type = lp-log-type
+		set swm-log-old-info = lp-log-old-info
+		set swm-log-new-info = lp-log-new-info
+		set swm-log-old-value = lp-log-old-value
+		set swm-log-new-value = lp-log-new-value
+		set swm-value-extax = lp-value-extax
+		set swm-average-cost = lp-average-cost
+		set swm-gross-profit-amount = lp-gross-profit-amount
+		set swm-gross-profit-percent = lp-gross-profit-percent
+		set lr-record-counter += 1
+		set swm-record-counter = lr-record-counter
+		if swm-sale-or-edit = "A"
+			set swm-event-date = swm-order-date
+			//{5} init extended key values to contrain to so/bo/sol
+		elseif swm-sale-or-edit = "D"
+			set swm-event-date = swm-log-date
+		endif
+		set swm-rep-date = concat(swm-rep-code substring(zstr(year(swm-event-date),4,0),3,4) zstr(month(swm-event-date),2,0) zstr(day(swm-event-date),2,0))
+		//
+		set swm-sol-ordered-qty = lp-sol-ordered-qty
+		//
+		//<{2}
+		set swm-capture-date  = today()
+		set swm-capture-time  = tod()
+		set swm-time-stamp    = gmt()
+		set swm-user-id       = login-id()
+		set swm-process-id  	= pid()
+		//>{2}
+		insert tmp-order-amendments
+		on error//{5}
+			message "dupe swm:"
+				swm-sale-or-edit
+				swm-order-no
+				swm-bo-suffix
+				swm-line-seq
+				//swm-log-date
+				//swm-log-time
+				//swm-dedup-seq
+		endon
+	//endif						//rc 14jul09	//{7}
+endprocedure //update-order-amendments ---------------------------------------
+
+procedure print-order-amendments
+        parameters
+                lp-store                                like so-territory-code
+                lp-start-log-date                       like order-log-date
+                lp-end-log-date                         like order-log-date
+        //
+        local field
+                lf-rep-description                      like rep-description
+                lf-value-change                         like ordlog-new-value
+                lf-stotal-value-extax                   like ordlog-new-value
+                lf-stotal-average-cost                  like ordlog-new-value
+                lf-stotal-gross-profit-amount   		like ordlog-new-value
+                lf-stotal-gross-profit-percent  		like ordlog-new-value
+                lf-rtotal-value-extax                   like ordlog-new-value
+                lf-rtotal-average-cost                  like ordlog-new-value
+                lf-rtotal-gross-profit-amount   		like ordlog-new-value
+                lf-rtotal-gross-profit-percent  		like ordlog-new-value
+                lf-prev-sale-or-edit                    pic x
+                lf-audit-description                    pic x(20)
+                lf-date-time							pic x(12) //yyyymmddhhmm	//{4}
+        //
+//        window @19,44 to @24,80
+//                title "Printing Report"
+//                colour white
+//                no-hide
+        //if not rbtchproc-in-background
+        //        display bitmap concat(getenv("BMS")"/images/repedge.gif") @19,44
+        //        display "Now at :" @23,45 background prompts left
+        //endif
+        //
+        //open tmp-prnt-order-amendments truncate temporary
+        set lf-date-time = strconcat(format-picture(today(),"yyyymmdd") format-picture(tod(),"hhmm"))//{4}
+        open tmp-prnt-order-amendments truncate permanent
+		//file "/data/vic/exelr8_so.csv"
+		//file strconcat("/nas/data/excelr8/" lp-store "-excelr8.csv")	//{2}
+		file strconcat("swm-" lf-date-time "-" lp-store ".csv") 		//{2}
+		//
+        //set ws-page-continuation = FALSE
+        //set ws-print-continuation = FALSE
+        //
+        //open snooze-order-amendments create permanent	//{1}	//{2}
+        open snooze-written-movements create permanent			//{2}
+        select *
+        from tmp-order-amendments
+        order by
+                //swm-rep-code
+                //swm-order-no
+                //swm-bo-suffix
+                //swm-record-counter
+                swm-rep-code
+                swm-rep-type-combo
+                swm-order-no
+                swm-bo-suffix
+                swm-record-counter
+        //before
+        //        if ws-xml = "Y"
+        //                do start-report
+        //        else
+        //                do start-report-no-xml
+        //        endif
+        before swm-rep-code
+                //need 6
+                //set ws-page-continuation = FALSE
+                //display swm-rep-code @23,55
+                do determine-rep-name
+                        parameters
+                                swm-rep-code
+                        returning
+                                lf-rep-description
+                //print   swm-rep-code col 1
+                //        rep-description col 5 pic x(20)
+                //set ws-page-continuation = TRUE
+        before swm-rep-type-combo
+                //need 3
+                if swm-sale-or-edit = "A"
+                        //print  "Sales"  in col 21
+                elseif swm-sale-or-edit = "D"
+                        //print "Edits"  in col 21
+                endif
+        detail
+                switch on swm-log-type
+                case 05
+                        //05 - Line Quantity Change
+                        set lf-audit-description = "Line Quantity Change" // "Line Qty Chg"
+                        set lf-value-change = (swm-log-new-value - swm-log-old-value)
+                        set lf-stotal-gross-profit-amount +=
+                                (swm-value-extax - (lf-value-change * swm-average-cost))
+                        set lf-rtotal-gross-profit-amount +=
+                                (swm-value-extax - (lf-value-change * swm-average-cost))
+                case 06
+                        //06 - Order Cancellation
+                        set lf-audit-description = "Order Cancellation" // "Order Canc"
+                        set lf-stotal-gross-profit-amount +=
+                                (swm-value-extax - (swm-log-new-value * swm-average-cost))
+                        set lf-rtotal-gross-profit-amount +=
+                                (swm-value-extax - (swm-log-new-value * swm-average-cost))
+                case 09 10
+                        //09 - Line Removed
+                        //10 - Line Added
+                        if swm-log-type = 09
+                                set lf-audit-description = "Line Removal"
+                        elseif swm-log-type = 10
+                                set lf-audit-description = "Line Addition"
+                        endif
+                        set lf-stotal-gross-profit-amount +=
+                                (swm-value-extax - (swm-log-old-value * swm-average-cost))
+                        set lf-rtotal-gross-profit-amount +=
+                                (swm-value-extax - (swm-log-old-value * swm-average-cost))
+                case 01 11 12
+                        if swm-log-type = 01
+                                set lf-audit-description = "Line Price Change"
+                        elseif swm-log-type = 11
+                                set lf-audit-description = "Line Disc Change"
+                        elseif swm-log-type = 12
+                                set lf-audit-description = "Order Disc Change"
+                        endif
+                        //01 - Line Price change
+                        //11 - Line Discount change
+                        //12 - Order Discount change
+                        set lf-stotal-gross-profit-amount += swm-value-extax
+                        set lf-rtotal-gross-profit-amount += swm-value-extax
+                case 0 00
+                        // sale not an edit
+                        set lf-audit-description = SPACES
+                        set lf-stotal-gross-profit-amount += swm-gross-profit-amount
+                        set lf-rtotal-gross-profit-amount += swm-gross-profit-amount
+                endswitch
+                set lf-stotal-value-extax += swm-value-extax
+                set lf-rtotal-value-extax += swm-value-extax
+                set lf-stotal-average-cost += swm-average-cost
+                set lf-rtotal-average-cost += swm-average-cost
+				//
+                set tmppoa-store-code              	= swm-store-code
+                set tmppoa-rep-code                	= swm-rep-code
+                set tmppoa-sale-or-edit            	= swm-sale-or-edit
+                set tmppoa-rep-type-combo          	= swm-rep-type-combo
+                set tmppoa-rep-date                	= swm-rep-date
+                set tmppoa-order-no                	= swm-order-no
+                set tmppoa-bo-suffix               	= swm-bo-suffix
+                set tmppoa-line-seq              	= swm-line-seq    //{2} reintroduced
+                set tmppoa-stock-code            	= swm-stock-code  //{2} reintroduced
+                set tmppoa-record-counter          	= swm-record-counter
+                set tmppoa-log-date                	= swm-log-date
+                set tmppoa-log-time	                = swm-log-time	//{5}
+                set tmppoa-dedup-seq				= swm-dedup-seq   //{5}
+                set tmppoa-customer                	= swm-customer
+                set tmppoa-order-date              	= swm-order-date
+                set tmppoa-log-type                	= swm-log-type
+                set tmppoa-log-old-info            	= swm-log-old-info
+                set tmppoa-log-new-info            	= swm-log-new-info
+                set tmppoa-log-old-value           	= swm-log-old-value
+                set tmppoa-log-new-value           	= swm-log-new-value
+                set tmppoa-value-extax             	= swm-value-extax
+                set tmppoa-average-cost            	= swm-average-cost
+                set tmppoa-gross-profit-amount     	= swm-gross-profit-amount
+                set tmppoa-gross-profit-percent    	= swm-gross-profit-percent
+                set tmppoa-event-date              	= swm-event-date
+                set tmppoa-rep-code-before-change  	= swm-rep-code-before-change
+                set tmppoa-sol-ordered-qty		   	= swm-sol-ordered-qty
+                set tmppoa-capture-date             = swm-capture-date  //{2} additional fields
+                set tmppoa-capture-time             = swm-capture-time  //{2} additional fields
+                set tmppoa-time-stamp               = swm-time-stamp    //{2} additional fields
+                set tmppoa-user-id                  = swm-user-id       //{2} additional fields
+                set tmppoa-process-id  				= swm-process-id    //{2} additional fields
+			insert tmp-prnt-order-amendments
+			//insert snooze-order-amendments	//{1}	//{2}
+			//on error									//{2}
+			//endon                                     //{2}
+			insert snooze-written-movements //{2}
+			on error//{5}
+				//message "dupe swm:"
+				//	swm-sale-or-edit
+				//	swm-order-no
+				//	swm-bo-suffix
+				//	swm-line-seq
+				//	//swm-log-date
+				//	//swm-log-time
+				//	//swm-dedup-seq
+			endon
+        after swm-rep-code
+                set ws-page-continuation = FALSE
+                set lf-stotal-gross-profit-amount = lf-stotal-value-extax - lf-stotal-average-cost
+                if lf-stotal-value-extax = ZERO
+                        set lf-stotal-gross-profit-percent = ZERO
+                else
+                        set lf-stotal-gross-profit-percent =
+                                (lf-stotal-gross-profit-amount / lf-stotal-value-extax) * 100
+                endif
+                set lf-stotal-value-extax = ZERO
+                set lf-stotal-gross-profit-amount = ZERO
+                set lf-stotal-average-cost = ZERO
+                // set swm-sale-or-edit = "Z"
+        after swm-store-code
+                //set ws-page-continuation = FALSE
+        after
+                set lf-rtotal-gross-profit-amount = lf-rtotal-value-extax - lf-rtotal-average-cost
+                if lf-rtotal-value-extax = ZERO
+                        set lf-rtotal-gross-profit-percent = ZERO
+                else
+                        set lf-rtotal-gross-profit-percent =
+                                (lf-rtotal-gross-profit-amount / lf-rtotal-value-extax) * 100
+                endif
+        endselect
+endprocedure //print-order-amendments ----------------------------------------
+
+procedure determine-rep-name
+	parameters
+		lp-rep-code						like so-rep-code
+	//
+	returning
+		lr-rep-description				like rep-description
+	//
+	get rep-master
+		on index rep-code
+		key is lp-rep-code
+	on error
+		set lr-rep-description = "** Undefined **"
+	else
+		set lr-rep-description = rep-description
+	endon
+endprocedure // determine-rep-name --------------------------------------------
+
+procedure determine-store-name
+	parameters
+		lp-store-code					like whse-code
+	//
+	returning
+		lr-store-name					like na-name
+	//
+	get name-and-address-master
+	on index accountcode na-type
+	key is lp-store-code "WH"
+	on error
+		set lr-store-name = "** Undefined **"
+	else
+		set lr-store-name = na-name
+	endon
+endprocedure // determine-store-name ------------------------------------------
+
+screen display-prnt-csv-quick-view
+    window @1,1 to @24,110
+        title concat("Quick View")
+        primary tmp-prnt-order-amendments
+        datagrid occurs 19
+        allowed search
+        review-from-start
+        detail
+			display tmppoa-store-code             @1,2
+			display tmppoa-rep-code               @1,3
+			display tmppoa-sale-or-edit           @1,4
+			display tmppoa-rep-type-combo         @1,5
+			display tmppoa-rep-date               @1,6
+			display tmppoa-order-no               @1,7
+			display tmppoa-bo-suffix              @1,8
+			display tmppoa-record-counter         @1,11
+			display tmppoa-log-date               @1,12
+			display tmppoa-customer               @1,13
+			display tmppoa-order-date             @1,14
+			display tmppoa-log-type               @1,15
+			display tmppoa-log-old-info           @1,16
+			display tmppoa-log-new-info           @1,17
+			display tmppoa-log-old-value          @1,18
+			display tmppoa-log-new-value          @1,19
+			display tmppoa-value-extax            @1,20
+			display tmppoa-average-cost           @1,21
+			display tmppoa-gross-profit-amount    @1,22
+			display tmppoa-gross-profit-percent   @1,23
+			display tmppoa-event-date             @1,24
+			display tmppoa-rep-code-before-change @1,25
+			display tmppoa-sol-ordered-qty		  @1,27
+confirm auto
+confirmed
+endconfirm
+endscreen // display-prnt-csv-quick-view --------------------------------------
+
+screen dig-swm //{3}
+	window @1,1 to @24,90
+		title concat("snooze-written-movements")
+		primary snooze-written-movements
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+detail
+	display swm-store-code				@1,004 title "swm-store-code"
+	display swm-rep-code				    @1,008 title "swm-rep-code"
+	display swm-sale-or-edit			    @1,012 title "swm-sale-or-edit"
+	display swm-rep-type-combo		    @1,016 title "swm-rep-type-combo"
+	display swm-rep-date				    @1,020 title "swm-rep-date"
+	display swm-order-no				    @1,024 title "swm-order-no"
+	display swm-bo-suffix				    @1,028 title "swm-bo-suffix"
+	display swm-line-seq				    @1,030 title "swm-line-seq"
+	display swm-stock-code			    @1,032 title "swm-stock-code"
+	display swm-record-counter		    @1,034 title "swm-record-counter"
+	display swm-log-date				    @1,036 title "swm-log-date"
+	display swm-log-time					@1,038 title "swm-log-time"	//{5}
+	display swm-dedup-seq					@1,040 title "swm-dedup-seq"  //{5}
+	display swm-customer				    @1,042 title "swm-customer"
+	display swm-order-date			    @1,044 title "swm-order-date"
+	display swm-log-type				    @1,048 title "swm-log-type"
+	display swm-log-old-info			    @1,052 title "swm-log-old-info"
+	display swm-log-new-info			    @1,056 title "swm-log-new-info"
+	display swm-log-old-value			    @1,060 title "swm-log-old-value"
+	display swm-log-new-value			    @1,064 title "swm-log-new-value"
+	display swm-value-extax			    @1,068 title "swm-value-extax"
+	display swm-average-cost			    @1,072 title "swm-average-cost"
+	display swm-gross-profit-amount	    @1,076 title "swm-gross-profit-amount"
+	display swm-gross-profit-percent	    @1,080 title "swm-gross-profit-percent"
+	display swm-event-date			    @1,084 title "swm-event-date"
+	display swm-rep-code-before-change    @1,088 title "swm-rep-code-before-change"
+	display swm-sol-ordered-qty		    @1,092 title "swm-sol-ordered-qty"
+	display swm-capture-date              @1,094 title "swm-capture-date"
+	display swm-capture-time              @1,096 title "swm-capture-time"
+	display swm-time-stamp                @1,098 title "swm-time-stamp"
+	display swm-user-id                   @1,100 title "swm-user-id"
+	display swm-process-id   				@1,102 title "swm-process-id"	pic ----------9
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // dig-swm ----------------------------------------------------------

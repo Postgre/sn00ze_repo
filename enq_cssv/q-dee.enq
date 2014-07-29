@@ -1,0 +1,10 @@
+select
+	stock-code
+	stock-group
+	stk-user-group
+	stk-description
+from
+	stock-master
+where
+	substring (stock-code,1,3) = "DEE"
+format is lst

@@ -1,0 +1,123 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-order-date
+	so-territory-code
+	so-rep-code
+	so-whse-code
+	sol-print-line
+	stock-code
+	sol-stk-unit-desc
+	sol-ordered-qty
+	stk-description
+	ws-date = input
+		date
+		prompt is "Enter today's date:"
+	ws-terr = input
+		string
+		prompt is "Enter store number:"
+	sol-shipped-qty
+	sol-backorder-qty
+from
+	sales-order
+	sales-order-line
+	stock-master
+where
+	so-order-date = ws-date 
+	and so-territory-code = ws-terr 
+	and sol-line-type = "SN" 
+order by so-territory-code so-rep-code so-order-no stock-code 
+format is rpt
+field new-so-cust-code pic 9
+field new-so-order-date pic 9
+field new-so-territory-code pic 9
+field new-so-rep-code pic 9
+report header
+	page
+header
+	print today() in col 93
+		tod() in col 106
+		"Page No:" in col 116
+		pageno() in col 125
+	print "DAILY SALES AUDIT" in col 51 bold 
+	print
+		"For store:" in col 42 bold 
+		so-territory-code in col 53 pic x(3) bold underlined
+		"On:" in col 60 bold 
+		so-order-date in col 64 bold underlined
+	print "Rep" in col 1
+		"Cust" in col 7
+		"Order" in col 19
+		"Stock" in col 38
+		"<----- Qty ----->   " in col 96
+	print "Code" in col 1
+		"Code" in col 7
+		"No." in col 19
+		"Whse" in col 31
+		"Code" in col 38
+		"Description" in col 56
+		"Size" in col 88
+		"Ord" in col 97
+		"Ship" in col 103
+		"B/O" in col 110
+		"Tkn" in col 115
+	print
+		"==================================================================================================================================" in col 1
+	skip 1
+before so-cust-code
+	set new-so-cust-code = 1
+before so-order-date
+	set new-so-order-date = 1
+before so-territory-code
+	set new-so-territory-code = 1
+before so-rep-code
+	set new-so-rep-code = 1
+
+detail
+	if so-whse-code in { "101" "199" "301" "399" "601" "699" "841" }
+	if (new-so-rep-code)
+		print so-rep-code in col 1 no newline
+	endif
+	if (new-so-cust-code)
+		print so-cust-code in col 7 no newline
+	endif
+	print so-order-no in col 19 bold no newline
+	print so-bo-suffix in col 27 bold no newline
+	print so-whse-code in col 31 bold no newline
+	print stock-code in col 38 bold no newline
+	print stk-description in col 56 bold no newline
+	print sol-stk-unit-desc in col 88 bold no newline
+	print sol-ordered-qty in col 97 pic is z9- bold no newline
+	print sol-shipped-qty in col 103 pic is z9- bold no newline
+	print sol-backorder-qty in col 110 pic is z9- bold no newline
+	print sol-print-line in col 116 bold no newline
+	skip
+	else
+	if (new-so-rep-code)
+		print so-rep-code in col 1 no newline
+	endif
+	if (new-so-cust-code)
+		print so-cust-code in col 7 no newline
+	endif
+	print so-order-no in col 19 no newline
+	print so-bo-suffix in col 27 no newline
+	print so-whse-code in col 31 no newline
+	print stock-code in col 38 no newline
+	print stk-description in col 56 no newline
+	print sol-stk-unit-desc in col 88 no newline
+	print sol-ordered-qty in col 97 pic is z9- no newline
+	print sol-shipped-qty in col 103 pic is z9- no newline
+	print sol-backorder-qty in col 110 pic is z9- no newline
+	print sol-print-line in col 116 no newline
+	skip
+	endif
+	set new-so-cust-code = 0
+	set new-so-order-date = 0
+	set new-so-territory-code = 0
+	set new-so-rep-code = 0
+after so-cust-code
+after so-order-date
+after so-territory-code
+after so-rep-code
+report footer

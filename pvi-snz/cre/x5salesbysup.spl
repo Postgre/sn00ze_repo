@@ -1,0 +1,335 @@
+//Program		: pvi-snz/cre/x5salesbysup.spl
+//Written By	: Ranjith
+//Written on 	: 06 July 2009
+//Description 	: DELIVERED SALES BY SUPPLIER REPORT
+//
+// 15may14	rmd	{1}	upgrade to 710.3
+
+version-number "CUSTOM rc/x5salesbysup 20090702"
+
+
+//#include "../../../bms/include/rbtchproc.spl"     //{1}
+//#include "../../../bms/include/i85codes.spl"      //{1}
+#include "/pro/pronto/bms/include/rbtchproc.spl"    //{1}
+#include "/pro/pronto/bms/include/i85codes.spl" 	//{1}
+
+
+fields
+	ws-start-date					like so-actual-delivery-date
+	ws-end-date						like so-actual-delivery-date
+	ws-start-store					like so-territory-code
+	ws-end-store                    like so-territory-code
+	ws-start-supplier               like cre-accountcode
+	ws-end-supplier                 like cre-accountcode
+	ws-sales-ex-gst                 like sol-shipped-amount
+	//
+	total-sol-shipped-sales-tax-amt 	like sol-shipped-sales-tax-amt
+	total-sol-shipped-amount 			like sol-shipped-amount
+	total-ws-sales-ex-gst 				like ws-sales-ex-gst
+
+procedure main
+	//
+	get system-control first
+	//
+	set rbtchproc-report-name = "DELIVERED SALES BY SUPPLIER REPORT"
+	//
+	get system-user
+		on index user-id sys-comp-code
+		key is login-id() sys-consolidation-division
+	//
+	set ws-start-date	   = today()
+	set ws-end-date		   = today()
+	set ws-start-store	   = user-territory
+	set ws-end-store       = user-territory
+	set ws-start-supplier  = min-value(cre-accountcode)
+	set ws-end-supplier    = max-value(cre-accountcode)
+	//
+	RBTCHPROC_RUN_PROGRAM(rbtchproc-report-name)
+	do rbtchproc-report-parameters once
+endprocedure  //main ------------------------------------------------
+
+screen rbtchproc-report-parameters
+	//
+    window @1,1 to @12,80
+		title "DELIVERED SALES BY SUPPLIER REPORT"
+	allow entry
+before
+    box @1,2 to @11,79
+    	title is " "
+detail
+    accept ws-start-date @3,32
+        default ws-start-date
+        title 'Start Delivery Date:'
+        help "Enter Start Delivery Date"
+	//
+	accept ws-end-date @4,32
+        default ws-end-date
+        title 'End Delivery Date:'
+        help "Enter End Delivery Date"
+	//
+    accept ws-start-store @6,32
+        default ws-start-store
+        title 'Start Store No.:'
+        help "Enter the Start Store No. [HELP]"
+	on help-key
+	    set sys-tbl-type = "TC"
+        do i85codes-table-help
+        set ws-start-store = sys-tbl-code
+        reenter optional
+	endon
+	validations
+		get system-table lookup
+			on index sys-tbl-type sys-tbl-code
+			key is "TC" ws-start-store
+		on error
+			if ws-start-store = SPACES
+			else
+				message "Store entered is not defined."
+				reenter ws-start-store
+			endif
+		endon
+	endvalidations
+	//
+	accept ws-end-store @7,32
+        default ws-end-store
+        title 'End Store No.:'
+        help "Enter the End Store No. [HELP]"
+	on help-key
+	    set sys-tbl-type = "TC"
+        do i85codes-table-help
+        set ws-end-store = sys-tbl-code
+        reenter optional
+	endon
+	validations
+		get system-table lookup
+			on index sys-tbl-type sys-tbl-code
+			key is "TC" ws-end-store
+		on error
+			if ws-end-store = SPACES
+			else
+				message "Store entered is not defined."
+				reenter ws-end-store
+			endif
+		endon
+	endvalidations
+	//
+	accept ws-start-supplier @9,32
+        default ws-start-supplier
+        title 'Start Supplier Code:'
+        uppercase
+		help "Enter Start Supplier Code"
+	//
+    accept ws-end-supplier @10,32
+        default ws-end-supplier
+        title 'End Supplier Code:'
+        uppercase
+		help "Enter End Supplier Code"
+	//
+confirm auto
+confirmed
+   // RBTCHPROC_EXECUTION
+   	set total-sol-shipped-sales-tax-amt = 0
+	set total-sol-shipped-amount = 0
+	set total-ws-sales-ex-gst = 0
+	//
+    do rbtchproc-report-detail
+endconfirm
+endscreen //rbtchproc-report-parameters --------------------------------------
+
+procedure start-report
+	report rbtchproc-report-name
+		header
+			print-report-heading
+		depth 60
+		width 143
+		no-message
+	set ws-report-started = TRUE
+	display "Report :" @20,59 background
+	display spool-file-name() @20,68 pic x(12) foreground prompts
+endprocedure //start-report --------------------------------------------------
+
+procedure rbtchproc-set-parameters
+endprocedure //rbtchproc-set-parameters --------------------------------------
+
+procedure print-report-heading
+	print
+        "x5salesbysup" in col 1
+		"DELIVERED SALES BY SUPPLIER REPORT" in col 32
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 125
+	skip 1
+	print
+		"Rep" in col 1
+		"Rep Name" in col 5
+		"S/Order" in col 26
+		"Deliver" in col 35
+		"Store" in col 46
+		"Stock" in col 52
+		"Stock" in col 64
+		"Qty" in col 95
+		"Sales" in col 103
+		"GST" in col 114
+		"Sales" in col 124
+	print
+		"Code" in col 1
+		"Number" in col 26
+		"Date" in col 35
+		"No." in col 47
+		"Code" in col 52
+		"Description" in col 64
+		"Inc.GST" in col 102
+		"Ex.GST" in col 124
+	print "==================================================================================================================================" in col 1
+	skip 1
+endprocedure //print-report-heading ------------------------------------------
+
+procedure rbtchproc-report-detail
+local
+	new-so-rep-code 					pic 9
+	//total-sol-shipped-sales-tax-amt 	like sol-shipped-sales-tax-amt
+	sub-tot-sol-shipped-sales-tax-amt 	like sol-shipped-sales-tax-amt
+	//total-sol-shipped-amount 			like sol-shipped-amount
+	sub-tot-sol-shipped-amount 			like sol-shipped-amount
+	//total-ws-sales-ex-gst 				like ws-sales-ex-gst
+	sub-tot-ws-sales-ex-gst 			like ws-sales-ex-gst
+	new-rep-code 						pic 9
+    //
+    window @19,44 to @23,80
+        title is "Report Progress"
+        color white
+        no-hide
+    //
+    do start-report
+    page
+    //
+    if not rbtchproc-in-background
+	    display bitmap concat(getenv('BMS')'/images/repedge.gif') @19,44
+	    display 'Report :' @20,59 background right
+	    display "Now at :" @23,45 background prompts left
+    endif
+    //
+	select
+		so-order-no
+		so-bo-suffix
+		so-cust-code
+		so-actual-delivery-date
+		so-territory-code
+		so-rep-code
+		sol-line-type
+		stock-code
+		sol-shipped-sales-tax-amt
+		sol-shipped-qty
+		sol-shipped-amount
+		stk-description
+		cre-accountcode
+//		ws-sales-ex-gst = sol-shipped-amount - sol-shipped-sales-tax-amt
+		rep-code
+		rep-description
+	from
+		sales-order-archive
+		sales-order-line-archive
+		stock-master
+		stock-supplier
+		rep-master
+	where
+		sol-line-type = "SN"
+		and so-actual-delivery-date between ws-start-date and ws-end-date
+		and cre-accountcode between ws-start-supplier and ws-end-supplier
+		and so-territory-code between ws-start-store and ws-end-store
+		and stock-code not = "ZROUNDDISC"
+		and so-rep-code = rep-code
+	order by so-rep-code so-order-no
+before so-rep-code
+	set new-so-rep-code = 1
+	set sub-tot-sol-shipped-sales-tax-amt = 0
+	set sub-tot-sol-shipped-amount = 0
+	set sub-tot-ws-sales-ex-gst = 0
+detail
+	display stock-code @23,57 foreground prompts
+	//
+	set ws-sales-ex-gst = sol-shipped-amount - sol-shipped-sales-tax-amt
+	//
+	if (new-so-rep-code)
+		print so-rep-code in col 1 no newline
+		print rep-description in col 5 pic is x(20) no newline
+	endif
+	print so-order-no in col 26 no newline
+	print so-actual-delivery-date in col 35 no newline
+	print so-territory-code in col 47 no newline
+	print stock-code in col 52 pic is x(11) no newline
+	print stk-description in col 64 no newline
+	print sol-shipped-qty in col 95 pic is zz9- no newline
+	print sol-shipped-amount in col 100 pic is zz,zz9.99- no newline
+	print sol-shipped-sales-tax-amt in col 111 pic is z,zz9.99- no newline
+	print ws-sales-ex-gst in col 121 pic is zz,zz9.99- no newline
+	skip
+	set new-so-rep-code = 0
+	set total-sol-shipped-sales-tax-amt += sol-shipped-sales-tax-amt
+	set sub-tot-sol-shipped-sales-tax-amt += sol-shipped-sales-tax-amt
+	set total-sol-shipped-amount += sol-shipped-amount
+	set sub-tot-sol-shipped-amount += sol-shipped-amount
+	set total-ws-sales-ex-gst += ws-sales-ex-gst
+	set sub-tot-ws-sales-ex-gst += ws-sales-ex-gst
+	set new-rep-code = 0
+after so-rep-code
+	print
+		"----------" in col 100
+		"---------" in col 111
+		"----------" in col 121
+	print
+		"Total for :" in col 61 bold
+		so-rep-code in col 73 bold
+		rep-description in col 77 pic x(20) bold
+		sub-tot-sol-shipped-amount in col 100 pic is zz,zz9.99- bold
+		sub-tot-sol-shipped-sales-tax-amt in col 111 pic is z,zz9.99- bold
+		sub-tot-ws-sales-ex-gst in col 121 pic is zz,zz9.99- bold
+	skip
+    endselect
+        skip
+        report section finished // detail
+    //
+    do report-finished
+    RBTCHPROC_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+endprocedure //rbtchproc-report-detail ---------------------------------------
+
+procedure report-finished
+    if ws-report-started
+         report section "Finish"
+       //  page
+	   print
+			"----------" in col 100
+			"---------" in col 111
+			"----------" in col 121
+		print
+			"TOTAL" in col 92 bold
+			total-sol-shipped-amount in col 100 pic is zz,zz9.99- bold
+			total-sol-shipped-sales-tax-amt in col 111 pic is z,zz9.99- bold
+			total-ws-sales-ex-gst in col 121 pic is zz,zz9.99- bold
+		skip
+		print
+			"Report Name        :" in col 10
+			"x5salesbysup.spl" in col 31
+		skip
+		print
+			"Start Delivery Date:" in col 10
+			ws-start-date in col 31
+		print
+			"End   Delivery Date:" in col 10
+			ws-end-date in col 31
+		print
+			"Start Store No.    :" in col 10
+			ws-start-store in col 31 pic x(3)
+		print
+			"End   Store No.    :" in col 10
+			ws-end-store in col 31 pic x(3)
+		print
+			"Start Supplier Code:" in col 10
+			ws-start-supplier in col 31 pic x(5)
+		print
+			"End   Supplier Code:" in col 10
+			ws-end-supplier in col 31 pic x(5)
+         report section finished //finish
+    endif
+endprocedure //report-finished -----------------------------------------------

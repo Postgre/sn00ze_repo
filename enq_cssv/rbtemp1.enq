@@ -1,0 +1,16 @@
+select
+	cre-accountcode
+	cr-tr-date
+	cr-tr-type
+	cr-tr-batch-ref
+	cr-tr-amount
+from
+	cre-trans
+where
+	cr-tr-date between 01-sep-1998 and 30-sep-1998 
+	and cr-tr-type != 'RQ' 
+order by cre-accountcode cr-tr-date 
+format is lst
+total on cr-tr-amount
+subtotal on cr-tr-amount
+	with breaks on cre-accountcode

@@ -1,0 +1,5 @@
+update cre-master
+set
+	cr-settlement-disc-code = 'Z'
+where
+	cr-settlement-disc-code = spaces

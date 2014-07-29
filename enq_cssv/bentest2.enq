@@ -1,0 +1,13 @@
+// sr
+select
+	cre-accountcode
+	cr-tr-date
+	cr-tr-details
+	cr-tr-invoice-date
+	cr-tr-narrative
+from
+	cre-master
+	cre-trans
+	cre-trans-archive
+	cre-trans-explanations
+format is lst

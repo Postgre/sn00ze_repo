@@ -1,0 +1,22 @@
+select
+        stock-code
+	stk-description
+	ws-group = stk-user-group[2]
+	ash-whse
+	stk-creation-date
+	ws-date = input date "Enter date of Breeze product upload:"
+from
+	stock-master
+	stock-aged-sales-history
+where
+	(ws-group = 'W'
+	or
+	ws-group = 'U'
+	or
+	ws-group = 'Y')
+	and
+	stk-creation-date >= ws-date
+order by ash-whse
+format is lst
+suppress ws-date
+suppress stk-creation-date

@@ -1,0 +1,14 @@
+select
+	po-order-no
+	stock-code
+	po-item-price
+	po-received-qty
+	po-backorder-qty
+	po-received-total-amount
+	ws-inc-tax = po-received-total-amount * 1.1 
+from
+	purchase-order-line
+where
+	po-order-no = 162 
+format is lst
+total on po-received-total-amount

@@ -1,0 +1,3 @@
+delete from stock-take-variance
+where
+	whse-code = "181" 

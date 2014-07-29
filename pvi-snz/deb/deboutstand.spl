@@ -1,0 +1,1846 @@
+// deboutstand.spl
+// 14may14	rmd	{1} upgrade for 710.3
+//						tr-sort-key fix switch to trans-ref
+//						switch index accountcode tr-sort-key
+//							to accountcode trans-ref batch-ref dr-tr-trans-no
+//						suppress deb-trans-archive extract?  not used
+// 10jan14	rmd	report running 12 lines over when previewing XML then printing to Windows printer
+// 07May12	lg	Added extra lines for ***Order Older than... - added 35 days on top of 56 day existing
+// 01jul09 	rc	fix the display of rep code in the Sales Order Notes section.
+// 10jun09	rmd	HD10774 print 'true' so-order-no so-bo-suffix so xml hyperlink behaves correctly
+// 01jun09	rmd	default end rep to start (if end not already defined)
+// 29may09	rc	add ability to run by rep, or customer
+// 20feb09	rmd for each deb-trans lookup linked so, only show trans if so terr within report range
+// 22jan09	rmd display m12debexpl instead of inbuilt PD report.
+// 14nov08	rmd	display DF deb-cust-notes
+// 05nov08	rmd ignore quotations
+// 20oct08	rmd	ensure --- break does not print if so-order had no notes
+// 16oct08	rmd header for notes, --- break if more than one order involved
+//				show note date and so-rep-code
+// 14oct08	rmd show sales-order-notes under customer groups
+
+// 02may08	rmd outstanding orders by debtor account regardless of balance (ZUSR.R106)
+
+
+// determine outstanding orders
+// group together by debtor
+// display on subgrouped report
+// start with a datagrid to ensure correct data is being returned before
+// working on the layout
+
+// tmp-so-order-total-amount
+// tmp-so-order-total-shipped-amount
+// are both inc GST
+
+// 03may08	rmd	virtual 2 column output using a single all text table to store
+//				data from both trans and sales
+// 08may08	rmd	robynb noticed s/o #'s echoing across from one debtor to the next
+//				add headers and a subtotal
+//				ignore trans unless they correspond to orders returned? robyn says leave as is
+//				do NOT ignore cash accounts, show store details in header
+//
+
+// 15may08	rmd	randall asked to include customers with a non-zero account bal
+//				regardless of open orders, *** CUST. OWES MONEY ***
+//				highlight orders older than 56 days *** This order is more than 8 weeks old ***
+
+// 20may08	rmd	317 testing, received error during build-trans-list looking for deb-master using
+//				accountcode of SPACES, removed superfluous deb-master get.
+
+// 20may08	rmd	if only one store selected only show cash account for that store
+
+// 20may08	rmd	noticed $0 bal cust with no outstanding appearing in nsw
+
+// 22may08	rmd	robyn noticed non 103 customers appearing when run for store 103
+//				add customer territory to header and store code to order list for review
+//				found deb-trans listings for no relevant customers..
+
+// 23may08	rmd	set page length to 80 to suit both Pronto and Windows printing
+// 06jun08	rmd	show orders at status 80 and 83
+
+
+
+//#include "../../../../bms/include/i5sodesc.spl"
+//#include "../../../../bms/include/i85codes.spl"
+//#include "../../../../bms/include/m1enqrep.spl"						//rc 29may09
+
+#include "/pro/pronto/bms/include/i5sodesc.spl"
+#include "/pro/pronto/bms/include/i85codes.spl"
+#include "/pro/pronto/bms/include/m1enqrep.spl"
+
+
+field
+	ws-store													like so-territory-code
+	ws-store-desc												like na-company
+	ws-show-all-stores											type boolean
+	ws-start-rep-code											like rep-code	//rc 29may09
+	ws-end-rep-code												like rep-code	//rc 29may09
+
+mode md-display-trans
+	prompt "Show Trans"
+
+mode md-print-report
+	prompt "Print Report"
+
+mode md-display-virtual
+	prompt "Virtual"
+
+
+object tmp-deb-cache
+type is memory
+	record
+		tdc-accountcode											like accountcode
+		tdc-seq-max												type numeric
+		tdc-trans-warnings					                    pic x(35) //16may08
+		//*** CUST. OWES MONEY ***
+		tdc-order-warnings					                    pic x(35) //16may08
+		//*** Order is more than 8 weeks old ***
+	endrecord
+	key is tdc-accountcode unique
+
+//type is memory
+//	record
+//		tdc-accountcode											like accountcode
+//		tdc-seq-max												type numeric
+//		tdc-trans-warnings					                    pic x(35) //16may08
+//		//*** CUST. OWES MONEY ***
+//		tdc-order-warnings					                    pic x(35) //16may08
+//		//*** Order is more than 8 weeks old ***
+//	endrecord
+//	key is tdc-accountcode unique
+//
+
+object tmp-deb-outstanding
+type is memory
+	record
+		tdo-accountcode                                		  	like accountcode
+		tdo-seq													type numeric
+		tdo-so-order-no                                       	like so-order-no
+		tdo-so-bo-suffix                                      	like so-bo-suffix
+		tdo-so-order-date                                     	like so-order-date
+		tdo-so-order-status									  	like so-order-status
+		tdo-so-order-total-amount                             	like so-order-total-amount
+		tdo-so-order-total-shipped-amount                     	like so-order-total-shipped-amount
+		tdo-so-territory-code									like so-territory-code
+	endrecord
+	key is tdo-accountcode tdo-so-order-no
+	key is tdo-accountcode tdo-so-order-no tdo-so-bo-suffix
+	key is tdo-accountcode tdo-seq unique
+
+object tmp-deb-trans
+type is memory
+	record
+		tdt-accountcode											like accountcode
+		tdt-seq													type numeric
+		tdt-trans-ref                                         	like trans-ref	//tr-sort-key	//{1}
+		tdt-trans-type                                          like trans-type
+		tdt-trans-date                                          like trans-date
+		tdt-tr-details                                          like tr-details
+		tdt-tr-amount											like tr-amount
+		tdt-dr-tr-due-date	                                    like dr-tr-due-date
+	endrecord
+	key is tdt-accountcode tdt-trans-ref	//tr-sort-key	//{1}
+	key is tdt-accountcode tdt-seq unique
+
+
+object tmp-virtual-table
+type is memory
+	record
+		tvt-accountcode											like accountcode
+		tvt-seq													type numeric
+		tvt-rep-code											like rep-code		//rc 29may09
+		//tvt-data												pic x(200)
+		tvt-trans-ref                                         	like trans-ref	//tr-sort-key	//{1}
+		tvt-trans-type                                          like trans-type
+		tvt-trans-date                                          like trans-date
+		tvt-tr-details                                          like tr-details
+		//tvt-tr-amount											like tr-amount
+		tvt-tr-amount											type numeric // pic x(12)
+		tvt-so-territory-code									like so-territory-code
+		tvt-so-order-no                                       	like so-order-no
+		tvt-so-bo-suffix                                      	like so-bo-suffix
+		tvt-so-order-date                                     	like so-order-date
+		tvt-so-order-status									  	like so-order-status
+		//tvt-so-order-total-amount                             like so-order-total-amount
+		tvt-so-order-total-amount								type numeric // pic x(12)
+		tvt-trans-exist											type boolean
+		tvt-orders-exist                                        type boolean
+	endrecord
+	key is tvt-accountcode tvt-seq unique
+
+procedure main
+	get system-control first
+	do get-params
+	exit
+	//do build-order-list
+	//do build-trans-list
+	//do build-virtual-table
+	//do display-order-list
+
+endprocedure // main ----------------------------------------------------------
+
+screen get-params
+	//
+//	local field												//rc 29may09
+//		lf-error-message				pic x(80)			//rc 29may09
+//		lf-fixed-log-date				type boolean		//rc 29may09
+	//
+	//window @17,32 to @24,80
+	//window @18,32 to @23,80				//rc 29may09
+	window @18,32 to @25,80					//rc 29may09
+		//title "Sales/Amendment Report"
+		title "Customer Trans and Outstanding Orders"
+	allow
+		entry
+before
+	//box @18,32 to @22,80 title is "Enter Store Code"// and Date Range"
+	box @18,32 to @24,80 title is "Report Parameters"// and Date Range"
+	//if not ws-show-all-stores
+		display "Store         :" @19,34
+	//endif
+	//display "Start Date    :" @20,34
+	//display "End Date      :" @21,34
+	//display "Mode          :" @22,34
+
+	do determine-default-store
+		returning
+			ws-store
+detail
+	accept ws-store @19,50
+		//when not ws-show-all-stores
+		help "Enter the store you wish to report on, SPACE for ALL. [HELP]"
+		default ws-store
+		uppercase
+	on help-key
+		set sys-tbl-type = "TC"
+		do i85codes-table-help
+		if sys-tbl-code > SPACES
+			set ws-store = sys-tbl-code
+		endif
+		reenter ws-store optional
+	endon
+	validations
+		get system-table lookup
+			on index sys-tbl-type sys-tbl-code
+			key is "TC" ws-store
+		on error
+			if ws-store = SPACES
+			else
+				message "Store entered is not defined."
+				reenter ws-store
+			endif
+		endon
+	endvalidations
+	if ws-store = SPACES
+		set ws-store-desc = "All Stores"
+		set ws-show-all-stores = TRUE
+	else
+		set ws-show-all-stores = FALSE
+		get name-and-address-master
+		on index accountcode na-type
+		key is ws-store "WH"
+		on error
+			set ws-store-desc = "***"
+		else
+			set ws-store-desc = na-company
+		endon
+	endif
+
+	display ws-store-desc @20,45 background
+	//set ws-order-or-edit = "B"
+	//set ws-xml = "Y"
+	//start -----------------------------------------  //rc 29may09
+	accept ws-start-rep-code @21,50
+		title "Start Rep Code:"
+		uppercase
+		default ws-start-rep-code
+		showvalue
+	on help-key
+		do	m1enqrep-rep-review
+		set ws-start-rep-code = rep-code
+		reenter optional
+	endon
+	validation
+		if ws-start-rep-code <> SPACES
+			//01jun09 rmd
+			if ws-end-rep-code = SPACES
+				set ws-end-rep-code = ws-start-rep-code
+			endif
+			//01jun09 rmd
+			get rep-master
+			on index rep-code
+			key is ws-start-rep-code
+			on error
+				set rep-description = "Unknown"
+				display rep-description @21,57 background bold
+				message "Rep code is invald."
+				reenter
+			else
+				display rep-description @21,57 background bold
+			endon
+		else
+			set ws-start-rep-code = min-value(rep-code)
+		endif
+	endvalidation
+	//
+	accept ws-end-rep-code @22,50
+		title "End Rep Code:"
+		uppercase
+		default ws-end-rep-code
+		showvalue
+	on help-key
+		do	m1enqrep-rep-review
+		set ws-end-rep-code = rep-code
+		reenter optional
+	endon
+	validation
+		if ws-end-rep-code <> SPACES
+			get rep-master
+			on index rep-code
+			key is ws-end-rep-code
+			on error
+				set rep-description = "Unknown"
+				display rep-description @22,57 background bold
+				message "Rep code is invald."
+				reenter
+			else
+				display rep-description @22,57 background bold
+			endon
+		else
+			set ws-end-rep-code = max-value(rep-code)
+		endif
+	endvalidation
+	//end -----------------------------------------  //rc 29may09
+	confirm auto
+	confirmed
+		//RBTCHPROC_EXECUTION
+		do build-order-list
+		do add-missing-deb-with-bal-dm		//16may08
+		do build-trans-list
+		do build-virtual-table
+		do build-warnings
+		do print-report-virtual
+
+		if ws-store = SPACES
+			set ws-store = "ALL"
+		endif
+
+		open tmp-deb-cache                  truncate temporary
+		open tmp-deb-outstanding            truncate temporary
+		open tmp-deb-trans                  truncate temporary
+		open tmp-virtual-table				truncate temporary
+
+		//spl
+		//	"rmd/deb/pdoutstand"
+		//parameters
+		//	ws-store
+
+		//22jan09
+		//do build-order-list-pd
+		//do add-missing-deb-with-bal-dm-pd		//16may08
+		//do build-trans-list-pd
+		//do build-virtual-table-pd
+		//do build-warnings-pd
+		//do print-report-virtual-pd
+		spl
+			"deb/m12debexpl"
+		exit
+		//22jan09
+
+	endconfirm
+endscreen // rbtchproc-report-parameters --------------------------------------
+
+procedure build-warnings
+	extract tmp-deb-cache lock
+	detail
+		set tdc-trans-warnings = SPACES //"++"
+		set tdc-order-warnings = SPACES //"++"
+		update tmp-deb-cache
+		get deb-master
+		on index accountcode
+		key is tdc-accountcode
+
+		// 20may08
+		//if balance > 0
+		//	set tdc-trans-warnings = "*** CUSTOMER OWES MONEY ***"
+		//	//message accountcode
+		//	update tmp-deb-cache
+		//endif
+		if balance + future-bal > 0
+			set tdc-trans-warnings = "*** CUSTOMER OWES MONEY ***"
+			//message accountcode
+			update tmp-deb-cache
+		endif
+		extract sales-order
+		on index so-cust-code so-order-no so-bo-suffix
+		key is tdc-accountcode 0 SPACES
+		next same so-cust-code
+		detail
+			if so-order-date < today - 56
+				// 06jun08 show ready to update
+				//if so-order-status in {"80" "90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+				if so-order-status in {"90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+				else
+					if ws-show-all-stores or ws-store = so-territory-code
+						set tdc-order-warnings = "WARNING MORE THAN 8 WEEKS OLD!"
+					endif
+				endif
+
+				update tmp-deb-cache
+			elseif	so-order-date < today - 35
+                                // 06jun08 show ready to update
+                                //if so-order-status in {"80" "90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+                                if so-order-status in {"90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+                                else
+                                        if ws-show-all-stores or ws-store = so-territory-code
+                                                set tdc-order-warnings = "*** ORDER MORE THAN 5 WEEKS OLD ***"
+                                        endif
+                                endif
+
+                                update tmp-deb-cache
+                        endif
+
+		endextract
+	endextract
+endprocedure // build-warnings ----------------------------------------------
+
+procedure build-order-list
+	open tmp-deb-cache truncate temporary
+	open tmp-deb-outstanding truncate temporary
+	extract sales-order
+	on index so-cust-code so-order-no so-bo-suffix
+	detail
+		get deb-master
+			on index accountcode
+			key is so-cust-code
+		on error		//{1}
+			continue	//{1}
+		endon
+		// should we ignore this order
+		// 06jun08 show ready to update
+		//if so-order-status in {"80" "90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+		if so-order-status in {"90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+			continue
+		endif
+		// 05nov08 ignore quotations
+		if so-order-status in {"02"}
+			continue
+		endif
+		if ws-show-all-stores
+			// show regardless of store
+		else
+			if ws-store != so-territory-code
+				continue
+			endif
+		endif
+		get tmp-deb-cache
+		on index tdc-accountcode
+		key is so-cust-code
+		on error
+			set tdc-accountcode                   		= so-cust-code
+			set tdc-seq-max								= 1
+			//set tdc-order-warnings					= SPACES
+			//set tdc-trans-warnings					= SPACES
+			insert tmp-deb-cache
+		else
+			set tdc-seq-max 						+= 1
+			update tmp-deb-cache
+		endon
+		set tdo-accountcode                   		= so-cust-code
+		set tdo-seq									= tdc-seq-max
+		set tdo-so-order-no                   		= so-order-no
+		set tdo-so-bo-suffix                  		= so-bo-suffix
+		set tdo-so-order-date                 		= so-order-date
+		set tdo-so-order-status						= so-order-status
+		set tdo-so-order-total-amount         		= so-order-total-amount
+		set tdo-so-order-total-shipped-amount 		= so-order-total-shipped-amount
+		set tdo-so-territory-code					= so-territory-code
+		insert tmp-deb-outstanding
+		//if tdo-so-order-date < today - 56
+		//	set tdc-order-warnings = "*** Order more than 8 weeks old ***"
+		//endif
+		update tmp-deb-cache
+	endextract
+endprocedure // build-order-list ----------------------------------------------
+
+procedure add-missing-deb-with-bal-dm
+	extract deb-master
+	on index accountcode
+	detail
+		if substring(accountcode,1,3) in {"ZCS"}
+			continue
+		endif
+
+		if substring(accountcode,1,5) in {"ZAMEX" "ZDINE" "ZCERT" "ZCCAR" "ZGEFI" "ZGECA" "ZEFTP"}
+			continue
+		endif
+		// 20may05
+		//if balance = 0 // < 0.01 now showing accounts in credit as well
+		if balance + future-bal = 0
+			continue
+		endif
+		// 20may08
+		// test for Cash accounts, only show if required
+		// 22may08 test for customers of this store
+		//get deb-master
+		//on index accountcode
+		//key is accountcode
+
+		if ws-show-all-stores
+			// show regardless of store
+		else
+			if accountcode = territory // this is a cash account
+				if ws-store != accountcode
+					continue
+				endif
+			endif
+			// skip if not a customer of this store
+			if ws-store != territory
+				continue
+			endif
+		endif
+		get tmp-deb-cache
+		on index tdc-accountcode
+		key is accountcode
+		on error
+			set tdc-accountcode                   	= accountcode
+			set tdc-seq-max							= 1
+			//set tdc-order-warnings					= SPACES
+			//set tdc-trans-warnings					= SPACES
+			//if balance > 0
+			//	set tdc-trans-warnings = "*** CUSTOMER OWES MONEY ***"
+			//endif
+			insert tmp-deb-cache
+		endon
+	endextract
+endprocedure // add-missing-deb-with-bal-dm -----------------------------------
+
+/*
+procedure add-missing-deb-with-bal-dt
+	extract deb-trans
+	on index accountcode trans-ref	//tr-sort-key	//{1}
+	detail
+		if substring(accountcode,1,3) in {"ZCS"}
+			continue
+		endif
+
+		if substring(accountcode,1,5) in {"ZAMEX" "ZDINE"}
+			continue
+		endif
+		// 22may08
+		get deb-master
+		on index accountcode
+		key is accountcode
+
+
+		if ws-show-all-stores
+			// show regardless of store
+		else
+			//22feb09
+			//// skip if not a customer of this store
+			//if ws-store != territory
+			//	continue
+			//endif
+			// skip if payment not for an order of this store
+			get sales-order
+			on index so-order-no so-bo-suffix
+			key is dr-tr-order-no dr-tr-bo-suffix
+			on error
+				// #| we want to see this if no linked so exists, need to expose these transactions
+			else
+				if so-territory-code != ws-store
+					continue
+				endif
+			endon
+			//22feb09
+		endif
+
+
+
+		get tmp-deb-cache
+		on index tdc-accountcode
+		key is accountcode
+		on error
+			set tdc-accountcode                   	= accountcode
+			set tdc-seq-max							= 1
+			insert tmp-deb-cache
+		endon
+	endextract
+endprocedure // add-missing-deb-with-bal-dt -----------------------------------
+*/
+
+procedure build-trans-list
+local field
+	lf-rec-count					type numeric
+
+	open tmp-deb-trans truncate temporary
+
+	extract tmp-deb-cache
+	detail
+		set lf-rec-count = 0
+		extract deb-trans
+		//on index accountcode tr-sort-key						//{1}
+		on index accountcode trans-ref batch-ref dr-tr-trans-no	//{1}
+		key is tdc-accountcode SPACES SPACES 0
+		next same accountcode
+		detail
+			// 20may08
+			if accountcode = SPACES
+				message concat("Accountcode = SPACES: " trans-ref)		//tr-sort-key)	//{1}
+				continue
+			endif
+			// ignore this transaction?
+			//get
+			// on index tdo-accountcode tdo-so-order-no tdo-so-bo-suffix
+
+			// 22feb09
+			if ws-show-all-stores
+				// show regardless of store
+			else
+				get sales-order
+				on index so-order-no so-bo-suffix
+				key is dr-tr-order-no dr-tr-bo-suffix
+				on error
+					// #| we want to see this if no linked so exists, need to expose these transactions
+				else
+					if so-territory-code != ws-store
+						continue
+					endif
+				endon
+			endif
+			//22feb09
+			set lf-rec-count 		+= 1
+			set tdt-accountcode		= accountcode
+			set tdt-seq				= lf-rec-count
+			set tdt-trans-ref     	= trans-ref	//tr-sort-key	//{1}
+			set tdt-trans-type      = trans-type
+			set tdt-trans-date      = trans-date
+			set tdt-tr-details      = tr-details
+			set tdt-tr-amount		= tr-amount
+			set tdt-dr-tr-due-date	= dr-tr-due-date
+			insert tmp-deb-trans
+		endextract
+		set tdc-seq-max			= lf-rec-count
+		// 20may08
+		//get deb-master
+		//on index accountcode
+		//key is tdt-accountcode
+		update tmp-deb-cache
+	endextract
+endprocedure // build-trans-list ----------------------------------------------
+
+procedure build-virtual-table
+	open tmp-virtual-table truncate temporary
+	extract tmp-deb-cache
+	detail
+		set tvt-trans-exist  = FALSE
+		set tvt-orders-exist = FALSE
+		extract tmp-deb-trans
+		on index tdt-accountcode tdt-seq
+		key is tdc-accountcode 0
+		next same tdt-accountcode
+		detail
+			// 08may08
+			initialise tmp-virtual-table
+			set tvt-accountcode 	= tdt-accountcode
+			set tvt-seq				= tdt-seq
+			//start -----------------------------------------  //rc 29may09
+			get deb-master
+				on index accountcode
+				key is tdt-accountcode
+			on error
+				set tvt-rep-code = "***"
+			else
+				set tvt-rep-code = rep-code
+			endon
+			//end  -----------------------------------------  //rc 29may09
+			//set tvt-data 			= concat(tdt-tr-sort-key " " tdt-trans-type " " julian2date(tdt-trans-date) " " tdt-tr-details " " str(tdt-tr-amount) "   ---")
+			//message strlen(tvt-data)
+			//message strlen(strconcat(tvt-data))
+			set tvt-trans-ref     	= tdt-trans-ref	//tr-sort-key	//{1}
+			set tvt-trans-type      = tdt-trans-type
+			set tvt-trans-date      = tdt-trans-date
+			set tvt-tr-details      = tdt-tr-details
+			set tvt-tr-amount		= tdt-tr-amount // str(tdt-tr-amount) // fstr(tdt-tr-amount,8,2)
+			set tvt-trans-exist  	= TRUE
+			insert tmp-virtual-table
+		endextract
+		extract tmp-deb-outstanding
+		on index tdo-accountcode tdo-seq
+		key is tdc-accountcode 0
+		next same tdo-accountcode
+		detail
+			set so-order-status = tdo-so-order-status
+			do i5sodesc-get-status-desc
+			get tmp-virtual-table
+			on index tvt-accountcode tvt-seq
+			key is tdo-accountcode tdo-seq
+			on error
+				// there is NO trans record here, initialise to ensure last record doesn't hang over
+				initialise tmp-virtual-table
+				set tvt-accountcode 			= tdo-accountcode
+				set tvt-seq						= tdo-seq
+				//start -----------------------------------------  //rc 29may09
+				get deb-master
+					on index accountcode
+					key is tdt-accountcode
+				on error
+					set tvt-rep-code = "***"
+				else
+					set tvt-rep-code = rep-code
+				endon
+				//end  -----------------------------------------  //rc 29may09
+				//set tvt-data 					= concat(81" " str(tdo-so-order-no) " " julian2date(tdo-so-order-date) " " i5sodesc-so-status-desc-short " " str(tdo-so-order-total-amount))
+				set tvt-so-territory-code		= tdo-so-territory-code
+				set tvt-so-order-no             = tdo-so-order-no
+				set tvt-so-bo-suffix            = tdo-so-bo-suffix
+				set tvt-so-order-date           = tdo-so-order-date
+				set tvt-so-order-status		    = tdo-so-order-status
+				set tvt-so-order-total-amount   = tdo-so-order-total-amount // fstr(tdo-so-order-total-amount,8,2)
+				set tvt-orders-exist			= TRUE
+				insert tmp-virtual-table
+			else
+				//set tvt-accountcode 	= tdo-accountcode
+				//set tvt-seq				= tdo-seq
+				//set tvt-data 			= concat(substring(tvt-data,1,100) str(tdo-so-order-no) " " julian2date(tdo-so-order-date) " " i5sodesc-so-status-desc-short " " str(tdo-so-order-total-amount))
+				set tvt-so-territory-code		= tdo-so-territory-code
+				set tvt-so-order-no             = tdo-so-order-no
+				set tvt-so-bo-suffix            = tdo-so-bo-suffix
+				set tvt-so-order-date           = tdo-so-order-date
+				set tvt-so-order-status		    = tdo-so-order-status
+				set tvt-so-order-total-amount   = tdo-so-order-total-amount // fstr(tdo-so-order-total-amount,8,2)
+				set tvt-orders-exist			= TRUE
+				update tmp-virtual-table
+			endon
+		endextract
+	endextract
+endprocedure // build-virtual-table -------------------------------------------
+screen display-order-list
+	window @1,1 to @24,90
+		title concat("Outstanding Orders: ")
+		primary tmp-deb-outstanding
+		datagrid occurs 20
+	allowed search md-display-trans md-print-report md-display-virtual
+	review-from-start
+detail
+		display tdo-accountcode              @1,02 title is "Account"
+		display tdo-so-order-no              @1,04 title is "SO"
+		display tdo-so-bo-suffix             @1,06 title is "Suff"
+		display tdo-so-order-date            @1,08 title is "Date"
+		display tdo-so-order-total-amount    @1,10 title is "Amount"
+	confirm auto
+	confirmed
+		if screen-mode() = md-display-trans
+			do display-trans-list
+		 elseif screen-mode() = md-print-report
+			do print-report-virtual
+		 elseif screen-mode() = md-display-virtual
+		 	do display-virtual-list
+		endif
+	endconfirm
+endscreen // display-order-list -----------------------------------------------
+
+screen display-trans-list
+	window @1,1 to @24,90
+		title concat("Debtor Transactions")
+		primary tmp-deb-trans
+		datagrid occurs 20
+	allowed search
+	review-from-start
+detail
+		display tdt-accountcode    	@1,02 title is "Account"
+		display tdt-trans-ref    	@1,04 title is "Trans Ref"	//"Sort Key"	//{1}
+		display tdt-trans-type     	@1,06 title is "Type"
+		display tdt-trans-date     	@1,08 title is "Date"
+		display tdt-tr-details     	@1,10 title is "Details"
+		display tdt-tr-amount		@1,12 title is "Amount"
+	confirm auto
+	confirmed
+		//if screen-mode() = md-display-trans
+		//	do display-trans-list
+		//endif
+	endconfirm
+endscreen // display-trans-list -----------------------------------------------
+
+screen display-virtual-list
+	window @1,1 to @24,90
+		title concat("Virtual List")
+		primary tmp-virtual-table
+		datagrid occurs 20
+	allowed search
+	review-from-start
+detail
+		display tvt-accountcode    	@1,02 title is "Account"
+		display tvt-seq		    	@1,04 title is "Seq"
+		//display tvt-data			@1,06 title is "Type"
+		display tvt-trans-ref             	@1,10 title is "Trans Ref"	//"Sort Key"
+		display tvt-trans-type              @1,12 title is "Trans Type"
+		display tvt-trans-date              @1,14 title is "Trans Date"
+		display tvt-tr-details              @1,16 title is "Trans Details"
+		display tvt-tr-amount			    @1,18 title is "Trans Amount" pic ----------.zz
+		display tvt-so-order-no             @1,20 title is "Order #"
+		//display tvt-so-bo-suffix            @1,10 title is ""
+		display tvt-so-order-date           @1,22 title is "Order Date"
+		display tvt-so-order-status		    @1,24 title is "Status"
+		display tvt-so-order-total-amount	@1,26 title is "Order Amount" pic ----------.zz
+
+	confirm auto
+	confirmed
+		//if screen-mode() = md-display-trans
+		//	do display-trans-list
+		//endif
+	endconfirm
+endscreen // display-trans-list -----------------------------------------------
+
+
+
+procedure print-report-virtual
+local field
+	st-tr-amount						like tr-amount
+	st-so-order-total-amount			like so-order-total-amount
+	lf-balance							like so-order-total-amount
+	gt-tr-amount						like tr-amount
+	gt-so-order-total-amount			like so-order-total-amount
+	gt-balance							like so-order-total-amount
+	lf-notes-header						pic x(20)
+	lf-show-notes-footer				type boolean //20oct08
+	i									type numeric
+	report "Customer Outstanding Orders"
+	length 80 // 105
+	depth  80 // 105
+	header is top-of-page
+	page
+	extract tmp-virtual-table
+		where tvt-rep-code between ws-start-rep-code and ws-end-rep-code  	//rc 29may09
+	before tvt-accountcode
+		get tmp-deb-cache
+		on index tdc-accountcode
+		key is tvt-accountcode
+		//need 6 lines
+		if tdc-seq-max > 100
+			set tdc-seq-max = 0
+		endif
+		need tdc-seq-max + 6 lines
+		set st-tr-amount = 0
+		set st-so-order-total-amount = 0
+		get deb-master
+		on index accountcode
+		key is tvt-accountcode
+			//start ----------------------------------------- //rc 29may09
+			get rep-master
+				on index rep-code
+				key is rep-code
+			on error
+			endon
+			//end -------------------------------------------- //rc 29may09
+		print
+			125"="
+		print
+			tvt-accountcode bold
+			shortname		bold
+			//tdc-seq-max		bold
+			//"any thing else here?"
+			"Terr:"
+			territory
+			"Rep Code:"									//rc 29may09
+			rep-code									//rc 29may09
+			rep-description								//rc 29may09
+		//print
+		//	60"-"
+		if tvt-trans-exist or st-tr-amount != 0
+			print
+				"Customer Transactions:" 	in col 08 bold
+			no-new-line
+		endif
+
+		if tvt-orders-exist //or st-so-amount != 0
+			print
+				"Outstanding Orders:"		in col 65 bold
+		else
+			if tvt-trans-exist or st-tr-amount != 0
+				skip
+			endif
+		endif
+	detail
+		//need 7 lines
+		if num(tvt-so-order-status) > 0
+			set so-order-status = tvt-so-order-status
+			do i5sodesc-get-status-desc
+		else
+			set i5sodesc-so-status-desc-short = SPACES
+		endif
+		// 10jun09
+		get sales-order
+			on index so-order-no so-bo-suffix
+			key is tvt-so-order-no tvt-so-bo-suffix
+		on error
+			get sales-order-archive
+				on index so-order-no so-bo-suffix
+				key is tvt-so-order-no tvt-so-bo-suffix
+			on error
+				initialise sales-order-archive
+			endon
+		endon
+		// 10jun09
+		print
+			tvt-trans-date					in col 08
+			tvt-trans-type					in col 20
+			tvt-trans-ref					in col 25
+			tvt-tr-details					in col 35 pic x(9)
+			tvt-tr-amount					in col 45 pic --------.zz
+			//
+			tvt-so-territory-code			in col 59
+			tvt-so-order-date				in col 65
+			//tvt-so-order-no					in col 77 pic zzzzzzzz	// 10jun09
+			//tvt-so-bo-suffix				in col 85 pic x				// 10jun09
+			so-order-no						in col 77 pic zzzzzzzz		// 10jun09
+			so-bo-suffix					in col 85 pic x				// 10jun09
+			i5sodesc-so-status-desc-short   in col 87
+			tvt-so-order-total-amount		in col 115 pic --------.zz
+
+		set st-tr-amount 						+= tvt-tr-amount
+		set st-so-order-total-amount 			+= tvt-so-order-total-amount
+		set gt-tr-amount						+= tvt-tr-amount
+		set gt-so-order-total-amount			+= tvt-so-order-total-amount
+	after tvt-accountcode
+		set lf-balance = st-so-order-total-amount + st-tr-amount
+		if tvt-trans-exist or st-tr-amount != 0 // odd occasions when only 1 trans tvt-trans-exist = FALSE and this section did not print
+			print
+				"Transaction Total:" 			in col 25 bold
+				st-tr-amount					in col 45 bold pic -------9.99
+				no-new-line
+		endif
+		if tvt-orders-exist or st-so-order-total-amount != 0
+			print
+				"Order Total:"					in col 102 bold
+				st-so-order-total-amount		in col 115 bold pic -------9.99
+		endif
+		//print
+		//	"------------------------" in col 35
+		print
+			"Balance:"						in col 106 bold
+			lf-balance						in col 115 bold pic -------9.99
+
+		//print
+		//	"------------------------" in col 35
+		print
+			//"--"							in col 01  bold
+			tdc-trans-warnings				in col 08  bold
+			tdc-order-warnings				in col 65  bold
+		skip
+
+		set lf-notes-header = SPACES
+		// 14oct08
+		// print sales-order-notes if found
+		extract sales-order
+		on index so-cust-code so-order-no so-bo-suffix
+		key is tvt-accountcode 0 SPACES
+		next same so-cust-code
+		detail
+			// should we ignore this order
+			// 06jun08 show ready to update
+			//if so-order-status in {"80" "90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+			if so-order-status in {"90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+				continue
+			endif
+
+			// 05nov08 ignore quotations
+			if so-order-status in {"02"}
+				continue
+			endif
+
+			if ws-show-all-stores
+				// show regardless of store
+			else
+				if ws-store != so-territory-code
+					continue
+				endif
+			endif
+			// test notes
+
+
+			// get notes 16oct08
+			//extract sales-order-notes
+			//on index so-order-no so-bo-suffix so-note-type so-user-code so-note-sequence-no
+			//key is so-order-no so-bo-suffix SPACES SPACES 0
+			//next same so-order-no so-bo-suffix
+			// 20oct08 use select to only visit the note types we need avoiding false footer ---- lines being printed
+			select * from sales-order-notes
+			where so-order-no = :so-order-no and so-bo-suffix = :so-bo-suffix
+			and so-note-type not in {"~"} and so-note-sequence-no != 0
+			detail
+				//if so-note-type in {"~"} // notes for system use, ignore
+				//	continue
+				//endif
+				if strlen(lf-notes-header) > 0
+
+				else
+					set lf-notes-header = "Sales Order Notes:"
+					print
+						lf-notes-header						in col 08	bold
+					print
+						"Order"								in col 08	bold
+						//start --------------------------------------------- //rc 01jul09
+// 						"Rep"								in col 15	bold
+// 						"    Date   "						in col 20	bold
+// 						"Note"								in col 32	bold
+						"Rep"								in col 16	bold
+						"Date"								in col 30	bold
+						"Note"								in col 45	bold
+						//end ----------------------------------------------- //rc 01jul09
+					//20oct08 reset footer trigger
+					set lf-show-notes-footer = FALSE
+
+				endif
+				//if so-note-sequence-no = 0
+				//	continue
+				//endif
+				if strlen(lf-notes-header) > 0
+					set lf-show-notes-footer = TRUE
+					print
+						concat(str(so-order-no) so-bo-suffix)  in col 08 	//bold
+						//so-note-sequence-no								//	bold
+						//":"                                               //  bold
+						//start --------------------------------------------- //rc 01jul09
+						//so-rep-code									//bold
+						//so-note-date                                        //bold
+						//so-note-text                                        //bold
+						strconcat(so-user-code)				in col 16
+						so-note-date                        in col 30
+						so-note-text                        in col 45
+						//end ----------------------------------------------- //rc 01jul09
+				endif
+
+				after so-order-no so-bo-suffix
+					if lf-show-notes-footer = TRUE
+						print
+							"---------------------------------------------------------------" in col 08
+					endif
+			//endextract
+			endselect
+		endextract
+		// 14oct08
+		// 14nov08
+		// display DF deb-cust-notes if found
+		set i = 0
+		extract deb-cust-notes
+		on index accountcode dcn-type dcn-seq-no
+		key is tvt-accountcode "DF" 0
+		next same accountcode dcn-type
+		detail
+			if i = 0
+				print
+					"Customer Notes:" in col 08 bold
+				print
+					"Login ID"							in col 08	bold
+					//"Rep"								in col 15	bold
+					"    Date   "						in col 20	bold
+					"Note"								in col 32	bold
+			endif
+			 print
+				substring(dcn-login-id,1,11) in col 08
+				dcn-entry-date
+				dcn-text
+			set i += 1
+		endextract
+		if i > 0
+			print
+				"---------------------------------------------------------------" in col 08
+		endif
+		// 14nov08
+	endextract
+		skip 2
+		print
+			125"="
+
+		//skip 2
+
+		//print
+			//  125"="
+
+		set gt-balance = gt-so-order-total-amount + gt-tr-amount
+		print
+			"Transaction Grand Total:" 		in col 19 bold
+			gt-tr-amount					in col 45 bold pic -------9.99
+			no-new-line
+
+		print
+			"Order Grand Total:"			in col 96 bold
+			gt-so-order-total-amount		in col 115 bold pic -------9.99
+		print
+			"Balance:"						in col 106 bold
+			gt-balance						in col 115 bold pic -------9.99
+		print
+			125"="
+		skip 4
+		if ws-show-all-stores
+			print
+				"Store:"
+				"All Stores"
+		else
+			print
+				"Store:"
+				ws-store
+		endif
+		print
+			"User:"
+			login-id()
+	//ws-show-all-stores
+	report finished
+endprocedure // print-report-virtual ------------------------------------------
+
+procedure print-report
+local field
+	st-tr-amount						like tr-amount
+	st-so-order-total-amount			like so-order-total-amount
+	lf-balance							like so-order-total-amount
+
+	report "Customer Outstanding Orders"
+	//length 150
+	header is top-of-page
+	page
+	extract tmp-deb-cache
+	detail
+		need 7 lines
+		set st-tr-amount = 0
+		set st-so-order-total-amount = 0
+		get deb-master
+		on index accountcode
+		key is tdc-accountcode
+		print
+			tdc-accountcode bold
+			shortname		bold
+			//"any thing else here?"
+		//print
+		//	60"-"
+		print
+			"Customer Transactions:" bold
+		extract tmp-deb-trans
+		on index tdt-accountcode tdt-trans-ref
+		key is tdc-accountcode SPACES
+		next same tdt-accountcode
+		detail
+			set st-tr-amount += tdt-tr-amount
+			print
+				tdt-trans-date  			in col 4
+				tdt-trans-type
+				tdt-trans-ref
+				substring(tdt-tr-details,1,15)
+				tdt-tr-amount				in col 44
+		endextract
+		print
+			"Transaction Totals:" 			in col 24 bold
+			st-tr-amount					in col 44 bold
+		//skip 1
+		print
+			"Outstanding Sales Orders" bold
+		extract tmp-deb-outstanding
+		on index tdo-accountcode tdo-so-order-no tdo-so-bo-suffix
+		key is tdc-accountcode 0 SPACES
+		next same tdo-accountcode
+		detail
+			set so-order-status = tdo-so-order-status
+			do i5sodesc-get-status-desc
+			set st-so-order-total-amount += tdo-so-order-total-amount
+			print
+				tdo-so-order-date			in col 4
+				tdo-so-order-no
+				i5sodesc-so-status-desc-short
+				tdo-so-order-total-amount  	in col 44
+		endextract
+
+		set lf-balance = st-so-order-total-amount + st-tr-amount
+		print
+			"Order Total:"					in col 31
+			st-so-order-total-amount		in col 44
+		//print
+		//	"------------------------" in col 35
+		print
+			"Balance:"						in col 35 bold
+			lf-balance						in col 44 bold //3 pic --------9.99
+		//print
+		//	"------------------------" in col 35
+		skip
+
+	endextract
+	report finished
+endprocedure // print-report --------------------------------------------------
+
+procedure top-of-page
+	print
+		company-name col 1 SCALE 200 BOLD
+		//today() col 95
+		//tod() col 107
+		//"Prepared:" in col 61
+
+		//"by" in col 89
+		//login-id() in col 92
+		"CUSTOMER TRANSACTIONS AND OUTSTANDING" col 39 bold
+		today() in col 99
+		tod() in col 111 pic HH:MM
+		"Page :" col 117
+		left-justify(str(page-no())) col 124
+		//no-new-line
+
+	if ws-show-all-stores
+		print
+			//"Store:"
+			"All Stores"
+			"ORDERS AS AT:" 								col 45 	bold
+			today()													bold
+	else
+		print
+			//"Store:"
+			ws-store
+			ws-store-desc
+			//"CUSTOMER TRANSACTIONS AND OUTSTANDING" col 39 bold
+			//today() in col 108
+			//tod() in col 120 pic HH:MM
+			"ORDERS AS AT:" 								col 45 	bold
+			today()													bold
+
+	endif
+
+	skip 1
+
+
+	//	print
+	//		strconcat("Customer Outstanding Orders") in col 1 font 15 bold // scale 200 bold
+
+		print
+			"Acct"							in col 1           	bold
+			"Trans"							in col 8           	bold
+			"Trans"							in col 21          	bold
+			"Trans"							in col 28          	bold
+			"Trans"							in col 35          	bold
+			"Trans"							in col 51          	bold
+
+			"Store"							in col 59		   	bold
+			"Order"							in col 65          	bold
+			"Order"							in col 80          	bold
+			"Order"							in col 87          	bold
+			"Order"							in col 121         	bold
+
+
+		print
+			"Code"							in col 1           	bold
+			"Date"							in col 8           	bold
+			"Type"							in col 21          	bold
+			"Ref"							in col 28          	bold
+			"Details"						in col 35          	bold
+			"Amount"						in col 50          	bold
+
+			"Code"							in col 59			bold
+			"Date"							in col 65          	bold
+			"Number"						in col 79          	bold
+			"Status"						in col 87          	bold
+			"Amount"						in col 120         	bold
+
+		//print
+        //
+		//	"Time"							in col ws-col-1     bold  	// underline bold
+		//	"Order"							in col ws-col-2 + 3 bold  	// underline bold
+		//	//"Delivery"					in col ws-col-3     bold  	// underline bold
+		//	"Customer"						in col ws-col-4     bold  	// underline bold
+		//	"Phone #"						in col ws-col-5     bold  	// underline bold
+		//	"Address"						in col ws-col-6 	bold	// underline bold
+		//	"Balance"						in col ws-col-7	+ 1	bold  	// underline bold
+
+endprocedure // top-of-page ---------------------------------------------------
+
+procedure determine-default-store
+	returning
+		lr-default-store				like so-territory-code
+	//
+	local field
+		lf-record-count					pic 9
+	//
+	set lf-record-count = ZERO
+	select *
+	from
+		system-table
+	order by
+		sys-tbl-type
+		sys-tbl-code
+	when
+		sys-tbl-type = "TC"
+	detail
+		set lf-record-count += 1
+		set lr-default-store = sys-tbl-code
+		if lf-record-count > 1
+			set lr-default-store = SPACES
+			break
+		endif
+	endselect
+endprocedure // determine-default-store ---------------------------------------
+
+
+
+
+
+
+
+
+// pdoutstand procedures
+
+procedure build-warnings-pd
+	extract tmp-deb-cache lock
+	detail
+		set tdc-trans-warnings = SPACES //"++"
+		set tdc-order-warnings = SPACES //"++"
+		update tmp-deb-cache
+		get deb-master
+		on index accountcode
+		key is tdc-accountcode
+		// 20may08
+		//if balance > 0
+		//	set tdc-trans-warnings = "*** CUSTOMER OWES MONEY ***"
+		//	//message accountcode
+		//	update tmp-deb-cache
+		//endif
+		if balance + future-bal > 0
+			//set tdc-trans-warnings = "*** CUSTOMER OWES MONEY ***"
+			//message accountcode
+			update tmp-deb-cache
+		endif
+		extract sales-order
+		on index so-cust-code so-order-no so-bo-suffix
+		key is tdc-accountcode 0 SPACES
+		next same so-cust-code
+		detail
+			if so-order-date < today - 56
+				// 06jun08 show ready to update
+				//if so-order-status in {"80" "90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+				if so-order-status in {"90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+				else
+					if ws-show-all-stores or ws-store = so-territory-code
+						set tdc-order-warnings = "*** ORDER MORE THAN 8 WEEKS OLD ***"
+					endif
+				endif
+
+				update tmp-deb-cache
+			endif
+		endextract
+	endextract
+endprocedure // build-warnings-pd ---------------------------------------------
+
+/*
+procedure build-order-list-pd
+	open tmp-deb-cache truncate temporary
+	open tmp-deb-outstanding truncate temporary
+
+	extract sales-order
+	on index so-cust-code so-order-no so-bo-suffix
+	detail
+		get deb-master
+		on index accountcode
+		key is so-cust-code
+
+		if dr-cust-type != "P"
+			continue
+		endif
+
+		//if substring(accountcode,1,1) != "Z"
+		//	continue
+		//endif
+
+
+		// should we ignore this order
+		// 06jun08 show ready to update
+		//if so-order-status in {"80" "90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+		if so-order-status in {"90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
+			continue
+		endif
+		if ws-show-all-stores
+			// show regardless of store
+		else
+			if ws-store != so-territory-code
+				continue
+			endif
+		endif
+		get tmp-deb-cache
+		on index tdc-accountcode
+		key is so-cust-code
+		on error
+			set tdc-accountcode                   	= so-cust-code
+			set tdc-seq-max							= 1
+			//set tdc-order-warnings					= SPACES
+			//set tdc-trans-warnings					= SPACES
+			insert tmp-deb-cache
+		else
+			set tdc-seq-max 						+= 1
+			update tmp-deb-cache
+		endon
+
+		set tdo-accountcode                   		= so-cust-code
+		set tdo-seq									= tdc-seq-max
+		set tdo-so-order-no                   		= so-order-no
+		set tdo-so-bo-suffix                  		= so-bo-suffix
+		set tdo-so-order-date                 		= so-order-date
+		set tdo-so-order-status						= so-order-status
+		set tdo-so-order-total-amount         		= so-order-total-amount
+		set tdo-so-order-total-shipped-amount 		= so-order-total-shipped-amount
+		set tdo-so-territory-code					= so-territory-code
+		insert tmp-deb-outstanding
+
+		//if tdo-so-order-date < today - 56
+		//	set tdc-order-warnings = "*** Order more than 8 weeks old ***"
+		//endif
+		update tmp-deb-cache
+	endextract
+
+endprocedure // build-order-list-pd -------------------------------------------
+*/
+
+procedure add-missing-deb-with-bal-dm-pd
+	extract deb-master
+	on index accountcode
+	detail
+		//if substring(accountcode,1,3) in {"ZCS"}
+		//	continue
+		//endif
+        //
+		//if substring(accountcode,1,5) in {"ZAMEX" "ZDINE" "ZCERT" "ZCCAR" "ZGEFI" "ZGECA" "ZEFTP"}
+		//	continue
+		//endif
+		if dr-cust-type != "P"
+			continue
+		endif
+
+		//if substring(accountcode,1,1) != "Z"
+		//	continue
+		//endif
+
+			 //
+		// 20may05
+		//if balance = 0 // < 0.01 now showing accounts in credit as well
+		if balance + future-bal = 0
+			continue
+		endif
+		// 20may08
+		// test for Cash accounts, only show if required
+		// 22may08 test for customers of this store
+		//get deb-master
+		//on index accountcode
+		//key is accountcode
+
+		if ws-show-all-stores
+			// show regardless of store
+		else
+			if accountcode = territory // this is a cash account
+				if ws-store != accountcode
+					continue
+				endif
+			endif
+			// skip if not a customer of this store
+			if ws-store != territory
+				continue
+			endif
+		endif
+		get tmp-deb-cache
+		on index tdc-accountcode
+		key is accountcode
+		on error
+			set tdc-accountcode                   	= accountcode
+			set tdc-seq-max							= 1
+			//set tdc-order-warnings					= SPACES
+			//set tdc-trans-warnings					= SPACES
+			//if balance > 0
+			//	set tdc-trans-warnings = "*** CUSTOMER OWES MONEY ***"
+			//endif
+			insert tmp-deb-cache
+		endon
+	endextract
+endprocedure // add-missing-deb-with-bal-dm-pd --------------------------------
+
+
+procedure build-trans-list-pd
+local field
+	lf-rec-count					type numeric
+
+	open tmp-deb-trans truncate temporary
+
+	extract tmp-deb-cache
+	detail
+		set lf-rec-count = 0
+		extract deb-trans
+		on index accountcode trans-ref batch-ref dr-tr-trans-no //{1}
+		key is tdc-accountcode SPACES SPACES 0
+		next same accountcode
+		detail
+			if trans-type != "PD"
+				continue
+			endif
+			// 20may08
+			if accountcode = SPACES
+				message concat("Accountcode = SPACES: " trans-ref)
+				continue
+			endif
+			// ignore this transaction?
+			//get
+			// on index tdo-accountcode tdo-so-order-no tdo-so-bo-suffix
+			set lf-rec-count 		+= 1
+			set tdt-accountcode		= accountcode
+			set tdt-seq				= lf-rec-count
+			set tdt-trans-ref     	= trans-ref	//tr-sort-key	//{1}
+			set tdt-trans-type      = trans-type
+			set tdt-trans-date      = trans-date
+			set tdt-tr-details      = br-acc-code // tr-details
+			set tdt-tr-amount		= tr-amount
+			set tdt-dr-tr-due-date	= dr-tr-due-date
+			insert tmp-deb-trans
+		endextract
+		set tdc-seq-max			= lf-rec-count
+		// 20may08
+		//get deb-master
+		//on index accountcode
+		//key is tdt-accountcode
+		update tmp-deb-cache
+	endextract
+endprocedure // build-trans-list-pd -------------------------------------------
+
+procedure build-virtual-table-pd
+	open tmp-virtual-table truncate temporary
+	extract tmp-deb-cache
+
+	detail
+		set tvt-trans-exist  = FALSE
+		set tvt-orders-exist = FALSE
+		extract tmp-deb-trans
+		on index tdt-accountcode tdt-seq
+		key is tdc-accountcode 0
+		next same tdt-accountcode
+		detail
+			// 08may08
+			initialise tmp-virtual-table
+			set tvt-accountcode 	= tdt-accountcode
+			set tvt-seq				= tdt-seq
+			//start -----------------------------------------  //rc 29may09
+			get deb-master
+				on index accountcode
+				key is tdt-accountcode
+			on error
+				set tvt-rep-code = "***"
+			else
+				set tvt-rep-code = rep-code
+			endon
+			//end  -----------------------------------------  //rc 29may09
+			//set tvt-data 			= concat(tdt-tr-sort-key " " tdt-trans-type " " julian2date(tdt-trans-date) " " tdt-tr-details " " str(tdt-tr-amount) "   ---")
+			//message strlen(tvt-data)
+			//message strlen(strconcat(tvt-data))
+			set tvt-trans-ref     	= tdt-trans-ref	//tr-sort-key	//{1}
+			set tvt-trans-type      = tdt-trans-type
+			set tvt-trans-date      = tdt-trans-date
+			set tvt-tr-details      = tdt-tr-details
+			set tvt-tr-amount		= tdt-tr-amount // str(tdt-tr-amount) // fstr(tdt-tr-amount,8,2)
+			set tvt-trans-exist  	= TRUE
+			insert tmp-virtual-table
+		endextract
+		extract tmp-deb-outstanding
+		on index tdo-accountcode tdo-seq
+		key is tdc-accountcode 0
+		next same tdo-accountcode
+		detail
+			set so-order-status = tdo-so-order-status
+			do i5sodesc-get-status-desc
+			get tmp-virtual-table
+			on index tvt-accountcode tvt-seq
+			key is tdo-accountcode tdo-seq
+			on error
+				// there is NO trans record here, initialise to ensure last record doesn't hang over
+				initialise tmp-virtual-table
+				set tvt-accountcode 			= tdo-accountcode
+				set tvt-seq						= tdo-seq
+				//start -----------------------------------------  //rc 29may09
+				get deb-master
+					on index accountcode
+					key is tdt-accountcode
+				on error
+					set tvt-rep-code = "***"
+				else
+					set tvt-rep-code = rep-code
+				endon
+				//end  -----------------------------------------  //rc 29may09
+				//set tvt-data 					= concat(81" " str(tdo-so-order-no) " " julian2date(tdo-so-order-date) " " i5sodesc-so-status-desc-short " " str(tdo-so-order-total-amount))
+				set tvt-so-territory-code		= tdo-so-territory-code
+				set tvt-so-order-no             = tdo-so-order-no
+				set tvt-so-bo-suffix            = tdo-so-bo-suffix
+				set tvt-so-order-date           = tdo-so-order-date
+				set tvt-so-order-status		    = tdo-so-order-status
+				set tvt-so-order-total-amount   = tdo-so-order-total-amount // fstr(tdo-so-order-total-amount,8,2)
+				set tvt-orders-exist			= TRUE
+				insert tmp-virtual-table
+			else
+				//set tvt-accountcode 	= tdo-accountcode
+				//set tvt-seq				= tdo-seq
+				//set tvt-data 			= concat(substring(tvt-data,1,100) str(tdo-so-order-no) " " julian2date(tdo-so-order-date) " " i5sodesc-so-status-desc-short " " str(tdo-so-order-total-amount))
+				set tvt-so-territory-code		= tdo-so-territory-code
+				set tvt-so-order-no             = tdo-so-order-no
+				set tvt-so-bo-suffix            = tdo-so-bo-suffix
+				set tvt-so-order-date           = tdo-so-order-date
+				set tvt-so-order-status		    = tdo-so-order-status
+				set tvt-so-order-total-amount   = tdo-so-order-total-amount // fstr(tdo-so-order-total-amount,8,2)
+				set tvt-orders-exist			= TRUE
+				update tmp-virtual-table
+			endon
+		endextract
+	endextract
+endprocedure // build-virtual-table-pd ----------------------------------------
+
+procedure print-report-virtual-pd
+local field
+	st-tr-amount						like tr-amount
+	st-so-order-total-amount			like so-order-total-amount
+	lf-balance							like so-order-total-amount
+
+	gt-tr-amount						like tr-amount
+	gt-so-order-total-amount			like so-order-total-amount
+	gt-balance							like so-order-total-amount
+
+
+	//report "Customer Outstanding Orders"
+	report "Outstanding Finance Deals"
+	length 80 // 105
+	depth  80 // 105
+
+	header is top-of-page-pd
+	page
+	extract tmp-virtual-table
+	before tvt-accountcode
+		get tmp-deb-cache
+		on index tdc-accountcode
+		key is tvt-accountcode
+
+		//need 6 lines
+		if tdc-seq-max > 100
+			set tdc-seq-max = 0
+		endif
+		need tdc-seq-max + 6 lines
+
+		set st-tr-amount = 0
+		set st-so-order-total-amount = 0
+
+
+		get deb-master
+		on index accountcode
+		key is tvt-accountcode
+		print
+			//125"="
+			55"="
+		print
+			tvt-accountcode bold
+			shortname		bold
+			//tdc-seq-max		bold
+			//"any thing else here?"
+			"Terr:"
+			territory
+		//print
+		//	60"-"
+		if tvt-trans-exist or st-tr-amount != 0
+			print
+				//"Customer Transactions:" 	in col 08 bold
+				"Outstanding Deals:"		in col 08 bold
+			no-new-line
+		endif
+
+		if tvt-orders-exist //or st-so-amount != 0
+			print
+				"Outstanding Orders:"		in col 65 bold
+		else
+			if tvt-trans-exist or st-tr-amount != 0
+				skip
+			endif
+		endif
+	detail
+		//need 7 lines
+
+		if num(tvt-so-order-status) > 0
+			set so-order-status = tvt-so-order-status
+			do i5sodesc-get-status-desc
+		else
+			set i5sodesc-so-status-desc-short = SPACES
+		endif
+
+		print
+			tvt-trans-date					in col 08
+			tvt-trans-type					in col 20
+			tvt-trans-ref					in col 25
+			tvt-tr-details					in col 35 pic x(9)
+			tvt-tr-amount					in col 45 pic --------.zz
+			//
+			tvt-so-territory-code			in col 59
+			tvt-so-order-date				in col 65
+			tvt-so-order-no					in col 77 pic zzzzzzzz
+			tvt-so-bo-suffix				in col 85 pic x
+			i5sodesc-so-status-desc-short   in col 87
+			tvt-so-order-total-amount		in col 115 pic --------.zz
+
+		set st-tr-amount 						+= tvt-tr-amount
+		set st-so-order-total-amount 			+= tvt-so-order-total-amount
+		set gt-tr-amount						+= tvt-tr-amount
+		set gt-so-order-total-amount			+= tvt-so-order-total-amount
+
+
+
+	after tvt-accountcode
+		set lf-balance = st-so-order-total-amount + st-tr-amount
+		if tvt-trans-exist or st-tr-amount != 0 // odd occasions when only 1 trans tvt-trans-exist = FALSE and this section did not print
+			print
+				"Transaction Total:" 			in col 25 bold
+				st-tr-amount					in col 45 bold pic -------9.99
+				//no-new-line
+		endif
+		if tvt-orders-exist or st-so-order-total-amount != 0
+			print
+				"Order Total:"					in col 102 bold
+				st-so-order-total-amount		in col 115 bold pic -------9.99
+		endif
+		//print
+		//	"------------------------" in col 35
+		//print
+		//	"Balance:"						in col 106 bold
+		//	lf-balance						in col 115 bold pic -------9.99
+
+		//print
+		//	"------------------------" in col 35
+		print
+			//"--"							in col 01  bold
+			tdc-trans-warnings				in col 08  bold
+			tdc-order-warnings				in col 65  bold
+		skip
+
+	endextract
+		skip 2
+		print
+			//125"="
+			55"="
+
+		//skip 2
+
+		//print
+			//  125"="
+
+		set gt-balance = gt-so-order-total-amount + gt-tr-amount
+		print
+			"Transaction Grand Total:" 		in col 19 bold
+			gt-tr-amount					in col 45 bold pic -------9.99
+			//no-new-line
+
+		//print
+		//	"Order Grand Total:"			in col 96 bold
+		//	gt-so-order-total-amount		in col 115 bold pic -------9.99
+
+		//print
+		//	"Balance:"						in col 106 bold
+		//	gt-balance						in col 115 bold pic -------9.99
+		print
+			//125"="
+			55"="
+		skip 4
+		if ws-show-all-stores
+			print
+				"Store:"
+				"All Stores"
+		else
+			print
+				"Store:"
+				ws-store
+		endif
+		print
+			"User:"
+			login-id()
+	//ws-show-all-stores
+	report finished
+endprocedure // print-report-virtual-pd ---------------------------------------
+
+
+procedure top-of-page-pd
+	print
+		company-name col 1 SCALE 200 BOLD
+		//today() col 95
+		//tod() col 107
+		//"Prepared:" in col 61
+
+		//"by" in col 89
+		//login-id() in col 92
+		//"CUSTOMER TRANSACTIONS AND OUTSTANDING" col 39 bold
+		  "OUTSTANDING FINANCE DEALS" col 34 bold
+		today() in col 99
+		tod() in col 111 pic HH:MM
+		"Page :" col 117
+		left-justify(str(page-no())) col 124
+		//no-new-line
+
+	if ws-show-all-stores
+		print
+			//"Store:"
+			"All Stores"
+			"ORDERS AS AT:" 								col 45 	bold
+			today()													bold
+	else
+		print
+			//"Store:"
+			ws-store
+			ws-store-desc
+			//"CUSTOMER TRANSACTIONS AND OUTSTANDING" col 39 bold
+			//today() in col 108
+			//tod() in col 120 pic HH:MM
+			"ORDERS AS AT:" 								col 45 	bold
+			today()													bold
+
+	endif
+
+	skip 1
+
+
+	//	print
+	//		strconcat("Customer Outstanding Orders") in col 1 font 15 bold // scale 200 bold
+
+		print
+			"Acct"							in col 1           	bold
+			"Trans"							in col 8           	bold
+			"Trans"							in col 21          	bold
+			"Trans"							in col 28          	bold
+			//"Trans"							in col 35          	bold
+			"Branch"						in col 35          	bold
+			"Trans"							in col 51          	bold
+
+			//"Store"							in col 59		   	bold
+			//"Order"							in col 65          	bold
+			//"Order"							in col 80          	bold
+			//"Order"							in col 87          	bold
+			//"Order"							in col 121         	bold
+
+
+		print
+			"Code"							in col 1           	bold
+			"Date"							in col 8           	bold
+			"Type"							in col 21          	bold
+			"Ref"							in col 28          	bold
+			//"Details"						in col 35          	bold
+			"Account"						in col 35          	bold
+			"Amount"						in col 50          	bold
+
+			//"Code"							in col 59			bold
+			//"Date"							in col 65          	bold
+			//"Number"						in col 79          	bold
+			//"Status"						in col 87          	bold
+			//"Amount"						in col 120         	bold
+
+		//print
+        //
+		//	"Time"							in col ws-col-1     bold  	// underline bold
+		//	"Order"							in col ws-col-2 + 3 bold  	// underline bold
+		//	//"Delivery"					in col ws-col-3     bold  	// underline bold
+		//	"Customer"						in col ws-col-4     bold  	// underline bold
+		//	"Phone #"						in col ws-col-5     bold  	// underline bold
+		//	"Address"						in col ws-col-6 	bold	// underline bold
+		//	"Balance"						in col ws-col-7	+ 1	bold  	// underline bold
+
+endprocedure // top-of-page-pd ------------------------------------------------
+
+
+
+
+
+// deboutstand.spl

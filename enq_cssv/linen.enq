@@ -1,0 +1,12 @@
+select
+	stock-group
+	stock-code
+	stk-description
+	stk-user-group
+	stk-condition-code
+from
+	stock-master
+where
+	stock-group = "L" and
+	(stk-description <> "Linen" or stk-description <> "LINEN")
+format is lst

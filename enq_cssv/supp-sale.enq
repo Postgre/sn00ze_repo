@@ -1,0 +1,29 @@
+select
+	stock-code
+	ash-value
+	ash-years-ago
+	cre-accountcode
+	total-sales = sum-array (ash-value 1 13) 
+from
+	stock-aged-sales-history
+	stock-supplier
+where
+	ash-years-ago <= 1 
+order by total-sales 
+group by cre-accountcode
+format is lst
+suppress stock-code
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+display pic of total-sales is z(10)9

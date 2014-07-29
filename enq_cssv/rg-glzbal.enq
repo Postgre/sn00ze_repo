@@ -1,0 +1,13 @@
+// check GL Z account balances
+select
+	gl-accountcode
+	gl-desc
+	gl-balance
+	gl-future-bal
+from
+	gl-master
+where
+	((gl-accountcode >= "Z1" ) and 
+	((gl-balance != 0 ) or 
+	(gl-future-bal != 0 )) ) 
+format is lst

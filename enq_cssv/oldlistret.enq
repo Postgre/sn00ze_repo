@@ -1,0 +1,85 @@
+select
+	stock-code
+	ws-code-1-3 = substring(stock-code,1,3)
+	stk-sort-analysis-code
+	stk-condition-code
+	stk-user-group
+	stk-description
+	stk-pack-desc
+	prc-wholesale-price
+	prc-recommend-retail
+	prc-region-code
+	cre-accountcode
+	cr-shortname
+	cr-def-payment-terms
+	start-region-type = input alpha "Enter Start Region     "
+	end-region-type = input alpha "Enter End Region       "
+	start-acc = input alpha "Enter Start Accountcode"
+	end-acc = input alpha "Enter End Accountcode  "
+	start-user-grp = input alpha "Enter Start User Group "
+	end-user-grp = input alpha "Enter End User Group   "
+	stock-note-type
+	stock-note
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+from
+	stock-master
+	system-table
+	stock-price
+	stock-supplier
+	cre-master
+	outer stock-notes
+where
+	sys-tbl-type = "SX" 
+		and sys-tbl-code = stk-sort-analysis-code 
+	and prc-region-code between uppercase (start-region-type) 
+	and uppercase (end-region-type) 
+	and cre-accountcode between uppercase (start-acc) 
+	and uppercase (end-acc) 
+	and stk-user-group[2] between uppercase (start-user-grp) 
+ 	and uppercase (end-user-grp) 
+	and stk-condition-code != 'O' 
+	and stk-sort-analysis-code != spaces 
+	//and stock-note-type = 'P'
+order by prc-region-code stk-sort-analysis-code stock-code 
+format is rpt
+//width is 80
+report header
+	page
+header
+	print 
+		"Retail Price List" in col 7
+	skip 1
+	print cr-shortname in col 1 bold
+	skip 1
+	print
+		"CODE" in col 1
+		"DESCRIPTION" in col 18
+		"SIZE" in col 49
+		"SPECIAL" in col 57
+		"NORMAL" in col 68
+	skip 1
+
+before stk-sort-analysis-code
+	skip 2
+	print sys-description in col 18 bold underlined
+	skip
+
+detail
+	print
+		stock-code in col 1
+		stk-description in col 18
+		stk-pack-desc in col 49
+		prc-wholesale-price in col 54
+		prc-recommend-retail in col 65
+	if stock-note <> spaces
+		print stock-note col 18
+	endif
+footer
+	print
+		today() in col 43
+		tod() in col 56
+		"Pageno." in col 66
+		pageno() in col 74
+report footer

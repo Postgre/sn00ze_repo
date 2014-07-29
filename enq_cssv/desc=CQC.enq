@@ -1,0 +1,11 @@
+select
+	stock-group
+	stock-code
+	stk-description
+	stk-user-group
+	stk-condition-code
+from
+	stock-master
+where
+	stk-description like "%C.Q.C%"
+format is lst

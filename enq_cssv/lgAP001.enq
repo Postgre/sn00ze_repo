@@ -1,0 +1,11 @@
+// AP Culling
+select
+cre-accountcode
+cr-shortname
+cr-date-last-purchase
+cr-date-last-payment
+from
+cre-master
+where cr-date-last-purchase < today() - 365 or
+cr-date-last-payment < today() - 365
+format is lst

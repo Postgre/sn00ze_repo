@@ -1,0 +1,19 @@
+select
+	so-order-no
+	so-bo-suffix
+	sol-line-seq
+	solp-po-order-no
+	solp-backorder-flag
+	solp-l-seq
+	solp-overide-cost
+	solp-status
+	solp-xdock-indicator
+	solp-xdock-qty
+	solp-user-only-date1
+	solp-user-only-alpha4-1
+	solp-user-only-alpha4-2
+	solp-user-only-num1
+	solp-user-only-num2
+from
+	sales-order-line-purchase
+format is excel

@@ -1,0 +1,402 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	$CUS/cssc_datagrid.spl //ZUSR.R232
+//  Program Desc:	datagrid screen from import of /data/staging/cssc_datagrid_import
+//
+//						- create import file via : 
+//						- # cat /data/staging/160/cssc*.160 >> cssc_datagrid_import
+//						- ( source data in : /2k12export/daily/FY14-daily/ )
+//
+//  Requested By:	Chris Ward
+//  Request Date:	16jul14
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	16jul14	mb	{0}	create
+//---------------------------------------------------------------------------//
+version-number "160710.000" //{0}
+
+//-- import
+#define XEXT_FILE "/data/staging/cssc_datagrid_import" //"sys_idle_txt"
+//						- ( source data in : /2k12export/daily/FY14-daily/ )
+
+//-- above XEXT_FILE is created via :
+//-- -----------------------------------
+//-- sh-4.1# pwd
+//-- /data/staging/160
+//-- sh-4.1# ls -trl|wc -l
+//-- 389
+//-- ==== update: v v v v == change below copy to copy from parent directory instead :
+//-- sh-4.1# cp /2k12export/daily/FY15-Daily/*160 .;pwd
+//-- sh-4.1# cp /2k12export/daily/           *160 .;pwd
+//-- sh-4.1# cp /2k12export/daily/*160 .;pwd
+//--       # cp /2k12export/daily/*160 .;ls -trl|wc -l;pwd
+//-- ==== update: ^ ^ ^ ^ == ========================================================
+//-- /data/staging/160
+//-- sh-4.1# ls -trl|wc -l
+//-- 397
+//-- 
+//-- sh-4.1# cd ..
+//-- sh-4.1# ls -trl
+//-- total 35420
+//-- -rw-rw-r-- 1 root pronto 17713383 Jul 17 14:00 cssc_datagrid_import_old
+//-- -rw-rw-r-- 1 root pronto 18527377 Jul 21 12:02 cssc_datagrid_import
+//-- drwxrwxr-x 2 root pronto    20480 Jul 21 12:20 160
+//-- sh-4.1# rm cssc_datagrid_import
+//-- sh-4.1# cat /data/staging/160/cssc*.160 >> cssc_datagrid_import
+//-- sh-4.1# ls -trl
+//-- total 35552
+//-- -rw-rw-r-- 1 root pronto 17713383 Jul 17 14:00 cssc_datagrid_import_old
+//-- drwxrwxr-x 2 root pronto    20480 Jul 21 12:20 160
+//-- -rw-rw-r-- 1 root pronto 18665416 Jul 21 12:21 cssc_datagrid_import
+//-- sh-4.1#
+
+//-- template table layout used for import and datagrid.
+object mem-tps
+	type memory
+	//type is prn
+	//file is 'cssc.csv'
+	record is
+		ff-record-identifier			pic x(40)
+		ff-tps-so-territory-code		pic x(40)
+		ff-tps-accountcode			pic x(40)
+		ff-tps-so-order-no			pic x(40)
+		ff-tps-so-bo-suffix			pic x(40)
+		ff-tps-so-order-date			pic x(40)
+		ff-tps-sol-line-seq			pic x(40)
+		ff-tps-sol-line-type			pic x(40)
+		ff-tps-stock-code			pic x(40)
+		ff-tps-stk-description			pic x(40)
+		ff-tps-stk-unit-desc			pic x(40)
+		ff-tps-stock-group			pic x(40)
+		ff-tps-stk-sort-analysis-code		pic x(40)
+		ff-tps-so-rep-code			pic x(40)
+		ff-tps-so-rep-desc			pic x(40)
+		ff-tps-cre-accountcode			pic x(40)
+		ff-tps-cre-desc				pic x(40)
+		ff-tps-sup-priority			pic x(40)
+		ff-tps-sup-count			pic x(40)
+		ff-tps-sol-total-cost			pic x(40)
+		ff-tps-sol-unit-shipped-value		pic x(40)
+		ff-tps-sol-shipped-qty			pic x(40)
+		ff-tps-so-order-total-shipped-amount	pic x(40)
+		ff-tps-sol-shipped-amount		pic x(40)
+		ff-tps-unit-prorata			pic x(40)
+		ff-tps-ext-prorata			pic x(40)
+		ff-tps-trans-date			pic x(40)
+		ff-tps-unit-cash-amt			pic x(40)
+		ff-tps-tr-amount			pic x(40)
+		ff-tps-trans-tested			pic x(40)
+		ff-tps-edit-qty				pic x(40)
+		ff-tps-edit-price			pic x(40)
+		ff-tps-edit-cost			pic x(40)
+		ff-prog-version				pic x(40)
+		ff-open-archive-status		pic x(40)
+		ff-company-name				pic x(40)
+		ff-d-tps-acct				type date
+	end-record
+key is ff-record-identifier
+//end-object mem-tps
+
+
+object ff-tps
+	like mem-tps
+	file XEXT_FILE
+	separator is ","
+	type csv
+	//type external
+
+#define PRIMARY_TABLE	tmp-ff-tps
+#define PRIMARY_KEY		ff-record-identifier ff-tps-so-territory-code ff-d-tps-acct //date2julian(ff-tps-accountcode)
+object tmp-ff-tps like mem-tps type memory
+key is PRIMARY_KEY		//ff-record-identifier
+//object tmp-ff-sysidle like ism-ff-sysidle type memory
+
+//field ws-ds-count	type numeric
+field ws-confirm	type boolean
+
+/*
+mode md-so-enq
+	prompt "SO Enq"
+	help "Enquire on this order"
+*/
+
+procedure main
+	get system-control first
+//<
+	if get-param(1) != "-buildonly"
+		//-- restore last entered criteria :
+		//X_LOAD_REBUILD
+		//--
+		//open PRIMARY_TABLE
+		//on error
+			open PRIMARY_TABLE truncate temporary
+		//do get-user-input entry-once
+		set ws-confirm = true
+	else
+		//-- -buildonly call :
+		/*
+		set ws-start-date	= date-to-julian(get-param(2))
+		set ws-end-date	= date-to-julian(get-param(3))
+		set ws-amount-threshold = num(get-param(4))
+		set ws-ds-count	= num(get-param(5))
+		set ws-confirm		= true
+		*/
+	endif //get-param(1) != "-buildonly"
+
+	if ws-confirm
+		do build-dataset
+		//do display-in-grid
+		do grid-by
+	endif //ws-confirm
+//>
+endprocedure // main ----------------------------------------------------------
+
+//<
+/*
+#define DISPLAY_DATASET_COUNT \
+	if ifs-x-login = spaces \
+		display "Thinking... " @21,56 foreground prompts \
+	else \
+		display ifs-x-login @21,56 foreground prompts \
+	endif \
+	display concat("Building idle Logins" ) @21,68 foreground prompts
+	//display concat("Building " str(ws-ds-count) "/" str(ws-max-idle-hours) " datasets" ) @21,68 foreground prompts
+//end-define DISPLAY_DATASET_COUNT
+*/
+
+field ws-rec-count type numeric
+#define DISPLAY_IF_MOD_COUNT \
+	set ws-rec-count += 1 \
+	/* if (100 % ws-rec-count = zero) */ \
+		/* display accountcode @21,56 foreground prompts */ \
+		/* DISPLAY_DATASET_COUNT */ \
+	/* endif */ \
+//end-define DISPLAY_IF_MOD_COUNT \
+//>
+#define STR_HRS zstr(ws-max-idle-hours,2,0)
+#define PROG_TITLE "cssc CD lines  "
+
+field ws-licenses	type numeric
+field xstr			pic x(400)
+field ystr			pic x(400)
+field ws-idle-count type numeric
+field ws-check-only type boolean
+
+#define STRPAT(ASTR,BPATTERN) pattern(ASTR,BPATTERN)
+//#define COY_STORE substring(ifs-x-login,1,3)
+
+#define TIME_HR concat(fstr( ws-hr,2,0 ) ":" )
+#define TIME_MIN concat(zstr(minute(tod())2,0 ) )
+field ws-as-at-time-stamp	type string
+		ws-hr						type numeric
+
+procedure build-dataset
+	//local field	lf-ifs-x-task		like ifs-x-task
+	//				lf-ifs-x-data-dir	like ifs-x-data-dir
+	window @19,34 to @23,95
+		title is "Building Data"
+		//title concat(PROG_TITLE " for over " str(ws-max-idle-hours) " hours" )
+		colour white
+		no-hide
+	display bitmap concat(get-env("BMS") "/images/repedge.gif") @19,34
+	display concat(PROG_TITLE) @20,49 background left
+	//display concat(sys-consolidation-division ": Finance Sales" ) @20,49 background left
+	display "User :" @21,49 background left
+	//open tmp-ff-sysidle truncate temporary
+//<
+	display accountcode @21,56 foreground prompts
+	//set ws-max-idle-hours = num(get-param(6))
+	//DISPLAY_DATASET_COUNT
+//>
+
+//-- build no. of pronto licenses in use here :
+// $ prowho -s | wc -l > pronto_licenses_in_use
+	//-- include "psd" "pronto" & "root" in the count of licenses used :
+	//set xstr = concat('prowho -s | wc -l > ' XEXT_FILE2 )
+	//command "sh" parameters "-c" xstr
+	//set ws-licenses = zero
+	set ws-rec-count = zero
+	extract ff-tps //ff-ext-sys-license
+		//-- build datagrid for 'CD' type records.
+		if strconcat(ff-record-identifier) = "CD"
+			//DISPLAY_IF_MOD_COUNT
+			set ff-d-tps-acct = date2julian(ff-tps-accountcode)
+			insert tmp-ff-tps
+		endif
+	endextract //ff-tps 
+endprocedure // build-dataset -------------------------------------------------
+
+
+mode md-stores
+	prompt "Stores"
+	help "Logins per Store"
+
+mode md-tag
+	prompt "Incl/Excl"
+	help "Should this tty session be terminated?"
+
+mode md-tag-flip
+	prompt "Flip / Invert Tags"
+	help "Tag all untagged lines"
+
+mode md-kill
+	prompt "Kill Tagged"
+	help "Kill tagged lines"
+	icon is transaction-icon
+	//when ws-tag-count > zero
+
+mode md-logins
+	prompt "Logins"
+	help "Show Logins for this Store"
+
+mode md-maintain-datasets-for-inclusion
+	prompt "Maintain Dataset List"
+	help "Maintain Datasets for inclusion"
+	icon is admin-icon
+	//icon is admin-folder-icon
+
+mode md-build-all
+	prompt "Rebuild"
+	help "Rebuild Finance Sales"
+	icon is transaction-icon
+	//icon is admin-folder-icon
+	//when login-id() in {"robd"}
+
+//>
+
+#define ACCEPT_NEVER_ACCEPTED \
+	showvalue \
+	when false
+//end-define ACCEPT_NEVER_ACCEPTED
+//	when screenmode() = find
+//	and screenmode() <> find
+
+//ACCEPT_READ_ONLY_TITLE_HELP(tfa-terr-desc,1,024,"Terr Description","Territory Description")
+#define ACCEPT_READ_ONLY_TITLE_HELP(AFLD,BROW,CCOL,DTITLE,EHELP) \
+	accept AFLD  @ BROW, CCOL \
+		title DTITLE \
+		help EHELP \
+		read-only
+//end-define ACCEPT_READ_ONLY_TITLE_HELP(AFLD,BROW,CCOL,DTITLE,EHELP)
+
+/*
+#define cso-div ism-sys-con
+object tmp-sys-con like ism-ff-sysidle type memory
+key is cso-div
+*/
+
+//DISPLAY_FLD(ifs-x-login,009,"User")
+field ws-tag-count type numeric
+#define DISPLAY_FLD(AFLD,BCOL,CTITLE) \
+	display AFLD @1,BCOL title CTITLE
+#define COLOUR_HIGHLIGHT colour is yellow on black
+#define COLOUR_HIGHLIGHT_ADMIN colour is blue on yellow //blue on white
+#define IS_ADMIN_USER(AUSER) (pattern(AUSER,"^mladenb") or pattern(AUSER,"^cward") or pattern(AUSER,"^leighg") or pattern(AUSER,"^robd") or pattern(AUSER,"^roxanne") or pattern(AUSER,"^psd") or pattern(AUSER,"^pronto") or pattern(AUSER,"^root") )
+
+//#define PRIMARY_TABLE tmp-ff-sysidle
+
+//710 and above only -- not in Pronto 660 :
+#define IF_MSG_BOX(ATITLE,BPROMPT) \
+	if 1 = 1 //always run -- change this for 710 to below commented out code.
+#define ENDIF_MSG_BOX endif
+/*
+//IF_MSG_BOX("Confirm Kill","Go ahead and Kill these processes?")
+#define IF_MSG_BOX(ATITLE,BPROMPT) \
+	message-box BPROMPT \
+	title ATITLE \
+	message-buttons MSG_BOX_YES_NO \
+	default MSG_BOX_NO \
+	icon MSG_BOX_STOP \
+	if message-status = MSG_BOX_YES
+#define ENDIF_MSG_BOX endif
+*/
+
+//field ws-store-filter		like ifs-x-data-dir
+//#define PRIMARY_STORE tmp-ff-store
+//do grid-by-store
+screen grid-by //grid-by-store
+	window @1,1 to @19,90
+	title concat(PROG_TITLE " " )
+	/*
+	title concat(PROG_TITLE " " str(ws-idle-count) " idle for over " str(ws-max-idle-hours) " hrs (as at " ws-as-at-time-stamp ")  -  " str(ws-licenses) " Pronto licenses are currently in use" )
+	title concat(PROG_TITLE " " str(ws-idle-count) " as at " ws-as-at-time-stamp " idle for over " str(ws-max-idle-hours) " hrs   -  " str(ws-licenses) " Pronto licenses are currently in use" )
+	*/
+	primary PRIMARY_TABLE
+		on index PRIMARY_KEY
+		//on index ifs-n-stores descending
+	datagrid occurs 15
+	allowed search
+	//allowed md-logins search
+	review-from-start
+before
+detail
+	DISPLAY_FLD(ff-record-identifier,			01,	"id")
+	DISPLAY_FLD(ff-tps-so-territory-code,		02,	"whse")
+	//DISPLAY_FLD(ff-tps-accountcode,			03,	"start")
+	DISPLAY_FLD(ff-d-tps-acct,						03,	"start")
+	DISPLAY_FLD(ff-tps-so-order-no,				04,	"end")
+	DISPLAY_FLD(ff-tps-so-bo-suffix,				05,	"trans")
+	DISPLAY_FLD(ff-tps-so-order-date,			06,	"ref")
+	DISPLAY_FLD(ff-tps-sol-line-seq,				07,	"a/c")
+	DISPLAY_FLD(ff-tps-sol-line-type,			08,	"cash DS")
+	DISPLAY_FLD(ff-tps-stock-code,				09,	"user date")
+	DISPLAY_FLD(ff-tps-stk-description,			10,	"BR a/c")
+	DISPLAY_FLD(ff-tps-stk-unit-desc,			11,	"TR details")
+/*
+	DISPLAY_FLD(ff-tps-stock-group,				12,	"l")
+	DISPLAY_FLD(ff-tps-stk-sort-analysis-code,13,	"m")
+	DISPLAY_FLD(ff-tps-so-rep-code,				14,	"n")
+	DISPLAY_FLD(ff-tps-so-rep-desc,				15,	"o")
+	DISPLAY_FLD(ff-tps-cre-accountcode,			16,	"p")
+	DISPLAY_FLD(ff-tps-cre-desc,					17,	"q")
+	DISPLAY_FLD(ff-tps-sup-priority,				18,	"r")
+	DISPLAY_FLD(ff-tps-sup-count,					19,	"s")
+	DISPLAY_FLD(ff-tps-sol-total-cost,			20,	"t")
+	DISPLAY_FLD(ff-tps-sol-unit-shipped-value,21,	"u")
+	DISPLAY_FLD(ff-tps-sol-shipped-qty,			22,	"v")
+	DISPLAY_FLD(ff-tps-so-order-total-shipped-amount,	23,	"w")
+	DISPLAY_FLD(ff-tps-sol-shipped-amount,		24,	"x")
+	DISPLAY_FLD(ff-tps-unit-prorata,				25,	"y")
+	DISPLAY_FLD(ff-tps-trans-date,				26,	"z")
+	DISPLAY_FLD(ff-tps-unit-cash-amt,			27,	"aa")
+	DISPLAY_FLD(ff-tps-tr-amount,					28,	"bb")
+	DISPLAY_FLD(ff-tps-trans-tested,				29,	"cc")
+	DISPLAY_FLD(ff-tps-edit-qty,					30,	"dd")
+	DISPLAY_FLD(ff-tps-edit-price,				31,	"ee")
+	DISPLAY_FLD(ff-tps-edit-cost,					32,	"ff")
+	DISPLAY_FLD(ff-prog-version,					33,	"prog version")
+*/
+	DISPLAY_FLD(ff-open-archive-status,			34,	"open/archive")
+	DISPLAY_FLD(ff-company-name,					35,	"coy name")
+	//DISPLAY_FLD(fstr(ifs-n-stores,4,0),	010, "Logins") //pic zzz9vzz
+	//DISPLAY_FLD(ifs-x-data-dir,	020, "Store / Dataset")
+	//DISPLAY_FLD(ifs-n-tty,		020,"Pronto Licenses")
+confirm
+	auto
+confirmed
+/*
+	switch on screen-mode()
+	case md-logins
+		push PRIMARY_STORE
+		//-- open up screen filtered on this store only :
+		set ws-store-filter = ifs-x-data-dir
+		do display-in-grid-when
+		set ws-store-filter = spaces
+		//--
+		pop PRIMARY_STORE
+		get * from PRIMARY_STORE
+			on index ifs-n-stores descending
+			key		ifs-n-stores //descending
+		on error endon
+		//
+		refresh review
+		//--
+	endswitch //switch on screen-mode()
+*/
+endconfirm
+endscreen // grid-by-store --------------------------------------------------
+

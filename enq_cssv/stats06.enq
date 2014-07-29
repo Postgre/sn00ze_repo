@@ -1,0 +1,29 @@
+// stats06.eng
+// to  count the number of products in a particular usergroup 2 field
+select
+	stock-code
+	stk-stock-status
+	stk-user-group
+	stk-description
+	ws-group = stk-user-group[2] 
+	ws-count = count () 
+	stk-abc-class
+from
+	stock-master
+where
+	stk-abc-class = 'Z' 
+order by ws-group 
+group by ws-group
+format is lst
+title line 1 is "Capt'n Snooze" 
+title line 2 is " " 
+title line 3 is "Count by user 2 field with ABC of Z" 
+title line 4 is " " 
+title line 5 is "Stats06.enq           Run on " today () " At " tod () 
+title line 6 is " " 
+suppress stock-code
+suppress stk-stock-status
+suppress stk-user-group[1]
+suppress stk-user-group[2]
+suppress stk-description
+suppress stk-abc-class

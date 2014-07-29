@@ -1,0 +1,41 @@
+select
+	so-order-no
+	so-bo-suffix
+	stock-code
+	so-order-date
+	so-order-status
+	so-territory-code
+	so-rep-code
+	sol-line-type
+	sol-line-amount
+	sol-ordered-qty
+	ws-start-date = input date "Enter start date:"
+	ws-end-date = input date "Enter   end date:"
+	prc-recommend-retail
+	prc-wholesale-price
+	ws-retail = prc-recommend-retail * sol-ordered-qty 
+	ws-discount = ws-retail - sol-line-amount 
+from
+	sales-order
+	sales-order-line
+	stock-price
+where
+	so-order-status != '99' 
+	and so-order-date between ws-start-date and ws-end-date 
+order by so-territory-code so-rep-code 
+format is lst
+suppress so-order-date
+suppress so-order-status
+suppress sol-line-type
+suppress ws-start-date
+suppress ws-end-date
+suppress prc-wholesale-price
+total on sol-line-amount
+total on ws-retail
+total on ws-discount
+subtotal on sol-line-amount
+	with breaks on so-rep-code so-territory-code
+subtotal on ws-retail
+	with breaks on so-rep-code so-territory-code
+subtotal on ws-discount
+	with breaks on so-rep-code so-territory-code

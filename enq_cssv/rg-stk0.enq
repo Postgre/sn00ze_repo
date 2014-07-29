@@ -1,0 +1,17 @@
+// show stock items with a tax code of 0
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	prc-sales-tax-code
+from
+	stock-price
+	stock-master
+where
+	(prc-sales-tax-code = 0 ) 
+order by stock-code stk-description stk-desc-line-2 prc-sales-tax-code 
+format is lst
+field title of stock-code is "Item Code"
+field title of prc-sales-tax-code is "Tax Code"
+field title of stk-description is "Description (1)"
+field title of stk-desc-line-2 is "Description (2)"

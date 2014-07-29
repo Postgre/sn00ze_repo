@@ -1,0 +1,32 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ws-ytd-sales = sum-array (ash-value 1 12) 
+	ws-sub-tot-ytd-sales = sum (ws-ytd-sales) 
+from
+	stock-aged-sales-history
+where
+	ash-type = "O" 
+	and ash-years-ago = 0 
+group by stock-code
+format is lst
+suppress ash-type
+suppress ash-years-ago
+suppress ash-whse
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ws-ytd-sales

@@ -1,0 +1,277 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	syncfr.spl
+//  Program Desc:	Synchronise Financial Reports between datasets
+//  Requested By:	Simon Sincock
+//  Request Date:	06aug10
+//===========================================================================//
+//  Copyright (C)
+//
+//  All Rights Reserved. Unauthorised copyng is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	19may14	rmd	{3}		upgrade to 710.3
+//	27feb13	rmd	{2}		set to MAS as default (have copied the HO* FR's here)
+//	20aug10	rmd	SNZ004	Option to not delete local reports before sync
+//						Head Office HO* reports will be deleted and replaced
+//	07aug10	rmd	SNZ002	written
+///////////////////////////////////////////////////////////////////////////////
+
+//gl-report-heading gl-report-rows gl-report-columns
+object master-gl-report-heading 	like gl-report-heading	//GLFRHED
+	NO-JOINS
+
+object master-gl-report-rows 		like gl-report-rows		//GLFRROW
+	NO-JOINS
+
+object master-gl-report-columns 	like gl-report-columns	//GLFRCOL
+	NO-JOINS
+
+field
+	ws-master-comp-code			like sys-comp-code
+	ws-master-dir				pic x(40)
+	ws-sys-tbl-type				like sys-tbl-type
+	ws-accept					pic x
+	ws-initialise				pic x
+
+procedure main
+local field
+	lf-glfr-name     			like glfr-name
+	lf-glfrrow-id               like glfrrow-id
+	lf-glfrcol-id               like glfrcol-id
+window	@1,1 to @7,55 title "Load Master Financial Reports"
+	//set ws-master-comp-code = "VCT"
+	set ws-master-comp-code = "MAS"
+	box @2,2 to @7,54 title SPACES
+	accept ws-master-comp-code @3,17 title "Master Company:"
+			uppercase
+			default ws-master-comp-code
+		validation
+			//get dir from master code
+			get system-companies
+				on index sys-comp-code
+				key is ws-master-comp-code
+			on error
+				message "Cannot find company code" ws-master-comp-code
+				reenter ws-master-comp-code
+			else
+				set ws-master-dir = strconcat(sys-comp-path)
+				display ws-master-dir @4,17 background
+			endon
+		endvalidation
+	accept ws-initialise @5,17 title "Delete Existing:"
+		uppercase
+		allowed "Y" "N"
+		default "N"
+		help "Delete existing reports before proceding?"
+
+	accept ws-accept @6,17 title "Accept:"
+		uppercase
+		allowed "Y" "N"
+		default "Y"
+	if ws-accept = "N"
+		exit
+	endif
+	// delete existing records
+	get system-control first
+	report concat("FRSYNC: " sys-consolidation-division ":" ws-sys-tbl-type)
+		spool-only
+	print
+		DIR()
+		sys-consolidation-division
+		company-name
+	//FR Headers GLFRHED
+	print "gl-report-heading"
+	open master-gl-report-heading file is strconcat(ws-master-dir "/GLFRHED")
+	extract gl-report-heading
+		on index glfr-name
+	detail
+		if substring(glfr-name,1,2) = "HO"
+        	print
+				"HO Delete:"
+				glfr-name
+			delete gl-report-heading
+		elseif DIR() = ws-master-dir or ws-initialise = "N" //ws-master-dir
+			print
+				"No Del:"
+				glfr-name
+		else
+			print
+				"Delete:"
+				glfr-name
+			delete gl-report-heading
+		endif
+	endextract
+	// inject new records
+	extract master-gl-report-heading
+		on index glfr-name
+	detail
+		set lf-glfr-name = master-gl-report-heading.glfr-name
+		//message substring(lf-glfr-name,1,2) ":" lf-glfr-name
+		if substring(lf-glfr-name,1,2) = "HO"
+			//message substring(lf-glfr-name,1,2) ":Y:" lf-glfr-name
+			//message "No heading: Insert"
+			set * = master-gl-report-heading.*
+			print
+				"Insert:"
+				glfr-name
+			insert gl-report-heading
+		else
+			//message substring(lf-glfr-name,1,2) ":N:" lf-glfr-name
+		endif
+		//set lf-glfr-name     			= glfr-name
+		////set lf-glfrrow-id               = glfrrow-id
+		////set lf-glfrcol-id               = glfrcol-id
+		//message lf-glfr-name
+		//get gl-report-heading
+		//	on index glfr-name
+		//	key is lf-glfr-name
+		//on error
+		//	message "No heading: Insert"
+		//	set * = master-gl-report-heading.*
+		//	print
+		//		"Insert:"
+		//		glfr-name
+		//	insert gl-report-heading
+		//else
+		//	message "Heading exists: Update"
+		//	set * = master-gl-report-heading.*
+		//	print
+		//		"Update:"
+		//		glfr-name
+		//	update gl-report-heading
+		//endon
+	endextract
+	//FR Rows GLFRROW
+	open master-gl-report-rows file is strconcat(ws-master-dir "/GLFRROW")
+	// delete existing records
+	// if not ws-initialise
+	print "gl-report-rows"
+	initialise gl-report-rows
+	extract gl-report-rows
+		//on index glfr-name glfrrow-id
+	detail
+		if substring(glfr-name,1,2) = "HO"
+        	print
+				"HO Delete:"
+				glfr-name
+				glfrrow-id
+			delete gl-report-rows
+		elseif DIR() = ws-master-dir or ws-initialise = "N"//ws-master-dir
+			print
+				"No Del:"
+				glfr-name
+				glfrrow-id
+		else
+			print
+				"Delete:"
+				glfr-name
+				glfrrow-id
+			delete gl-report-rows
+		endif
+	endextract
+	// inject new records
+	extract master-gl-report-rows
+		on index glfr-name glfrrow-id
+	detail
+		set lf-glfr-name = master-gl-report-rows.glfr-name
+		//message substring(lf-glfr-name,1,2) ":" lf-glfr-name
+		if substring(lf-glfr-name,1,2) = "HO"
+			//message substring(lf-glfr-name,1,2) ":Y:" lf-glfr-name
+			set * = master-gl-report-rows.*
+			print
+				"Insert:"
+				glfr-name
+				glfrrow-id
+			insert gl-report-rows
+		else
+			//message substring(lf-glfr-name,1,2) ":N:" lf-glfr-name
+		endif
+		//set lf-glfr-name     			= glfr-name
+		//set lf-glfrrow-id               = glfrrow-id
+		////set lf-glfrcol-id               = glfrcol-id
+		//get gl-report-rows
+		//	on index glfr-name glfrrow-id
+		//	key is lf-glfr-name lf-glfrrow-id
+		//on error
+		//	set * = master-gl-report-rows.*
+		//	print
+		//		"Insert:"
+		//		glfr-name
+		//		glfrrow-id
+		//	insert gl-report-rows
+		//else
+		//	set * = master-gl-report-rows.*
+		//	print
+		//		"Update:"
+		//		glfr-name
+		//		glfrrow-id
+		//	update gl-report-rows
+		//endon
+	endextract
+	//FR Columns GLFRCOL
+	open master-gl-report-columns file is strconcat(ws-master-dir "/GLFRCOL")
+	// delete existing records
+	get system-control first
+	print "gl-report-columns"
+	extract gl-report-columns
+		on index glfr-name glfrcol-id
+	detail
+		if substring(glfr-name,1,2) = "HO"
+        	print
+				"HO Delete:"
+				glfr-name
+				glfrcol-id
+			delete gl-report-columns
+		elseif DIR() = ws-master-dir or ws-initialise = "N" //ws-master-dir
+			print
+				"No Del:"
+				glfr-name
+				glfrcol-id
+		else
+			print
+				"Delete:"
+				glfr-name
+				glfrcol-id
+			delete gl-report-columns
+		endif
+	endextract
+	// inject new records
+	extract master-gl-report-columns
+		on index glfr-name glfrcol-id
+	detail
+		set lf-glfr-name = master-gl-report-columns.glfr-name
+		//message substring(lf-glfr-name,1,2) ":" lf-glfr-name
+		if substring(lf-glfr-name,1,2) = "HO"
+			set * = master-gl-report-columns.*
+			print
+				"Insert:"
+				glfr-name
+				glfrcol-id
+			insert gl-report-columns
+		endif
+		//set lf-glfr-name     			= glfr-name
+		////set lf-glfrrow-id               = glfrrow-id
+		//set lf-glfrcol-id               = glfrcol-id
+		//get gl-report-columns
+		//	on index glfr-name glfrcol-id
+		//	key is lf-glfr-name lf-glfrcol-id
+		//on error
+		//	set * = master-gl-report-columns.*
+		//	print
+		//		"Insert:"
+		//		glfr-name
+		//		glfrcol-id
+		//	insert gl-report-columns
+		//else
+		//	set * = master-gl-report-columns.*
+		//	print
+		//		"Update:"
+		//		glfr-name
+		//		glfrcol-id
+		//	update gl-report-columns
+		//endon
+	endextract
+	report finished
+endprocedure // main ----------------------------------------------------------

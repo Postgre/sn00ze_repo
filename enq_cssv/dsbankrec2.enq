@@ -1,0 +1,7 @@
+update bankrec-cash-trans
+set
+	bct-presented-flag = "P" 
+	bct-presented-date = 7/6/10 
+where
+	( ( bct-presented-flag = " "  ) AND
+	( bct-date BETWEEN 7/8/09 AND 1/6/10  ) )

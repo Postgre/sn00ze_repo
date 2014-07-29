@@ -1,0 +1,72 @@
+select
+	stock-aged-sales-history.stock-code
+	stock-master.stock-group
+	stock-master.stk-stock-status
+	bill-of-materials-detail.bom-parent-code
+	bill-of-materials-detail.comp-code
+	stock-aged-sales-history.ash-whse
+	stock-aged-sales-history.ash-type
+	stock-aged-sales-history.ash-years-ago
+	stock-aged-sales-history.ash-value
+	stock-aged-sales-history.ash-cost
+	stock-aged-sales-history.ash-qty
+	ws-ash-value = sum-array (stock-aged-sales-history.ash-value 1 12) 
+	ws-ash-cost = sum-array (stock-aged-sales-history.ash-cost 1 12) 
+	ws-ash-qty = sum-array (stock-aged-sales-history.ash-qty 1 12) 
+from
+	outer stock-master
+	bill-of-materials-detail
+	stock-aged-sales-history
+where
+	stock-master.stock-group = 'IS' 
+	and stock-master.stk-stock-status = 'K' 
+	and bill-of-materials-detail.bom-parent-code = stock-master.stock-code 
+	and bill-of-materials-detail.bom-parent-code = stock-aged-sales-history.stock-code 
+	and stock-aged-sales-history.ash-type = 'O' 
+	and stock-aged-sales-history.ash-years-ago = 0 
+format is lst
+suppress stock-group
+suppress stk-stock-status
+suppress bom-parent-code
+suppress ash-type
+suppress ash-years-ago
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ash-cost[1]
+suppress ash-cost[2]
+suppress ash-cost[3]
+suppress ash-cost[4]
+suppress ash-cost[5]
+suppress ash-cost[6]
+suppress ash-cost[7]
+suppress ash-cost[8]
+suppress ash-cost[9]
+suppress ash-cost[10]
+suppress ash-cost[11]
+suppress ash-cost[12]
+suppress ash-cost[13]
+suppress ash-qty[1]
+suppress ash-qty[2]
+suppress ash-qty[3]
+suppress ash-qty[4]
+suppress ash-qty[5]
+suppress ash-qty[6]
+suppress ash-qty[7]
+suppress ash-qty[8]
+suppress ash-qty[9]
+suppress ash-qty[10]
+suppress ash-qty[11]
+suppress ash-qty[12]
+suppress ash-qty[13]
+unique stock-code

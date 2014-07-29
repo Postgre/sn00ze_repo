@@ -1,0 +1,42 @@
+select
+	stock-code
+	stk-warranty-type-flag
+	stk-description
+	stk-desc-line-2
+	stk-pack-desc
+//	ws-count = count () 
+	company-name
+from
+	stock-master
+	system-control
+where
+	stock-code >= 'Z' 
+format is rpt
+field ws-count pic 999
+report header
+	set ws-count = 1
+	page
+header
+	print 
+		company-name in col 1
+		"ZCODE LIST" in col 61
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"Count" in col 1
+		"Stock Code" in col 9
+		"Description" in col 46
+		"Size" in col 110
+	skip
+detail
+	print
+		ws-count in col 1 pic zz9
+		stock-code in col 9
+		stk-description in col 46
+		stk-desc-line-2 in col 77
+		stk-pack-desc in col 110
+	set ws-count = ws-count + 1
+report footer

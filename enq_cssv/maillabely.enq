@@ -1,0 +1,30 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	na-name
+	na-company
+	na-street
+	na-suburb
+	postcode
+	so-actual-delivery-date
+	so-order-status
+	so-territory-code
+	so-order-total-amount
+	ws-store-code = input string "Enter store code              :"
+	ws-start-date = input date "Enter start delivered date    :"
+	ws-end-date = input date "Enter   end delivered date    :"
+	ws-start-value = input numeric "Enter start order total       :"
+	ws-end-value = input numeric "Enter   end order total       :"
+from
+	sales-order
+	name-and-address-master
+where
+	so-order-status = '90' 
+	and so-cust-code = accountcode 
+	and na-type = 'C' 
+	and so-order-total-amount between ws-start-value and ws-end-value 
+	and so-territory-code = ws-store-code 
+	and so-actual-delivery-date between ws-start-date and ws-end-date 
+order by so-cust-code 
+format is external

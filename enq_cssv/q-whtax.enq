@@ -1,0 +1,9 @@
+select
+	sys-tbl-code
+	sys-description
+	sys-tbl-sales-ly
+from
+	system-table
+where
+	sys-tbl-type = 'WH' 
+format is lst

@@ -1,0 +1,48 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-order-date
+	sol-line-type
+	sol-shipped-sales-tax-amt
+	sol-line-amount
+	ws-start-date = input
+		date
+		prompt is "Start Date"
+	ws-end-date = input
+		date
+		prompt is "End Date"
+	sol-chg-type
+	so-territory-code
+	ws-start-territory = input
+		string
+		prompt is "Start Territory"
+	ws-end-territory = input
+		string
+		prompt is "End Territory"
+from
+	sales-order
+	sales-order-line
+where
+	sol-line-type = "SC" 
+	and so-order-date between ws-start-date and ws-end-date 
+	and so-territory-code between ws-start-territory and ws-end-territory 
+order by so-territory-code 
+format is lst
+suppress sol-line-type
+suppress ws-start-date
+suppress ws-end-date
+suppress ws-start-territory
+suppress ws-end-territory
+field title of so-order-no is "Order" "No"
+field title of so-bo-suffix is "Suffix"
+field title of so-order-date is "Order" "Date"
+field title of sol-shipped-sales-tax-amt is "Tax"
+field title of sol-line-amount is "Value"
+field title of sol-chg-type is "Chg" "Type"
+field title of so-territory-code is "Territory"
+total on sol-shipped-sales-tax-amt
+total on sol-line-amount
+subtotal on sol-shipped-sales-tax-amt
+	with breaks on so-territory-code
+subtotal on sol-line-amount
+	with breaks on so-territory-code

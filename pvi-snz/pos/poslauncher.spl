@@ -1,0 +1,110 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/pos/poslauncher
+//  Program Desc:	POS launch wrapper
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	03apr14	rmd	{2}		upgrade to 710
+///////////////////////////////////////////////////////////////////////////////
+
+// poslauncher.spl
+// 24Jan08	rmd	add -transfer option to call m50tranent
+
+//#include '../../../../bms/include/m1enqrep.spl'	//{2}
+#include '/pro/pronto/bms/include/m1enqrep.spl'	//{2}
+
+field
+	ws-mode						pic x(30)
+	ws-screen-title				pic x(30)
+
+procedure main
+	get system-control first
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+		//user-whse
+		//user-store-id
+	switch on get-param(1)
+		case "-layby"
+			set ws-mode = "Layby"
+			set ws-screen-title = "Enter Layby"
+		case
+			"-quotation"
+			set ws-mode = "Quotation"
+			set ws-screen-title = "Enter Quotation"
+		case
+			"-transfer"
+			set ws-mode = "Transfer"
+			set ws-screen-title = "Enter Transfer"
+		case
+			"-return"
+			set ws-mode = "Return"
+			set ws-screen-title = "Enter Return"
+	endswitch
+	do process-request
+	exit
+endprocedure // main ----------------------------------------------------------
+
+procedure process-request
+window @5,5 to @8,30 title is ws-screen-title
+local field
+	lf-rep-code						like rep-code
+	box @5,5 to @7,30 title is "Please enter your Rep Code"
+	accept rep-code @6,18 title is "Rep Code:"
+		default rep-code
+		uppercase
+		blank
+		lookup in rep-master
+		on error
+			message "Invalid Rep Code"
+			reenter rep-code
+		endon
+		on help-key
+			do
+				m1enqrep-rep-review
+		endon
+	set lf-rep-code = rep-code
+	//spl "rmd/sys/getsetrep"
+	spl "pvi-snz/sys/getsetrep"
+		parameters
+			rep-code
+	switch on get-param(1)
+		case "-layby"
+			spl
+				"so/m50laybyent"
+			parameters
+				"-layby"
+				user-whse
+				user-store-id
+				rep-code
+		case "-quotation"
+			spl
+				"so/m50quotent"
+			parameters
+				"-posacnt"
+				user-whse
+				user-store-id
+				rep-code
+		case "-transfer"
+			spl
+				"so/m50tranent"
+			parameters
+				"-transfer"
+			exit
+		case "-return"
+			//message "-return"
+			spl
+				"so/m50credent"
+			parameters
+				"-posacnt"
+			exit
+	endswitch
+endprocedure // process-request -----------------------------------------------
+// poslauncher.spl

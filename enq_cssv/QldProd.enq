@@ -1,0 +1,29 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	stk-desc-line-3
+	sup-shipping-method-code
+	cre-accountcode
+	cr-type
+	sup-last-buy-price
+from
+	stock-master
+	stock-supplier
+	cre-master
+where
+	sup-shipping-method-code in { "A" "B" "C" } 
+	and 
+	cr-type = 'Q' 
+format is lst
+report width is 300
+suppress stk-desc-line-3
+suppress cre-accountcode
+suppress cr-type
+field order is stock-code stk-description stk-desc-line-2 stk-desc-line-3 sup-shipping-method-code sup-last-buy-price
+field title of stock-code is "Stock Code"
+field title of stk-description is "Stock Description"
+field title of stk-desc-line-2 is "Stock Description Line 2"
+field title of stk-desc-line-3 is "Stock Description Line 3"
+field title of sup-shipping-method-code is "On Range / Off Range"
+field title of sup-last-buy-price is "Cost Price"

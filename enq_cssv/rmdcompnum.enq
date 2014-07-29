@@ -1,0 +1,6 @@
+select
+	sys-comp-code
+	sys-comp-desc
+from
+	system-companies
+format is lst

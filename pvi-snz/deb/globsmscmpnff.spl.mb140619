@@ -1,0 +1,296 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/deb/globsmscmpn.spl
+//  Program Desc:	Global SMS Campaign
+//  Requested By:	Chris Ward
+//  Request Date:	22nov12
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	19jun13	mb	{1}		add multi-company extract to globsmscmpn.spl as globsmscmpnff.spl
+//	26nov12	rmd			mulriple mobile # to appear in individual fields
+//	22nov12	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+object open-order-register type memory
+	record
+		oor-so-order-no		like so-order-no
+	endrecord
+    key is oor-so-order-no
+
+object consolidated-sales-order type memory
+	record
+		cso-div						like sys-consolidation-division
+		cso-territory-code			like so-territory-code
+		cso-so-order-no             like so-order-no
+		cso-so-invoice-no           like so-invoice-no
+		cso-so-processing-date      like so-processing-date
+		cso-so-order-total-amount	like so-order-total-amount
+		cso-shortname				like shortname
+		cso-email-address			pic x(60)
+		cso-mobile-no-1				pic x(20)
+		cso-mobile-no-2				pic x(20)
+		cso-mobile-no-3				pic x(20)
+		cso-mobile-source			pic x
+		cso-so-count				type numeric
+		cso-set-status				pic x(20)
+	endrecord
+	key is cso-div cso-territory-code cso-so-order-no unique
+
+field
+	ws-confirm				type boolean
+	ws-start-date			type date
+	ws-end-date         	type date
+	ws-amount-threshold 	type numeric
+
+mode md-so-enq
+	prompt "SO Enq"
+	help "Enquire on this order"
+
+procedure main
+	get system-control first
+	do get-user-input entry-once
+	if ws-confirm
+		do build-dataset
+		do display-in-grid
+	endif
+endprocedure // main ----------------------------------------------------------
+
+
+screen get-user-input
+	window @1,1 to @7,32 title "Enter Date Range"
+	box @1,1 to @6,32 title SPACES
+	accept ws-start-date @2,16 title "Start Date:"
+		default ws-start-date
+	accept ws-end-date @3,16 title "End Date:"
+		default ws-end-date
+	accept ws-amount-threshold @4,16 title "Threshold:" pic zzzzz9.99
+		default ws-amount-threshold
+	//accept ws-max-datasets @5,16 pic zz9 title "Max Datasets:"
+	//	default ws-max-datasets
+confirm
+confirmed
+    set ws-confirm		= TRUE
+notconfirmed
+	set ws-confirm		= FALSE
+endconfirm
+endscreen // get-user-input ---------------------------------------------------
+
+procedure clean-mobile-no
+local field
+	i					type numeric
+	c					pic x
+parameters
+	lp-mobile-no		pic x(20)
+returning
+	lr-mobile-no        pic x(20)
+	set lr-mobile-no = SPACES
+	if lp-mobile-no != SPACES
+		for i = 1 to 20
+			set c = substring(lp-mobile-no,i,i)
+			if c between "0" and "9"
+				set lr-mobile-no = strconcat(lr-mobile-no c)
+			elseif c = "+" and i in {1 2}
+				set lr-mobile-no = strconcat(lr-mobile-no c)
+			endif
+		endfor
+	endif
+endprocedure // clean-mobile-no -----------------------------------------------
+
+procedure build-dataset
+	window @19,34 to @23,95
+		title is "Building Data"
+		colour white
+		no-hide
+	display bitmap concat(get-env("BMS") "/images/repedge.gif") @19,34
+	display concat(sys-consolidation-division ": Open Sales" ) @20,49 background left
+	display "S/O:" @21,49 background left
+	open open-order-register truncate temporary
+	open consolidated-sales-order truncate temporary
+	extract sales-order
+		on index so-order-no so-bo-suffix
+		key is 1 SPACES
+	detail
+		display so-order-no @21,56 foreground prompts
+		get open-order-register
+			on index oor-so-order-no
+			key is so-order-no
+		on error
+			set oor-so-order-no = so-order-no
+			insert open-order-register
+		endon
+	endextract
+	display concat(sys-consolidation-division ": Invoiced Sales" ) @20,49 background left
+	display "S/O:" @21,49 background left
+	extract sales-order-archive
+		on index so-order-no so-bo-suffix
+		key is 1 SPACES
+	before so-order-no
+		initialise consolidated-sales-order
+		set cso-so-processing-date = 01-JAN-1980
+	detail
+		display so-order-no @21,56 foreground prompts
+		if so-order-status = "90"
+			set cso-so-order-total-amount 	+= so-order-total-amount
+			set cso-so-count				+= 1
+			if so-processing-date > cso-so-processing-date
+				set cso-so-processing-date 	= so-processing-date
+				set cso-so-invoice-no       = so-invoice-no
+			endif
+		endif
+	after so-order-no
+		set cso-so-order-no		= so-order-no
+		set cso-div				= sys-consolidation-division
+		set cso-territory-code	= so-territory-code
+		get open-order-register
+			on index oor-so-order-no
+			key is so-order-no
+		on error
+			if cso-so-count = 1
+				set cso-set-status = "SINGLE"
+			elseif cso-so-count > 1
+				set cso-set-status = "MULTIPLE"
+			endif
+		else
+			set cso-set-status = "INCOMPLETE"
+		endon
+		get name-and-address-master //get mobile # cascade through 1, 2, 3
+			on index accountcode na-type
+			key is so-cust-code "C"
+		on error
+		else
+			//if accountcode = "FLUIDA01"
+			//26nov12 ------------------------------------------ start
+			//if substring(na-fax-no,1,2) = "04" or substring(na-fax-no,1,3) = "614" or substring(na-fax-no,1,4) in {"+614" "(614"}
+			//	set cso-mobile-no-1 = na-fax-no
+			//	set cso-mobile-source = "F"
+			//elseif substring(na-phone,1,2) = "04" or substring(na-phone,1,3) = "614" or substring(na-phone,1,4) in {"+614" "(614"}
+			//	if cso-mobile-no-1 = SPACES
+			//		set cso-mobile-no-1 = na-phone
+			//	else
+			//		set cso-mobile-no-2 = na-phone
+			//	endif
+			//	set cso-mobile-source = "P"
+			//elseif substring(na-mobile-phone,1,2) = "04" or substring(na-mobile-phone,1,3) = "614" or substring(na-mobile-phone,1,4) in {"+614" "(614"}
+			//	if cso-mobile-no-1 = SPACES
+			//		set cso-mobile-no-1 = na-mobile-phone
+			//	elseif cso-mobile-no-2 = SPACES
+			//		set cso-mobile-no-2 = na-mobile-phone
+			//	else
+			//		set cso-mobile-no-3 = na-mobile-phone
+			//	endif
+			//	set cso-mobile-source = "M"
+			//endif
+			//not this one either
+			//if substring(na-fax-no,1,2) = "04" or substring(na-fax-no,1,3) = "614" or substring(na-fax-no,1,4) in {"+614" "(614"}
+			//	set cso-mobile-no-1 = na-fax-no
+			//elseif substring(na-phone,1,2) = "04" or substring(na-phone,1,3) = "614" or substring(na-phone,1,4) in {"+614" "(614"}
+			//	set cso-mobile-no-2 = na-phone
+			//elseif substring(na-mobile-phone,1,2) = "04" or substring(na-mobile-phone,1,3) = "614" or substring(na-mobile-phone,1,4) in {"+614" "(614"}
+			//	set cso-mobile-no-3 = na-mobile-phone
+			//endif
+			if substring(na-fax-no,1,2) = "04" or substring(na-fax-no,1,3) = "614" or substring(na-fax-no,1,4) in {"+614" "(614"}
+				set cso-mobile-no-1 = na-fax-no
+				set cso-mobile-source = "F"
+			endif
+			if substring(na-phone,1,2) = "04" or substring(na-phone,1,3) = "614" or substring(na-phone,1,4) in {"+614" "(614"}
+				if cso-mobile-no-1 = SPACES
+					set cso-mobile-no-1 = na-phone
+				else
+					set cso-mobile-no-2 = na-phone
+				endif
+				set cso-mobile-source = "P"
+			endif
+			if substring(na-mobile-phone,1,2) = "04" or substring(na-mobile-phone,1,3) = "614" or substring(na-mobile-phone,1,4) in {"+614" "(614"}
+				if cso-mobile-no-1 = SPACES
+					set cso-mobile-no-1 = na-mobile-phone
+				elseif cso-mobile-no-2 = SPACES
+					set cso-mobile-no-2 = na-mobile-phone
+				else
+					set cso-mobile-no-3 = na-mobile-phone
+				endif
+				set cso-mobile-source = "M"
+			endif
+			//26nov12 -------------------------------------------- end
+		endon
+		if cso-mobile-no-1 != SPACES //cleanup mobile #'s
+			do clean-mobile-no
+				parameters
+					cso-mobile-no-1
+				returning
+					cso-mobile-no-1
+		elseif cso-mobile-no-2 != SPACES
+			do clean-mobile-no
+				parameters
+					cso-mobile-no-2
+				returning
+					cso-mobile-no-2
+		elseif cso-mobile-no-3 != SPACES
+			do clean-mobile-no
+				parameters
+					cso-mobile-no-3
+				returning
+					cso-mobile-no-3
+		endif
+		//na-mobile-phone
+		get name-and-address-master
+			on index accountcode na-type
+			key is so-cust-code "E"
+		on error
+		else
+			set cso-email-address = strconcat(na-name na-company)
+		endon
+		get deb-master
+			on index accountcode
+			key is so-cust-code
+		on error
+			set cso-shortname = "UNKNOWN"
+		else
+			set cso-shortname = shortname
+		endon
+		if (cso-so-count > 0) and (so-order-total-amount >= ws-amount-threshold) and (cso-so-processing-date between ws-start-date and ws-end-date) and (cso-mobile-no-1 != SPACES) //needs at least one (the primary) mobile #
+			insert consolidated-sales-order
+		endif
+	endextract
+endprocedure // build-dataset -------------------------------------------------
+
+screen display-in-grid
+	window @1,1 to @24,90
+		title concat("Consolidated Orders")
+		primary consolidated-sales-order
+		datagrid occurs 20
+	allowed md-so-enq search //md-mode
+	review-from-start
+detail
+	display cso-div		                @1,004 title "cso-div"
+    display cso-territory-code			@1,008 title "cso-territory-code"
+	display cso-so-order-no 			@1,010 title "cso-so-order-no"
+	display cso-so-invoice-no           @1,012 title "cso-so-invoice-no"
+	display cso-so-processing-date      @1,014 title "cso-so-processing-date"
+	display cso-so-order-total-amount	@1,016 title "cso-so-order-total-amount"
+	display cso-so-count				@1,024 title "cso-so-count"				pic zzzzzz9
+	display cso-set-status				@1,028 title "cso-set-status"			pic x(12)
+	display cso-shortname				@1,030 title "cso-shortname"
+	//display cso-email-address			@1,032 title "cso-email-address"
+	display cso-mobile-no-1				@1,036 title "cso-mobile-no-1"
+	display cso-mobile-source           @1,040 title "cso-mobile-source"
+	display cso-mobile-no-2				@1,044 title "cso-mobile-no-2"
+	display cso-mobile-no-3				@1,048 title "cso-mobile-no-3"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-so-enq
+			spl "so/m5ordenq"
+				parameters
+					"-e"
+					cso-so-order-no
+					SPACES
+					cso-so-invoice-no
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------

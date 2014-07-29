@@ -1,0 +1,86 @@
+select
+	whse-code
+	stv-bin-location
+	stock-code
+	stv-whse-qty
+	stv-count-qty
+	stv-freeze-whse-cost
+	ws-whse = input
+		string
+		prompt is "Enter warehouse code:"
+	ws-start-loc = input
+		string
+		prompt is "Enter start bay location:"
+	ws-end-loc = input
+		string
+		prompt is "Enter end   bay location:"
+	stk-description
+	stk-desc-line-2
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+	company-name
+from
+	stock-take-variance
+	stock-master
+	system-table
+	system-control
+where
+	whse-code = ws-whse 
+	and stv-bin-location between ws-start-loc and ws-end-loc 
+	and stv-count-qty != 0 
+	and sys-tbl-type = "WH" 
+	and whse-code = sys-tbl-code 
+order by whse-code stv-bin-location stock-code 
+format is rpt
+field new-whse-code pic 9
+field new-stv-bin-location pic 9
+report header
+//	page
+header
+	print 
+		company-name in col 1
+		"STOCK TAKE COUNT SHEET" in col 49 bold 
+		today() in col 94
+		tod() in col 107
+		"Pageno." in col 117
+		pageno() in col 124
+	print "For" in col 49 font 7 bold
+		sys-description in col 53 bold
+	print "LOCATION:" in col 1 font 9 bold
+		whse-code in col 11 font 9 bold
+		"BAY NO:" in col 92 font 9 bold
+		stv-bin-location in col 100 font 9 bold
+	skip
+	print "Stocktake" in col 103
+		"Checked/" in col 115
+	print
+		"Stock Code" in col 1
+		"Description" in col 18
+		"Cost" in col 88
+		"Count" in col 105
+		"Corrections" in col 114
+	print "=================================================================================================================================" in col 1
+before whse-code
+	set new-whse-code = 1
+before stv-bin-location
+	set new-stv-bin-location = 1
+	page
+
+detail
+	if (new-whse-code)
+	endif
+	if (new-stv-bin-location)
+	endif
+	skip
+	print stock-code in col 1 no newline
+	print stk-description in col 18 no newline
+	print stk-desc-line-2 in col 49 no newline
+//	print stv-freeze-whse-cost in col 85 pic zz,zz9.99- no newline
+	print stv-count-qty in col 104 pic z,zz9 no newline
+	skip 2
+	set new-whse-code = 0
+	set new-stv-bin-location = 0
+after whse-code
+after stv-bin-location
+report footer

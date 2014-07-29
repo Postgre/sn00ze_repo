@@ -1,0 +1,13 @@
+select
+	stock-code
+	stk-user-group
+	stk-sales-tax-paid-rate
+	sup-stock-code
+	cre-accountcode
+from
+	stock-master
+	stock-supplier
+where
+	stk-sales-tax-paid-rate = 0 
+group by stk-user-group
+format is lst

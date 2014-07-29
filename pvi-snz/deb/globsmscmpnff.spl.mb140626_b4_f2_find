@@ -1,0 +1,746 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/deb/globsmscmpn.spl
+//  Program Desc:	Global SMS Campaign
+//  Requested By:	Chris Ward
+//  Request Date:	22nov12
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	23jun14	mb	{3}		upgrade to 710.3
+//	19jun13	mb	{1}		add multi-company extract 
+//								to globsmscmpn.spl as globsmscmpnff.spl
+//	26nov12	rmd			mulriple mobile # to appear in individual fields
+//	22nov12	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+version-number "140623.000" //{3}
+
+object open-order-register type memory
+	record
+		oor-so-order-no		like so-order-no
+	endrecord
+    key is oor-so-order-no
+
+object consolidated-sales-order type memory
+	record
+		cso-div						//like sys-consolidation-division	{3}		upgrade to 710.3
+		cso-territory-code		//	like so-territory-code				{3}		upgrade to 710.3
+		cso-so-order-no          //   like so-order-no					{3}		upgrade to 710.3
+		cso-so-invoice-no        //   like so-invoice-no				{3}		upgrade to 710.3
+		cso-so-processing-date    //  like so-processing-date			{3}		upgrade to 710.3
+		cso-so-order-total-amount	//like so-order-total-amount		{3}		upgrade to 710.3
+		cso-shortname				//like shortname							{3}		upgrade to 710.3
+		cso-email-address			//pic x(60)									{3}		upgrade to 710.3
+		cso-mobile-no-1			//	pic x(20)								{3}		upgrade to 710.3
+		cso-mobile-no-2			//	pic x(20)								{3}		upgrade to 710.3
+		cso-mobile-no-3			//	pic x(20)								{3}		upgrade to 710.3
+		cso-mobile-source			//pic x										{3}		upgrade to 710.3
+		cso-so-count				//type numeric								{3}		upgrade to 710.3
+		cso-set-status				//pic x(20)									{3}		upgrade to 710.3
+	endrecord
+	key is cso-div cso-territory-code cso-so-order-no unique
+
+field
+	ws-confirm				type boolean
+	ws-start-date			type date
+	ws-end-date         	type date
+	ws-amount-threshold 	type numeric
+	ws-max-datasets			type numeric //{1}
+
+mode md-so-enq
+	prompt "SO Enq"
+	help "Enquire on this order"
+
+//<{1}
+object comp-2-system-control like system-control
+
+//<{3}
+#define ism-ff-mem snooze-ism-ff-mem
+//>{3}
+/* //<{3}
+object ism-ff-mem
+	file "/data/common/ism-ff-mem"
+	type isam
+record
+	ifm-c-code				pic x(20)
+	ifm-d-start-date		type date
+	ifm-d-end-date			type date
+	ifm-n-max-datasets	type numeric //like ws-max-datasets
+	ifm-n-threshold		type numeric //like ws-amount-threshold
+endrecord //object ism-ff-mem
+key is ifm-c-code
+*/ //>{3}
+
+//<{1}
+#define X_KEY "globsms"
+#define X_LOAD_REBUILD \
+	open ism-ff-mem \
+	on error \
+		message "Cannot open ism-ff-mem, will create new instance" \
+		open ism-ff-mem create permanent \
+	endon \
+	get ism-ff-mem \
+		on index ifm-c-code \
+		key X_KEY \
+	on error \
+	else \
+		set ws-start-date		= ifm-d-start-date \
+		set ws-end-date		= ifm-d-end-date \
+		set ws-max-datasets	= ifm-n-max-datasets \
+		set ws-amount-threshold = ifm-n-threshold \
+	endon \
+//-- end-define X_LOAD_REBUILD
+
+//<{3}
+#define ism-ff-globsms snooze-ism-ff-globsms
+//>{3}
+/* //<{3}
+object ism-ff-globsms like consolidated-sales-order type isam //memory
+	key is cso-div cso-territory-code cso-so-order-no unique
+	file "/data/common/ism-globsms"
+*/ //>{3}
+
+// instead of EXTERNAL approach, created COMMON custom table: snooze-order-register
+#define SNZ_COMMON snooze-order-register
+#define SNZ_COMMON_TXT "snooze-order-register"
+
+field ws-ds-count type numeric
+//>{1}
+
+//<{3}
+#define X_B4_DISPLAY_GRID \
+	extract consolidated-sales-order all \
+	detail \
+		delete consolidated-sales-order \
+	endextract \
+	extract ism-ff-globsms all \
+		insert consolidated-sales-order \
+			on error endon \
+	endextract
+//>{3}
+
+procedure main
+	get system-control first
+	open consolidated-sales-order truncate temporary	//{3}
+/* //<{1}
+	do get-user-input entry-once
+*/ //>{1}
+//<{1}
+	set ws-ds-count = 0
+	if get-param(1) != "-buildonly"
+		//--
+		open ism-ff-globsms
+			//truncate permanent
+		on error
+			message "Cannot open ism-ff-globsms, will create new instance"
+			open ism-ff-globsms create permanent
+		endon //open ism-ff-globsms
+		//--
+		//-- restore last entered criteria :
+		X_LOAD_REBUILD
+		/*
+		set ws-start-date	= date2julian("01.nov.2013")
+		set ws-end-date	= date2julian("30.nov.2013")
+		set ws-amount-threshold = 6000
+		set ws-max-datasets = 3 //5 //100 //for testing
+		//
+		do get-user-input entry-once
+		*/
+		set ws-confirm = true
+	else
+		//-- -buildonly call :
+		set ws-start-date	= date-to-julian(get-param(2))
+		set ws-end-date	= date-to-julian(get-param(3))
+		set ws-amount-threshold = num(get-param(4))
+		set ws-ds-count	= num(get-param(5))
+		set ws-confirm		= true
+	endif //get-param(1) != "-buildonly"
+
+	if ws-confirm
+/* //<{1}
+		do build-dataset
+		do display-in-grid
+	endif
+*/ //>{1}
+		if get-param(1) = "-buildonly"
+			do build-dataset
+		else
+			//do dig-tfa
+			//do dig-global-audit
+			X_LOAD_REBUILD //-- restore last entered criteria
+			X_B4_DISPLAY_GRID		//{3}
+			do display-in-grid
+		endif
+	else
+		X_LOAD_REBUILD //-- restore last entered criteria
+		X_B4_DISPLAY_GRID			//{3}
+		do display-in-grid
+	endif //ws-confirm
+//>{1}
+endprocedure // main ----------------------------------------------------------
+
+
+screen get-user-input
+	window @1,1 to @7,32 title "Enter Date Range"
+	box @1,1 to @6,32 title SPACES
+	//
+	//-- testing default criteria :
+	set ws-start-date	= date2julian("01.nov.2013")
+	set ws-end-date	= date2julian("30.nov.2013")
+	set ws-amount-threshold = 6000
+	set ws-max-datasets = 1 //5 //100 //for testing
+	//--
+	//-- restore last entered criteria :
+	X_LOAD_REBUILD
+	set ws-max-datasets = 1 //5 //100 //for testing
+	//
+	accept ws-start-date @2,16 title "Start Date:"
+		default ws-start-date
+	accept ws-end-date @3,16 title "End Date:"
+		default ws-end-date
+	accept ws-amount-threshold @4,16 title "Threshold:" pic zzzzz9.99
+		default ws-amount-threshold
+	//accept ws-max-datasets @5,16 pic zz9 title "Max Datasets:"
+	//	default ws-max-datasets
+//<{1}
+		help "Minimum dollar value of Order to include." //{1}
+	accept ws-max-datasets @5,16 pic zz9 title "Max Datasets:"
+		default ws-max-datasets
+//>{1}
+confirm
+confirmed
+    set ws-confirm		= TRUE
+notconfirmed
+	set ws-confirm		= FALSE
+endconfirm
+endscreen // get-user-input ---------------------------------------------------
+
+procedure clean-mobile-no
+local field
+	i					type numeric
+	c					pic x
+parameters
+	lp-mobile-no		pic x(20)
+returning
+	lr-mobile-no        pic x(20)
+	set lr-mobile-no = SPACES
+	if lp-mobile-no != SPACES
+		for i = 1 to 20
+			set c = substring(lp-mobile-no,i,i)
+			if c between "0" and "9"
+				set lr-mobile-no = strconcat(lr-mobile-no c)
+			elseif c = "+" and i in {1 2}
+				set lr-mobile-no = strconcat(lr-mobile-no c)
+			endif
+		endfor
+	endif
+endprocedure // clean-mobile-no -----------------------------------------------
+
+//<{1}
+#define DISPLAY_DATASET_COUNT \
+	if so-order-no = zero \
+		display "Thinking... " @21,56 foreground prompts \
+	else \
+		display so-order-no @21,56 foreground prompts \
+	endif \
+	display concat("Building " str(ws-ds-count) "/" str(ws-max-datasets) " datasets" ) @21,68 foreground prompts
+//end-define DISPLAY_DATASET_COUNT
+//>{1}
+procedure build-dataset
+	window @19,34 to @23,95
+		title is "Building Data"
+		colour white
+		no-hide
+	display bitmap concat(get-env("BMS") "/images/repedge.gif") @19,34
+	display concat(sys-consolidation-division ": Open Sales" ) @20,49 background left
+	display "S/O:" @21,49 background left
+	open open-order-register truncate temporary
+	open consolidated-sales-order truncate temporary
+//<{1}
+	display so-order-no @21,56 foreground prompts
+	set ws-max-datasets = num(get-param(6))
+	DISPLAY_DATASET_COUNT
+//>{1}
+	extract sales-order
+		on index so-order-no so-bo-suffix
+		key is 1 SPACES
+	detail
+		/* //<{1}
+		display so-order-no @21,56 foreground prompts
+		*/ //>{1}
+		get open-order-register
+			on index oor-so-order-no
+			key is so-order-no
+		on error
+			set oor-so-order-no = so-order-no
+			insert open-order-register
+		endon
+	endextract
+	display concat(sys-consolidation-division ": Invoiced Sales" ) @20,49 background left
+	display "S/O:" @21,49 background left
+	extract sales-order-archive
+		on index so-order-no so-bo-suffix
+		key is 1 SPACES
+	before so-order-no
+		initialise consolidated-sales-order
+		initialise ism-ff-globsms //{1} like consolidated-sales-order type memory
+		set cso-so-processing-date = 01-JAN-1980
+	detail
+		/* //<{1}
+		display so-order-no @21,56 foreground prompts
+		*/ //>{1}
+		if so-order-status = "90"
+			set cso-so-order-total-amount 	+= so-order-total-amount
+			set cso-so-count				+= 1
+			if so-processing-date > cso-so-processing-date
+				set cso-so-processing-date 	= so-processing-date
+				set cso-so-invoice-no       = so-invoice-no
+			endif
+		endif
+	after so-order-no
+		set cso-so-order-no		= so-order-no
+		set cso-div				= sys-consolidation-division
+		set cso-territory-code	= so-territory-code
+		get open-order-register
+			on index oor-so-order-no
+			key is so-order-no
+		on error
+			if cso-so-count = 1
+				set cso-set-status = "SINGLE"
+			elseif cso-so-count > 1
+				set cso-set-status = "MULTIPLE"
+			endif
+		else
+			set cso-set-status = "INCOMPLETE"
+		endon
+		get name-and-address-master //get mobile # cascade through 1, 2, 3
+			on index accountcode na-type
+			key is so-cust-code "C"
+		on error
+		else
+			//if accountcode = "FLUIDA01"
+			//26nov12 ------------------------------------------ start
+			//if substring(na-fax-no,1,2) = "04" or substring(na-fax-no,1,3) = "614" or substring(na-fax-no,1,4) in {"+614" "(614"}
+			//	set cso-mobile-no-1 = na-fax-no
+			//	set cso-mobile-source = "F"
+			//elseif substring(na-phone,1,2) = "04" or substring(na-phone,1,3) = "614" or substring(na-phone,1,4) in {"+614" "(614"}
+			//	if cso-mobile-no-1 = SPACES
+			//		set cso-mobile-no-1 = na-phone
+			//	else
+			//		set cso-mobile-no-2 = na-phone
+			//	endif
+			//	set cso-mobile-source = "P"
+			//elseif substring(na-mobile-phone,1,2) = "04" or substring(na-mobile-phone,1,3) = "614" or substring(na-mobile-phone,1,4) in {"+614" "(614"}
+			//	if cso-mobile-no-1 = SPACES
+			//		set cso-mobile-no-1 = na-mobile-phone
+			//	elseif cso-mobile-no-2 = SPACES
+			//		set cso-mobile-no-2 = na-mobile-phone
+			//	else
+			//		set cso-mobile-no-3 = na-mobile-phone
+			//	endif
+			//	set cso-mobile-source = "M"
+			//endif
+			//not this one either
+			//if substring(na-fax-no,1,2) = "04" or substring(na-fax-no,1,3) = "614" or substring(na-fax-no,1,4) in {"+614" "(614"}
+			//	set cso-mobile-no-1 = na-fax-no
+			//elseif substring(na-phone,1,2) = "04" or substring(na-phone,1,3) = "614" or substring(na-phone,1,4) in {"+614" "(614"}
+			//	set cso-mobile-no-2 = na-phone
+			//elseif substring(na-mobile-phone,1,2) = "04" or substring(na-mobile-phone,1,3) = "614" or substring(na-mobile-phone,1,4) in {"+614" "(614"}
+			//	set cso-mobile-no-3 = na-mobile-phone
+			//endif
+			if substring(na-fax-no,1,2) = "04" or substring(na-fax-no,1,3) = "614" or substring(na-fax-no,1,4) in {"+614" "(614"}
+				set cso-mobile-no-1 = na-fax-no
+				set cso-mobile-source = "F"
+			endif
+			if substring(na-phone,1,2) = "04" or substring(na-phone,1,3) = "614" or substring(na-phone,1,4) in {"+614" "(614"}
+				if cso-mobile-no-1 = SPACES
+					set cso-mobile-no-1 = na-phone
+				else
+					set cso-mobile-no-2 = na-phone
+				endif
+				set cso-mobile-source = "P"
+			endif
+			if substring(na-mobile-phone,1,2) = "04" or substring(na-mobile-phone,1,3) = "614" or substring(na-mobile-phone,1,4) in {"+614" "(614"}
+				if cso-mobile-no-1 = SPACES
+					set cso-mobile-no-1 = na-mobile-phone
+				elseif cso-mobile-no-2 = SPACES
+					set cso-mobile-no-2 = na-mobile-phone
+				else
+					set cso-mobile-no-3 = na-mobile-phone
+				endif
+				set cso-mobile-source = "M"
+			endif
+			//26nov12 -------------------------------------------- end
+		endon
+		if cso-mobile-no-1 != SPACES //cleanup mobile #'s
+			do clean-mobile-no
+				parameters
+					cso-mobile-no-1
+				returning
+					cso-mobile-no-1
+		elseif cso-mobile-no-2 != SPACES
+			do clean-mobile-no
+				parameters
+					cso-mobile-no-2
+				returning
+					cso-mobile-no-2
+		elseif cso-mobile-no-3 != SPACES
+			do clean-mobile-no
+				parameters
+					cso-mobile-no-3
+				returning
+					cso-mobile-no-3
+		endif
+		//na-mobile-phone
+		get name-and-address-master
+			on index accountcode na-type
+			key is so-cust-code "E"
+		on error
+		else
+			set cso-email-address = strconcat(na-name na-company)
+		endon
+		get deb-master
+			on index accountcode
+			key is so-cust-code
+		on error
+			set cso-shortname = "UNKNOWN"
+		else
+			set cso-shortname = shortname
+		endon
+		if (cso-so-count > 0) and (so-order-total-amount >= ws-amount-threshold) and (cso-so-processing-date between ws-start-date and ws-end-date) and (cso-mobile-no-1 != SPACES) //needs at least one (the primary) mobile #
+//<{1}
+			display so-order-no @21,56 foreground prompts
+			DISPLAY_DATASET_COUNT
+//>{1}
+//message concat("zaz: insert SO = " str(so-order-no) ":" so-bo-suffix " status = " so-order-status )
+			insert consolidated-sales-order
+			insert ism-ff-globsms //{1} like consolidated-sales-order type memory
+		endif
+	endextract
+endprocedure // build-dataset -------------------------------------------------
+
+//<{1}
+object tmp-system-user like system-user type memory //{2} for user/company sort seq -user-user-only-spare-flag2-1 for tag
+
+mode md-tag
+	prompt "Incl/Excl"
+	help "Should this Dataset be included in the extract?"
+
+mode md-maintain-datasets-for-inclusion
+	prompt "Maintain Dataset List"
+	help "Maintain Datasets for inclusion"
+
+mode md-build-all
+	prompt "Rebuild"
+	help "Rebuild Global SMS Campaign"
+	//when login-id() in {"robd"}
+
+field xstr	pic x(200)
+//>{1}
+
+screen display-in-grid
+	window @1,1 to @24,90
+		title concat("Consolidated Orders  -  Threshold: " str(ws-amount-threshold ) "   From " julian2date(ws-start-date) " to " julian2date(ws-end-date) " for " str(ws-max-datasets) " datasets" )
+	/* //<{1}
+		title concat("Consolidated Orders")
+		primary consolidated-sales-order
+	*/ //>{1}
+		//primary ism-ff-globsms //{1} like consolidated-sales-order type memory
+		primary consolidated-sales-order		//{3}
+		datagrid occurs 20
+	/* //<{1}
+	allowed md-so-enq search //md-mode
+	*/ //>{1}
+//<{1}
+	allowed	search md-so-enq //md-mode
+				md-maintain-datasets-for-inclusion //md-list-global-terr-whse md-build-all //md-mode
+				md-build-all
+	/*
+	ffaudit.spl : allowed search md-maintain-datasets-for-inclusion md-list-global-terr-whse md-build-all //md-mode
+	*/
+//>{1}
+	review-from-start
+detail
+	display cso-div					@1,004 title "cso-div"
+	display cso-territory-code		@1,008 title "cso-territory-code"
+	display cso-so-order-no			@1,010 title "cso-so-order-no"
+	display cso-so-invoice-no		@1,012 title "cso-so-invoice-no"
+	display cso-so-processing-date @1,014 title "cso-so-processing-date"
+	display cso-so-order-total-amount @1,016 title "cso-so-order-total-amount"
+	display cso-so-count				@1,024 title "cso-so-count"				pic zzzzzz9
+	display cso-set-status			@1,028 title "cso-set-status"			pic x(12)
+	display cso-shortname			@1,030 title "cso-shortname"
+	//display cso-email-address	@1,032 title "cso-email-address"
+	display cso-mobile-no-1			@1,036 title "cso-mobile-no-1"
+	display cso-mobile-source		@1,040 title "cso-mobile-source"
+	display cso-mobile-no-2			@1,044 title "cso-mobile-no-2"
+	display cso-mobile-no-3			@1,048 title "cso-mobile-no-3"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-so-enq
+//<{1}
+			get system-companies
+				on index sys-comp-code
+				key cso-div
+			on error
+				message concat("No find sys-comp-code : cso-div of " cso-div)
+			else
+/*
+set xstr = concat("cd " strconcat(sys-comp-path) ";prospl so/m5ordenq -e " str(cso-so-order-no) " " cso-so-invoice-no)
+message concat("zaz: xstr=" xstr)
+				command "sh"
+					parameters
+						"-c"
+						xstr
+message concat("zaz: so/m5ordenq call ..." )
+*/
+//message concat("zaz : home cd = " strconcat(sys-comp-path))
+//>{1}
+			spl "so/m5ordenq"
+				home sys-comp-path //{1}
+				parameters
+					"-e"
+					cso-so-order-no
+					SPACES
+					cso-so-invoice-no
+//<{1}
+			endon //get system-companies
+		case md-build-all
+			if sys-consolidation-division = "MAS"
+				//set ws-start-date	= date2julian("01.nov.2013")
+				//set ws-end-date	= date2julian("30.nov.2013")
+				//set ws-amount-threshold = 500
+				do build-all
+				//do dig-global-audit
+				X_LOAD_REBUILD //-- restore last entered criteria
+				X_B4_DISPLAY_GRID		//{3}
+				do display-in-grid
+				exit
+			else
+				message "Cannot run Build All in " sys-consolidation-division
+			endif
+		case md-maintain-datasets-for-inclusion
+			open tmp-system-user truncate temporary
+			//like system-user type memory //{2} for user/company sort seq -user-user-only-spare-flag2-1 for tag
+			extract system-user
+				on index user-id sys-comp-code
+				key is login-id() SPACES
+				next same user-id
+			detail
+				get system-companies
+					on index sys-comp-code
+				on error
+					continue
+				endon
+				set user-position 					= sys-comp-desc
+				set user-user-only-spare-flag2-1	= sys-comp-spare2
+				insert tmp-system-user
+			endextract
+			do maintain-datasets-for-inclusion
+//>{1}
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+//<{1}
+#define X_SAVE_REBUILD \
+	open ism-ff-mem \
+	on error \
+		message "Cannot open ism-ff-mem, will create new instance" \
+		open ism-ff-mem create permanent \
+	endon \
+	get ism-ff-mem \
+		on index ifm-c-code \
+		key X_KEY \
+	on error \
+		set ifm-c-code			= X_KEY \
+		insert ism-ff-mem \
+		get ism-ff-mem \
+			on index ifm-c-code \
+		key X_KEY \
+	endon \
+	set ifm-d-start-date		= ws-start-date \
+	set ifm-d-end-date		= ws-end-date \
+	set ifm-n-max-datasets	= ws-max-datasets \
+	set ifm-n-threshold		= ws-amount-threshold \
+	update ism-ff-mem
+//-- end-define X_SAVE_REBUILD
+
+procedure build-all
+local field
+	i		type numeric
+	j		type numeric
+	/*
+	do get-date-range entry once
+	*/
+	set ws-start-date	= date2julian("01.nov.2013")
+	set ws-end-date	= date2julian("30.nov.2013")
+	set ws-amount-threshold = 6000
+	set ws-max-datasets = 3 //5 //100 //for testing
+	do get-user-input entry-once
+	//
+	if ws-confirm = TRUE
+		//clear existing values
+		open ism-ff-globsms truncate permanent
+//		do unload-temp
+		//-- 
+		//-- save REBUILD criteria first :
+		//-- ------------------------------
+		X_SAVE_REBUILD
+		//-- 
+		//set ws-max-datasets = 5 //5 //100 //for testing
+		report "Global SMS Campaign (deb/globsmscmpnff)"
+			spool-only
+			set i = 1
+			set j = ws-max-datasets //5 //100 //for testing
+			extract system-companies
+			detail
+				//message "i: " i "  j:" j
+				if i > j
+					break
+				endif
+				if sys-comp-spare2 = "Y"
+					print
+						today()
+						tod()
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"globsmscmpnff called"
+set xstr = concat("cd " strconcat(sys-comp-path) ";prospl pvi-snz/deb/globsmscmpnff -buildonly " julian-to-date(ws-start-date) " " julian-to-date(ws-end-date) " " str(ws-amount-threshold) " " str(i) " " str(ws-max-datasets) )
+//message strconcat("zaz: xstr = " xstr)
+					command "sh"
+						parameters
+							"-c"
+							xstr
+					set i += 1
+				else
+					print
+						today()
+						tod()
+						sys-comp-code
+						sys-comp-desc
+						sys-comp-spare2
+						"globsmscmpnff not called"
+				endif
+			endextract
+			//do load-temp //{8}
+		report finished
+	endif
+endprocedure // build-all -----------------------------------------------------
+
+/*
+screen dig-global-audit
+	window @1,1 to @24,130
+		title concat("Global Audit")
+		//primary ism-ff-globsms
+		primary consolidated-sales-order		//{3}
+		datagrid occurs 20
+	allowed search md-maintain-datasets-for-inclusion md-build-all //md-list-global-terr-whse //md-mode
+	review-from-start
+detail
+	display cso-div						@1,010 title "Div"
+	display cso-territory-code			@1,014 title "Terr"
+	display cso-so-order-no				@1,018 title "Order"
+	display cso-so-invoice-no			@1,020 title "Invoice"
+	display cso-so-processing-date	@1,024 title "Date"
+	display cso-so-order-total-amount @1,028 title "Amount"		pic ---,----,--9.99
+	display cso-shortname				@1,030 title "Name"
+	display cso-email-address			@1,034 title "email"
+	display cso-mobile-no-1				@1,038 title "mobile 1"
+	display cso-mobile-no-2				@1,040 title "mobile 2"
+	display cso-mobile-no-3				@1,044 title "mobile 2"
+	display cso-mobile-source			@1,048 title "mobile 2"
+	display cso-so-count					@1,050 title "Count"			pic -------9
+	display cso-set-status				@1,054 title "Status"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-maintain-datasets-for-inclusion
+			open tmp-system-user truncate temporary
+			//like system-user type memory //{2} for user/company sort seq -user-user-only-spare-flag2-1 for tag
+			extract system-user
+				on index user-id sys-comp-code
+				key is login-id() SPACES
+				next same user-id
+			detail
+				get system-companies
+					on index sys-comp-code
+				on error
+					continue
+				endon
+				set user-position 					= sys-comp-desc
+				set user-user-only-spare-flag2-1	= sys-comp-spare2
+				insert tmp-system-user
+			endextract
+			do maintain-datasets-for-inclusion
+*/
+		/*
+		case md-list-global-terr-whse //{3}
+			do unload-temp //{8}
+			spl "pvi-snz/sys/globalwhseterrlist"
+			do load-temp //{8}
+		*/
+/*
+		case md-build-all
+			if sys-consolidation-division = "MAS"
+				do build-all
+				//do dig-global-audit
+				do display-in-grid
+				exit
+			else
+				message "Cannot run Build All in " sys-consolidation-division
+			endif
+	endswitch
+endconfirm
+endscreen // dig-global-audit -------------------------------------------------
+*/
+
+screen maintain-datasets-for-inclusion
+	window @1,1 to @24,50
+		title concat("Maintain Datasets for inclusion")
+		//primary system-companies
+		primary tmp-system-user
+			on index user-id user-menu-seq-no
+		datagrid occurs 20
+	allowed md-tag search //md-mode
+	review-from-start
+detail
+	display sys-comp-code									@1,010 title "Div"
+	//display sys-comp-desc       							@1,020 title "Name"
+	display user-position 				        			@1,020 title "Name"
+	//display concat(sys-comp-spare2 "        ")			@1,030 title "Include"
+	display concat(user-user-only-spare-flag2-1 "     ")    @1,030 title "Include"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-tag
+			get system-companies
+				on index sys-comp-code
+			on error
+				message "Cannot Find Company " sys-comp-code
+			else
+				if sys-comp-spare2 = SPACES
+					set sys-comp-spare2 = "Y"
+					set user-user-only-spare-flag2-1 = "Y"
+				else
+					set sys-comp-spare2 = SPACES
+					set user-user-only-spare-flag2-1 = SPACES
+				endif
+				update system-companies
+				update tmp-system-user
+				refresh review
+			endon
+	endswitch
+endconfirm
+endscreen // maintain-datasets-for-inclusion ----------------------------------
+//>{1}

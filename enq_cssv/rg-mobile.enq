@@ -1,0 +1,6 @@
+// put mobile number in the fax field
+update name-and-address-master
+set
+	na-fax-no = na-phone
+where
+	substring(na-phone, 1,2) = "04" 

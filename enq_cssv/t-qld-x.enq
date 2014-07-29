@@ -1,0 +1,15 @@
+select
+	stock-code
+	stock-group
+	stk-user-group
+	prc-region-code
+	cre-accountcode
+from
+	stock-master
+	stock-supplier
+	stock-price
+where
+	stk-user-group[2] = "X" 
+	and prc-region-code = "Q" 
+	and substring(cre-accountcode,4,5) = "-Q"
+format is lst

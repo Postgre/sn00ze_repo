@@ -1,0 +1,17 @@
+select
+	gl-accountcode
+	gl-trans-type
+	gl-trans-date
+	gl-other-side
+	gl-details
+	gl-amount
+from
+	gl-trans
+where
+	gl-accountcode = "5M8301931" 
+	and gl-trans-date between 01-aug-2001 and 31-aug-2001 
+order by gl-other-side gl-trans-date 
+format is lst
+total on gl-amount
+subtotal on gl-amount
+	with breaks on gl-other-side

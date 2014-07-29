@@ -1,0 +1,5 @@
+update stock-supplier
+set
+	sup-lead-time = 10
+where
+	cre-accountcode = 'BOR-N'

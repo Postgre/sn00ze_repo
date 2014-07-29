@@ -1,0 +1,12 @@
+select
+	gl-accountcode
+	gl-trans-date
+	gl-batch-ref
+	gl-amount
+	gl-account-type
+from
+	gl-trans-archive
+	gl-master
+where
+	gl-trans-date between 04-JUL-2011 and 01-JUL-2012
+order by gl-account-type

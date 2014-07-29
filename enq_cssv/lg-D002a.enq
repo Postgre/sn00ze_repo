@@ -1,0 +1,13 @@
+// query Warehouse for Debtors
+select
+	accountcode
+	warehouse
+	territory
+	balance
+	future-bal
+from
+	deb-master
+where warehouse != input alpha prompt "Warehouse"
+
+order by balance,future-bal
+format is lst

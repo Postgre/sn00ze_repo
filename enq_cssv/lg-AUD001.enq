@@ -1,0 +1,17 @@
+// audit Trail test
+select
+	gl-accountcode
+	gl-trans-type
+	gl-trans-date
+	gl-batch-ref
+	gl-tr-date-stamp
+	gl-tr-time-stamp
+	gl-tr-uid
+	gl-amount
+	gl-details
+from
+	gl-trans-archive
+where
+	gl-tr-uid = 367 
+order by gl-tr-date-stamp gl-tr-time-stamp 
+format is lst

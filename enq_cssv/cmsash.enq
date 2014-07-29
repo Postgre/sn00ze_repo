@@ -1,0 +1,34 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-actual-delivery-date
+	so-order-status
+	so-order-total-amount
+	so-order-total-tax
+	ws-start-date = input
+		date
+		prompt is "Please Enter Start Date"
+	ws-end-date = input
+		date
+		prompt is "Please Enter end date"
+	so-territory-code
+	ws-net = so-order-total-amount - so-order-total-tax 
+from
+	sales-order-archive
+where
+	so-order-status = "99" 
+	and so-actual-delivery-date between ws-start-date and ws-end-date 
+order by so-territory-code so-actual-delivery-date 
+format is lst
+suppress so-order-status
+field order is so-territory-code so-order-no so-bo-suffix so-cust-code so-actual-delivery-date so-order-total-amount so-order-total-tax ws-net ws-start-date ws-end-date
+total on so-order-total-amount
+total on so-order-total-tax
+total on ws-net
+subtotal on so-order-total-amount
+	with breaks on so-territory-code
+subtotal on so-order-total-tax
+	with breaks on so-territory-code
+subtotal on ws-net
+	with breaks on so-territory-code

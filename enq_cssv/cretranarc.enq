@@ -1,0 +1,126 @@
+select
+	cre-accountcode
+	cr-shortname
+	cr-ta-invoice-date
+	cr-ta-reference
+	cr-ta-cheque-number
+	cr-ta-date-paid
+	cr-ta-invoice-amount
+	cr-ta-credit-notes-amount
+	cr-ta-journals-amount
+	cr-ta-cash-paid-amount
+	company-name
+	ws-start-date = input date "Enter start invoice date:"
+	ws-end-date = input date "Enter   end invoice date:"
+from
+	cre-trans-archive
+	cre-master
+	system-control
+where
+	cr-ta-invoice-date between ws-start-date and ws-end-date
+order by cre-accountcode 
+format is rpt
+field new-cre-accountcode pic 9
+field new-cr-shortname pic 9
+field total-cr-ta-invoice-amount like cr-ta-invoice-amount
+field sub-tot-cr-ta-invoice-amount like cr-ta-invoice-amount
+field total-cr-ta-credit-notes-amount like cr-ta-credit-notes-amount
+field sub-tot-cr-ta-credit-notes-amount like cr-ta-credit-notes-amount
+field total-cr-ta-journals-amount like cr-ta-journals-amount
+field sub-tot-cr-ta-journals-amount like cr-ta-journals-amount
+field total-cr-ta-cash-paid-amount like cr-ta-cash-paid-amount
+field sub-tot-cr-ta-cash-paid-amount like cr-ta-cash-paid-amount
+report header
+	page
+	set total-cr-ta-invoice-amount = 0
+	set total-cr-ta-credit-notes-amount = 0
+	set total-cr-ta-journals-amount = 0
+	set total-cr-ta-cash-paid-amount = 0
+header
+	print 
+		company-name in col 1
+		"ARCHIVED CREDITORS TRANSACTION REPORT" in col 55
+		today() in col 102
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	skip
+	print "Inv." in col 10
+		"Inv." in col 26
+		"Cheque" in col 40
+		"Date" in col 55
+		"Invoice" in col 73
+		"C/Note" in col 89
+		"Jnl/Sett.Disc" in col 103
+		"Cheque" in col 122
+	print "Date" in col 10
+		"Number" in col 25
+		"Number" in col 41
+		"Paid" in col 56
+		"Amount" in col 74
+		"Amount" in col 90
+		"Amount" in col 107
+		"Amount" in col 123
+	print "=================================================================================================================================" in col 1
+before cre-accountcode
+	set new-cre-accountcode = 1
+	set sub-tot-cr-ta-invoice-amount = 0
+	set sub-tot-cr-ta-credit-notes-amount = 0
+	set sub-tot-cr-ta-journals-amount = 0
+	set sub-tot-cr-ta-cash-paid-amount = 0
+before cr-shortname
+	set new-cr-shortname = 1
+
+detail
+	if (new-cre-accountcode)
+		print cre-accountcode in col 1 no newline
+	endif
+	if (new-cr-shortname)
+		print cr-shortname in col 13
+	endif
+	print cr-ta-invoice-date in col 7 no newline
+	print cr-ta-reference in col 22 no newline
+	print cr-ta-cheque-number in col 38 no newline
+	print cr-ta-date-paid in col 52 no newline
+	print cr-ta-invoice-amount in col 67 no newline
+	print cr-ta-credit-notes-amount in col 86 no newline
+	print cr-ta-journals-amount in col 102 no newline
+	print cr-ta-cash-paid-amount in col 118 no newline
+	skip
+	set new-cre-accountcode = 0
+	set new-cr-shortname = 0
+	set total-cr-ta-invoice-amount += cr-ta-invoice-amount
+	set sub-tot-cr-ta-invoice-amount += cr-ta-invoice-amount
+	set total-cr-ta-credit-notes-amount += cr-ta-credit-notes-amount
+	set sub-tot-cr-ta-credit-notes-amount += cr-ta-credit-notes-amount
+	set total-cr-ta-journals-amount += cr-ta-journals-amount
+	set sub-tot-cr-ta-journals-amount += cr-ta-journals-amount
+	set total-cr-ta-cash-paid-amount += cr-ta-cash-paid-amount
+	set sub-tot-cr-ta-cash-paid-amount += cr-ta-cash-paid-amount
+after cre-accountcode
+	print
+		"---------------" in col 67
+		"------------" in col 86
+		"------------" in col 102
+		"------------" in col 118
+	print
+		"Total for " in col 45
+		cre-accountcode in col 55
+		sub-tot-cr-ta-invoice-amount in col 67
+		sub-tot-cr-ta-credit-notes-amount in col 86
+		sub-tot-cr-ta-journals-amount in col 102
+		sub-tot-cr-ta-cash-paid-amount in col 118
+	skip
+after cr-shortname
+report footer
+	print
+		"---------------" in col 67
+		"------------" in col 86
+		"------------" in col 102
+		"------------" in col 118
+	print
+		"GRAND TOTAL" in col 52
+		total-cr-ta-invoice-amount in col 67
+		total-cr-ta-credit-notes-amount in col 86
+		total-cr-ta-journals-amount in col 102
+		total-cr-ta-cash-paid-amount in col 118

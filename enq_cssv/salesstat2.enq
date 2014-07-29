@@ -1,0 +1,100 @@
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-whse-code
+	sol-line-amount
+	accountcode
+	postcode
+	dr-marketing-flag
+	sys-tbl-code
+	sys-description
+	company-name
+	ws-start-date = input date "Enter Start Date:"
+	ws-end-date = input date "Enter End   Date:"
+from
+	sales-order
+	sales-order-line
+	name-and-address-master
+	deb-master
+	system-table
+	system-control
+where
+	so-order-date between ws-start-date and ws-end-date 
+	and sol-line-type in { "SS" "SN" "KN" } 
+	and accountcode = so-cust-code 
+	and na-type = "C" 
+	and sys-tbl-type = "CM" 
+	and dr-marketing-flag = sys-tbl-code 
+order by so-whse-code dr-marketing-flag so-order-no 
+format is rpt
+field total-sales like sol-line-amount
+field total-orders type numeric
+field grand-total-sales like sol-line-amount
+field grand-total-orders type numeric
+report header
+	page
+	set grand-total-sales = 0
+	set grand-total-orders = 0
+header
+	print
+		company-name in col 1
+		"Sales by Age Group Report" in col 51 bold 
+		today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"Whse" in col 12
+		"Total" in col 82
+	print
+		"Code" in col 12
+		"Age Group" in col 24
+		"Total Sales" in col 59
+		"Orders" in col 82
+		"Average $ Value" in col 101
+	print "=================================================================================================================================" in col 1
+before so-whse-code
+
+before so-whse-code dr-marketing-flag
+	set total-sales = 0
+	set total-orders = 0
+
+before so-whse-code dr-marketing-flag so-order-no
+
+detail
+	set total-sales += sol-line-amount
+	set grand-total-sales += sol-line-amount
+
+after so-whse-code dr-marketing-flag so-order-no
+	set total-orders += 1
+	set grand-total-orders += 1
+
+after so-whse-code dr-marketing-flag
+	print so-whse-code in col 12
+		dr-marketing-flag in col 22
+		sys-description in col 25 pic x(25)
+		total-sales in col 56
+		total-orders in col 83 pic zzzzz9
+		total-sales / total-orders in col 102 pic z(10)9v99-
+after so-whse-code
+	skip
+report footer
+	print
+		"---------------" in col 56
+		"------" in col 83
+		"---------------" in col 102
+	print
+		grand-total-sales in col 56
+		grand-total-orders in col 83 pic zzzzz9
+		grand-total-sales / grand-total-orders in col 102 pic z(10)9.99-
+	skip 3
+	print "Program Name" in col 10
+		":" in col 25
+		"salesstat2.enq" in col 29
+	print "Start Date     :" in col 10
+		ws-start-date in col 29
+	print 
+		"End   Date     :" in col 10
+		ws-end-date in col 29

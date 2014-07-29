@@ -1,0 +1,19 @@
+select
+distinct
+	stock-code
+	stk-sort-analysis-code
+from
+	stock-master
+where
+	stk-sort-analysis-code not in 
+	(
+	select 
+	sys-tbl-code 
+	from 
+	system-table 
+	where 
+	sys-tbl-type = 'SX' 
+	) 
+order by stk-sort-analysis-code 
+format is lst
+unique record on stk-sort-analysis-code

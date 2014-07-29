@@ -1,0 +1,19 @@
+select
+	cd-terminal
+	cd-trans-seq-no
+	cd-money-seq-no
+	cd-item-seq-no
+	cd-money-status
+	cd-money-type
+	cd-money-amount
+	cd-chq-card-no
+	cd-bank
+	cd-branch
+	cd-drawer-name
+from
+	cash-draw-money-trans
+order by cd-money-type 
+format is lst
+total on cd-money-amount
+subtotal on cd-money-amount
+	with breaks on cd-money-type

@@ -1,0 +1,4 @@
+// set customers price code field to R for Metro Pricing
+update deb-master
+set
+	price-code = input alpha "set price code to ??"

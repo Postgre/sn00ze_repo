@@ -1,0 +1,11 @@
+select
+	stock-code
+	stock-group
+	stk-stock-status
+	whse-code
+	whse-qty-on-hand
+	whse-avg-cost
+from
+	stock-master
+	stock-warehouse-detail
+format is lst

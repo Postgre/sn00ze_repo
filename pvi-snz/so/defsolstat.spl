@@ -1,0 +1,138 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/defsolstat.spl
+//  Program Desc:	Discount/Price Override auditing
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	28mar14	rmd	{5}		convert to 710
+// 	29jan08	rmd			if order is a transfer do NOT set to (T)aken, set to (Y)es
+// 	05mar08	rmd			force confirm to "Y" not "T" when goods in stock.
+// 	25mar08	rmd 		if CASH account, force to shipped and taken
+// 	27mar08	rmd			if user presses "Y" for confirm on CASH account a new trigger is fired
+//						calling this prog (rmd/so/defsolstat) with -after as the 7th param if fired
+//						set sol-print-line = "T", sol-shipped-qty = sol-ordered-qty and return "T"
+///////////////////////////////////////////////////////////////////////////////
+// run = "pvi-snz/so/defsolstat" so-order-no so-bo-suffix sol-line-seq sol-backorder-qty so-cust-code ws-order-type
+
+procedure main
+local field
+	lf-force-t2y								type boolean // 05mar08
+	lf-cash-account								type boolean
+returning
+	lr-default-status							pic x
+	set lf-force-t2y = TRUE
+	set lf-cash-account = FALSE
+	get deb-master
+	on index accountcode
+	key is get-param(5)
+	on error
+	else
+		if territory = accountcode
+			//
+			//set lr-default-status = "T"
+			//get sales-order-line lock
+			//on error
+			//else
+			//	//set sol-backorder-qty = 0
+			//	//set 
+			//endon
+			set lf-cash-account = TRUE
+		else
+			//set lr-default-status = "Y"
+		endif
+	endon
+	if num(get-param(4)) > 0 // backorder exists
+		if lf-cash-account
+			message "Cannot backorder items for Cash Sale account"
+			set lr-default-status = "N"
+		else
+			set lr-default-status = "Y"
+		endif
+	else
+		//if get-param(6) = "L" // is a layby
+		if get-param(6) in { "L" "T" } // is a layby or a transfer
+			set lr-default-status = "Y"
+		else
+			// 05mar08
+			if lf-force-t2y
+				set lr-default-status = "Y"
+			else
+				set lr-default-status = "T"
+			endif
+		endif
+		if lf-cash-account
+			// all CASH sales should be taken and shipped!
+			set lr-default-status = "T"
+			
+			//if get-param(7) = "-after"
+			//	get sales-order-line lock
+			//	on index so-order-no so-bo-suffix sol-line-seq
+			//	key is num(get-param(1)) get-param(2) num(get-param(3))
+			//	on error
+			//	else
+			//		set sol-shipped-qty = sol-ordered-qty
+			//		set sol-print-line = "T"
+			//		set lr-default-status = "T"
+			//		update sales-order-line
+			//	endon
+			//endif
+		endif
+	endif
+	//endif
+	//endif
+        // move to m1poscrec
+		//if lf-cash-account
+		//	// all CASH sales should be taken and shipped!
+		//	
+		//	if get-param(7) = "-after"
+		//		message "after"
+		//		get sales-order-line lock
+		//		on index so-order-no so-bo-suffix sol-line-seq
+		//		key is num(get-param(1)) get-param(2) num(get-param(3))
+		//		on error
+		//			message concat(get-param(1) get-param(2) get-param(3) "no sol")
+		//		else
+		//			message concat(get-param(1) get-param(2) get-param(3) "yes sol")
+		//			set sol-shipped-qty = sol-ordered-qty
+		//			set sol-print-line = "T"
+		//			set lr-default-status = "T"
+		//			update sales-order-line
+		//		endon
+		//	endif
+		//endif
+endprocedure // main ----------------------------------------------------------
+
+/*
+procedure main
+local field
+	lf-so-order-no          		like so-order-no
+	lf-so-bo-suffix                 like so-bo-suffix
+	lf-sol-line-seq                 like sol-line-seq
+returning
+	lr-default-status							pic x
+	set lf-so-order-no 	= num(get-param(1))
+	set lf-so-bo-suffix	= get-param(2)
+	set lf-sol-line-seq	= num(get-param(3))
+	message concat("SO:" get-param(1) "BO:" get-param(2) "SOL:" get-param(3))
+	get sales-order-line
+	on index so-order-no so-bo-suffix sol-line-seq
+	key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+	on error
+		set lr-default-status = "+"
+	else
+		if sol-backorder-qty > 0
+			set lr-default-status = "Y"
+		else
+			set lr-default-status = "T"
+		endif
+	endon
+endprocedure // main ----------------------------------------------------------
+*/
+// defsolstat.spl

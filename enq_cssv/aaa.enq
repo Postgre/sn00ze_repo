@@ -1,0 +1,73 @@
+select
+	stock-code
+	stock-group
+	sup = substring (stock-code 1 3) 
+	ash-value
+	ash-qty
+	tot-qty1 = sum (ash-qty[1]) 
+	tot-val1 = sum (ash-value[1]) 
+	tot-qty2 = sum (ash-qty[2]) 
+	tot-val2 = sum (ash-value[2]) 
+	tot-qty3 = sum (ash-qty[3]) 
+	tot-val3 = sum (ash-value[3]) 
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = "S" 
+	and ash-years-ago = 0 
+group by sup stock-group
+format is lst
+report width is 233
+suppress ash-value[1]
+suppress ash-value[2]
+suppress ash-value[3]
+suppress ash-value[4]
+suppress ash-value[5]
+suppress ash-value[6]
+suppress ash-value[7]
+suppress ash-value[8]
+suppress ash-value[9]
+suppress ash-value[10]
+suppress ash-value[11]
+suppress ash-value[12]
+suppress ash-value[13]
+suppress ash-qty[1]
+suppress ash-qty[2]
+suppress ash-qty[3]
+suppress ash-qty[4]
+suppress ash-qty[5]
+suppress ash-qty[6]
+suppress ash-qty[7]
+suppress ash-qty[8]
+suppress ash-qty[9]
+suppress ash-qty[10]
+suppress ash-qty[11]
+suppress ash-qty[12]
+suppress ash-qty[13]
+field order is sup stock-group stock-code
+display pic of sup is xxx
+display pic of tot-qty1 is zzzz9-
+display pic of tot-val1 is zzzzz9-
+display pic of tot-qty2 is zzzz9-
+display pic of tot-val2 is zzzzz9-
+display pic of tot-qty3 is zzzz9-
+display pic of tot-val3 is zzzzz9-
+total on tot-qty1
+total on tot-val1
+total on tot-qty2
+total on tot-val2
+total on tot-qty3
+total on tot-val3
+subtotal on tot-qty1
+	with breaks on sup
+subtotal on tot-val1
+	with breaks on sup
+subtotal on tot-qty2
+	with breaks on sup
+subtotal on tot-val2
+	with breaks on sup
+subtotal on tot-qty3
+	with breaks on sup
+subtotal on tot-val3
+	with breaks on sup

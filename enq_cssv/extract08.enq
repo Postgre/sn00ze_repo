@@ -1,0 +1,9 @@
+select
+	sys-tbl-code
+	sys-description
+	sys-tbl-alpha-1
+from
+	system-table
+where
+	sys-tbl-type = 'PG' 
+format is external

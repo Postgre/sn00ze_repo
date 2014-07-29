@@ -1,0 +1,15 @@
+select
+	stock-code
+	stk-trans-type
+	stk-trans-whse
+	stk-trans-date
+	stk-batch-ref
+	stk-trans-ref1
+	stk-trans-qty
+	stk-trans-cost
+	stk-trans-date-time
+from
+	stock-movements
+where date-from-date-time(stk-trans-date-time,1) = 26-JUL-2010
+format is lst
+report width 300

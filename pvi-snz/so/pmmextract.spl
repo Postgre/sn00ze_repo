@@ -1,0 +1,1009 @@
+// pmmextract.spl
+// 15may14	rmd	{1}	upgrade to 710.3
+// 07may09	rmd	for silent mode send output to /archive/export/pmm/pmm-customer.SSS pmm-sales.SSS (SSS = store#)
+//				change to pipe delim called from $PRONTO/lib/pmm_extract script
+//
+// 21apr09	rmd	written
+//Store:
+//                Name
+//                Address
+//                Postcode
+//
+//Store Sales:
+//                Customer
+//                Customer Postcode
+//                Item Code
+//                Qty Ordered
+//                Written Sales Val
+//                Trans Year
+//
+//Customer:
+//                Name
+//                Full Address (all columns)
+//
+//optional
+//Sales Orders:
+//                SO#
+//                Date
+//                                Month Year
+//                                Week
+//                Delivered,Cancelled,Returned_VLD
+//
+//
+//Transactions:
+//                SO #
+//                Date
+//                Tender No
+//                Tender Amt
+//                Payment Date
+//                                Payment Mth Yr
+//                                Payment Qtr
+//                                Payment Semester
+//                                Payment Fin Yr
+//                Load Date
+//                UID
+//
+
+field
+	ws-start-date					type date
+	ws-end-date						type date
+	ws-sales-total-inc-gst			like sol-line-amount
+	ws-sales-total-ex-gst			like sol-line-amount
+	ws-silent						type boolean // 07may09
+	ws-all-customers				type boolean
+
+
+mode md-cust-addr
+	prompt "Customer Addresses"
+	help "Show Customer Address list relevant to these sales"
+
+object tmp-store
+type is memory
+	record is
+		tmp-store-code                              like territory
+		tmp-store-name                              like shortname
+		tmp-store-postcode							like postcode
+	endrecord
+	key is tmp-store-code unique
+
+object tmp-store-dataset
+type is memory
+	record is
+		tsd-dataset-code							like sys-consolidation-division
+		tsd-store-code                              like territory
+	endrecord
+	key is tsd-dataset-code tsd-store-code unique
+
+object tmp-sales
+type is memory
+	record is
+		tmp-so-territory-code                       like so-territory-code
+		tmp-so-store-name							like shortname
+		tmp-so-order-no                     		like so-order-no
+		tmp-so-bo-suffix                    		like so-bo-suffix
+		tmp-sol-line-seq                    		like sol-line-seq
+		tmp-so-order-date                   		like so-order-date
+		tmp-so-cust-code                    		like so-cust-code
+		tmp-stock-code                      		like stock-code
+		tmp-stk-description                         like stk-description
+		tmp-stk-desc-line-2    				        like stk-desc-line-2
+		tmp-sol-ordered-qty                 		like sol-ordered-qty
+		tmp-sol-line-amount							like sol-line-amount				// inc gst
+		tmp-sol-line-amount-ex						like sol-line-amount
+		tmp-customer-postcode						like postcode
+	endrecord
+	key is tmp-so-territory-code tmp-so-order-no tmp-so-bo-suffix tmp-sol-line-seq unique
+	key is tmp-so-cust-code tmp-so-order-no tmp-so-bo-suffix tmp-sol-line-seq unique
+
+object tmp-customer
+type is memory
+	record is
+		tmp-accountcode								like accountcode
+		tmp-na-name            						like na-name     	// "Name:"
+		tmp-na-company                              like na-company      // "Address 1:"
+		tmp-na-street                               like na-street       // "Address 2:"
+		tmp-na-address-6                            like na-address-6    // "Address 3:"
+		tmp-na-suburb                               like na-suburb       // "Suburb:"
+		tmp-na-country                              like na-country      // "State:"
+		tmp-postcode                                like postcode        // "Postcode:"
+		tmp-dpid									like na-address-id
+	endrecord
+	key is tmp-accountcode unique
+
+object ff-sales
+type is external
+separator is "|"
+file is "pmm-sales.csv"
+	record is
+		ff-sales-dataset-code						like sys-consolidation-division
+		ff-so-territory-code                       	like so-territory-code
+		ff-so-store-name							like shortname
+		ff-so-order-no                     			like so-order-no
+		ff-so-bo-suffix                    			like so-bo-suffix
+		ff-sol-line-seq                    			like sol-line-seq
+		ff-so-order-date                   			like so-order-date
+		ff-so-cust-code                    			like so-cust-code
+		ff-stock-code                      			like stock-code
+		ff-stk-description                         	like stk-description
+		ff-stk-desc-line-2    				        like stk-desc-line-2
+		ff-sol-ordered-qty                 			like sol-ordered-qty
+		ff-sol-line-amount							like sol-line-amount				// inc gst
+		ff-sol-line-amount-ex						like sol-line-amount
+		ff-customer-postcode						like postcode
+	endrecord
+
+
+object ff-customer
+//type is memory
+type is external
+separator is "|"
+file is "pmm-address.csv"
+	record is
+		ff-customer-dataset-code					like sys-consolidation-division
+		ff-accountcode								like accountcode
+		ff-na-name            						like na-name     	// "Name:"
+		ff-na-company                              	like na-company      // "Address 1:"
+		ff-na-street                               	like na-street       // "Address 2:"
+		ff-na-address-6                            	like na-address-6    // "Address 3:"
+		ff-na-suburb                               	like na-suburb       // "Suburb:"
+		ff-na-country                              	like na-country      // "State:"
+		ff-postcode                                	like postcode        // "Postcode:"
+		ff-dpid										like na-address-id
+	endrecord
+
+object ff-store-dataset
+type is external
+separator is "|"
+file is "pmm-store-dataset.csv"
+	record is
+		ff-tsd-dataset-code							like sys-consolidation-division
+		ff-tsd-store-code                           like territory
+	endrecord
+
+procedure main
+	get system-control first
+	set ws-all-customers = TRUE
+	if strlen(get-param(1)) = 0
+		set ws-silent = FALSE
+		do get-user-input entry-once
+	else
+		set ws-silent 		= TRUE
+		if get-param(1) = "-customer"
+		else
+			set ws-start-date 	= date2julian(get-param(1))
+			set ws-end-date 	= date2julian(get-param(2))
+		endif
+	endif
+	do build-datasets
+	do export-to-flat-file
+	if strlen(get-param(1)) = 0
+		do display-in-grid-sales
+	endif
+endprocedure // main ----------------------------------------------------------
+
+procedure export-to-flat-file
+get system-control first
+	if ws-silent
+		open ff-sales truncate permanent
+			file is strconcat("/2k12export/pmm/pmm-sales." sys-consolidation-division)
+		open ff-customer truncate permanent
+			file is strconcat("/2k12export/pmm/pmm-customer." sys-consolidation-division)
+		open ff-store-dataset truncate permanent
+			file is strconcat("/2k12export/pmm/pmm-store-dataset." sys-consolidation-division)
+	else
+		//open ff-sales truncate permanent
+		//open ff-customer truncate permanent
+		//open ff-store-dataset truncate permanent
+		open ff-sales truncate permanent
+			file is strconcat("/2k12export/pmm/pmm-sales." sys-consolidation-division)
+		open ff-customer truncate permanent
+			file is strconcat("/2k12export/pmm/pmm-customer." sys-consolidation-division)
+		open ff-store-dataset truncate permanent
+			file is strconcat("/2k12export/pmm/pmm-store-dataset." sys-consolidation-division)
+	endif
+
+	extract tmp-customer
+	detail
+		set ff-customer-dataset-code	= sys-consolidation-division
+		set ff-accountcode	= tmp-accountcode
+		set ff-na-name     	= tmp-na-name
+		set ff-na-company  	= tmp-na-company
+		set ff-na-street   	= tmp-na-street
+		set ff-na-address-6	= tmp-na-address-6
+		set ff-na-suburb   	= tmp-na-suburb
+		set ff-na-country  	= tmp-na-country
+		set ff-postcode    	= tmp-postcode
+		set ff-dpid			= tmp-dpid
+		insert ff-customer
+	endextract
+
+	if get-param(1) <> "-customer"
+		extract tmp-sales
+		detail
+			set ff-sales-dataset-code	= sys-consolidation-division
+			set ff-so-territory-code   	= tmp-so-territory-code
+			set ff-so-store-name		= tmp-so-store-name
+			set ff-so-order-no         	= tmp-so-order-no
+			set ff-so-bo-suffix        	= tmp-so-bo-suffix
+			set ff-sol-line-seq        	= tmp-sol-line-seq
+			set ff-so-order-date       	= tmp-so-order-date
+			set ff-so-cust-code        	= tmp-so-cust-code
+			set ff-stock-code          	= tmp-stock-code
+			set ff-stk-description     	= tmp-stk-description
+			set ff-stk-desc-line-2    	= tmp-stk-desc-line-2
+			set ff-sol-ordered-qty     	= tmp-sol-ordered-qty
+			set ff-sol-line-amount		= tmp-sol-line-amount						// inc gst
+			set ff-sol-line-amount-ex	= tmp-sol-line-amount-ex
+			set ff-customer-postcode	= tmp-customer-postcode
+			insert ff-sales
+		endextract
+	endif
+	extract tmp-store-dataset
+	detail
+		set ff-tsd-dataset-code				= tsd-dataset-code
+		set ff-tsd-store-code  				= tsd-store-code
+		insert ff-store-dataset
+	endextract
+	//message "insert ff"
+	//
+endprocedure // export-to-flat-file -------------------------------------------
+
+screen get-user-input
+	window @1,1 to @5,25 title is "Select Date Range"
+	accept ws-start-date	@2,10 title is "Start:"
+	accept ws-end-date		@3,10 title is "End:"
+
+confirm
+confirmed
+endconfirm
+
+endscreen // get-user-input ---------------------------------------------------
+
+procedure build-datasets
+	open tmp-sales		truncate temporary
+	open tmp-customer	truncate temporary
+	open tmp-store-dataset truncate temporary
+	set ws-sales-total-inc-gst 	= 0
+	set ws-sales-total-ex-gst 	= 0
+	//if get-param(1) <> "-customer"
+		select *
+		from sales-order
+		where
+			so-order-date between :ws-start-date and :ws-end-date
+			and so-order-type-code != 'Q'
+			//and so-order-status not in {'99' '05' '15' '25' '35' '38' '45' '48' '55' '64' '65' '75' '91'}
+			and so-order-status not in {"99" "25" "35" "45" "55" "65" "75" "85"} // ex x5saleedit2
+			//and substring(so-cust-code,1,4) not in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"} // 17oct08
+			//and substring(so-cust-code,1,4) not in {"ZCSM"} // x5saleedit2
+			and substring(so-cust-code,1,4) not in {"ZCS"} // x5saleedit2 determine-if-sales-order-required
+		detail
+			select *
+			from sales-order-line
+			where so-order-no 			= :so-order-no
+				and so-bo-suffix 		= :so-bo-suffix
+				//and sol-ordered-qty 	!= 0
+				//and sol-line-type		in {"SN" "WN" "KN"}
+				and sol-line-type		in {"SN" "KN"} // x5saleedit
+			detail
+				initialise tmp-sales
+				set tmp-so-territory-code	= so-territory-code
+				get name-and-address-master
+				on index accountcode na-type
+				key is tmp-so-territory-code "WH"
+				on error
+				else
+					set tmp-so-store-name	= na-name
+				endon
+				set tmp-so-order-no     = so-order-no
+				set tmp-so-bo-suffix    = so-bo-suffix
+				set tmp-sol-line-seq    = sol-line-seq
+				set tmp-so-order-date   = so-order-date
+				set tmp-so-cust-code    = so-cust-code
+				set tmp-stock-code      = stock-code
+				get stock-master
+				on error
+				else
+					set tmp-stk-description = stk-description
+					set tmp-stk-desc-line-2 = stk-desc-line-2
+				endon
+				set tmp-sol-ordered-qty = sol-ordered-qty
+				set tmp-sol-line-amount	= sol-line-amount
+				set tmp-sol-line-amount-ex = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				get name-and-address-master
+				on index accountcode na-type
+				key is tmp-so-cust-code "C"
+				on error
+				else
+					set tmp-customer-postcode = postcode
+				endon
+				set ws-sales-total-inc-gst 	+= sol-line-amount
+				set ws-sales-total-ex-gst	+= tmp-sol-line-amount-ex
+				insert tmp-sales
+				on error
+				endon
+			endselect
+		endselect
+		select *
+		from sales-order-archive
+		where
+			so-order-date between :ws-start-date and :ws-end-date
+			and so-order-type-code != 'Q'
+			//and so-order-status not in {'99' '05' '15' '25' '35' '38' '45' '48' '55' '64' '65' '75' '91'}
+			and so-order-status not in {"99" "91"} // x5saleedit2
+			//and substring(so-cust-code,1,4) not in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"} // 17oct08
+			//and substring(so-cust-code,1,4) not in {"ZCSM"} // x5saleedit2
+			and substring(so-cust-code,1,4) not in {"ZCS"} // x5saleedit2 determine-if-sales-order-required
+		detail
+			select *
+			from sales-order-line-archive
+			where so-order-no 			= :so-order-no
+				and so-bo-suffix 		= :so-bo-suffix
+				//and sol-ordered-qty 	!= 0 // > 0 // != 0 (don't want neg numbers - or do we??)
+				//and sol-line-type		in {"SN" "WN" "KN"}
+				and sol-line-type		in {"SN" "KN"} // x5saleedit
+			detail
+				initialise tmp-sales
+				set tmp-so-territory-code	= so-territory-code
+				get name-and-address-master
+				on index accountcode na-type
+				key is tmp-so-territory-code "WH"
+				on error
+				else
+					set tmp-so-store-name	= na-name
+				endon
+				set tmp-so-order-no     = so-order-no
+				set tmp-so-bo-suffix    = so-bo-suffix
+				set tmp-sol-line-seq    = sol-line-seq
+				set tmp-so-order-date   = so-order-date
+				set tmp-so-cust-code    = so-cust-code
+				set tmp-stock-code      = stock-code
+				get stock-master
+				on error
+				else
+					set tmp-stk-description = stk-description
+					set tmp-stk-desc-line-2 = stk-desc-line-2
+				endon
+				set tmp-sol-ordered-qty = sol-ordered-qty
+				set tmp-sol-line-amount	= sol-line-amount
+				set tmp-sol-line-amount-ex = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				get name-and-address-master
+				on index accountcode na-type
+				key is tmp-so-cust-code "C"
+				on error
+				else
+					set tmp-customer-postcode = postcode
+				endon
+				set ws-sales-total-inc-gst += sol-line-amount
+				set ws-sales-total-ex-gst	+= tmp-sol-line-amount-ex
+				insert tmp-sales
+				on error
+				endon
+			endselect
+		endselect
+		//cancelled order pass
+		select *
+		from
+			sales-order //-archive
+		order by
+			//so-processing-date
+			so-order-date
+			so-order-no
+		when
+			so-order-status in {"99" "91"}
+			and
+			// 25aug08
+			so-order-type-code not in {"Q"}
+			and
+			//so-processing-date between :lp-start-log-date and :lp-end-log-date
+			so-order-date between ws-start-date and ws-end-date
+		detail
+			//do determine-if-sales-record-required
+			//	parameters
+			//		so-cust-code
+			//		so-rep-code
+			//		so-territory-code
+			//	returning
+			//		lf-process-further
+			//if not lf-process-further
+			//	continue
+			//endif
+			extract sales-order-line-cancel
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is so-order-no so-bo-suffix 0
+			next same so-order-no so-bo-suffix
+			detail
+				initialise tmp-sales
+				set tmp-so-territory-code	= so-territory-code
+				get name-and-address-master
+				on index accountcode na-type
+				key is tmp-so-territory-code "WH"
+				on error
+				else
+					set tmp-so-store-name	= na-name
+				endon
+				set tmp-so-order-no     = so-order-no
+				set tmp-so-bo-suffix    = so-bo-suffix
+				set tmp-sol-line-seq    = sol-line-seq
+				set tmp-so-order-date   = so-order-date
+				set tmp-so-cust-code    = so-cust-code
+				set tmp-stock-code      = stock-code
+				get stock-master
+				on error
+				else
+					set tmp-stk-description = stk-description
+					set tmp-stk-desc-line-2 = stk-desc-line-2
+				endon
+				set tmp-sol-ordered-qty = sol-ordered-qty
+				set tmp-sol-line-amount	= sol-line-amount
+				set tmp-sol-line-amount-ex = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				get name-and-address-master
+				on index accountcode na-type
+				key is tmp-so-cust-code "C"
+				on error
+				else
+					set tmp-customer-postcode = postcode
+				endon
+				set ws-sales-total-inc-gst += sol-line-amount
+				set ws-sales-total-ex-gst	+= tmp-sol-line-amount-ex
+				insert tmp-sales
+				on error
+				endon
+			endextract
+		endselect
+		//cancelled orders
+	//	extract tmp-sales
+	//	on index tmp-so-cust-code tmp-so-order-no tmp-so-bo-suffix tmp-sol-line-seq
+	//	detail
+	//		after tmp-so-cust-code
+	//		initialise name-and-address-master
+	//		get tmp-customer
+	//		on index tmp-accountcode
+	//		key is tmp-so-cust-code
+	//		on error
+	//			// test if account = cash account
+	//			get deb-master
+	//			on index accountcode
+	//			key is tmp-so-cust-code
+	//			on error
+	//			else
+	//				if accountcode = territory // cash account
+	//					get name-and-address-master
+	//					on index accountcode na-type
+	//					key is tmp-so-cust-code "WH"
+	//					on error
+	//					else
+	//					endon
+	//				else
+	//					get name-and-address-master
+	//					on index accountcode na-type
+	//					key is tmp-so-cust-code "C"
+	//					on error
+    //	                endon
+    //	            endif
+	//			endon
+	//			if accountcode != SPACES
+	//				set tmp-accountcode	 	= accountcode
+	//				set tmp-na-name      	= na-name
+	//				set tmp-na-company   	= na-company
+	//				set tmp-na-street    	= na-street
+	//				set tmp-na-address-6 	= na-address-6
+	//				set tmp-na-suburb    	= na-suburb
+	//				set tmp-na-country   	= na-country
+	//				set tmp-postcode     	= postcode
+	//				set tmp-dpid			= na-address-id
+	//				insert tmp-customer
+	//			endif
+	//		else
+	//		endon
+	//	endextract
+	//else
+		extract name-and-address-master
+			when na-type = "C"
+		detail
+			if accountcode != SPACES
+				set tmp-accountcode	 	= accountcode
+				set tmp-na-name      	= na-name
+				set tmp-na-company   	= na-company
+				set tmp-na-street    	= na-street
+				set tmp-na-address-6 	= na-address-6
+				set tmp-na-suburb    	= na-suburb
+				set tmp-na-country   	= na-country
+				set tmp-postcode     	= postcode
+				set tmp-dpid			= na-address-id
+				insert tmp-customer
+            endif
+		endextract
+	//endif
+	extract tmp-sales
+		on index tmp-so-cust-code tmp-so-order-no tmp-so-bo-suffix tmp-sol-line-seq
+	detail
+		set tsd-dataset-code 	= sys-consolidation-division
+		set tsd-store-code  	= tmp-so-territory-code
+		get tmp-store-dataset
+			on index tsd-dataset-code tsd-store-code
+		on error
+			insert tmp-store-dataset
+		endon
+		set tsd-dataset-code 	= tmp-so-territory-code
+		set tsd-store-code  	= sys-consolidation-division
+		get tmp-store-dataset
+			on index tsd-dataset-code tsd-store-code
+		on error
+			insert tmp-store-dataset
+		endon
+	endextract
+endprocedure // build-datasets ------------------------------------------------
+
+screen display-in-grid-sales
+	window @1,1 to @21,90 title is "Sales Orders"
+	primary tmp-sales
+	datagrid occurs 18
+	allowed search md-cust-addr // md-enquiry md-create-new md-search-again search
+	review-from-start
+detail
+	//accept ws-accountcode @2,18
+	//	uppercase
+	display concat(strconcat(tmp-so-territory-code) " " strconcat(tmp-so-store-name)) @1,2 title is "Store"
+	display tmp-so-order-no    		@1,4  title is "Sales Order"
+	//display tmp-so-bo-suffix   		@1,4  title is "BO"
+	//display tmp-sol-line-seq   		@1,6  title is "Line Seq"
+	display tmp-so-order-date  		@1,8 title is "Date"
+	display tmp-so-cust-code   		@1,10 title is "Cust Code"
+	display tmp-customer-postcode	@1,12 title is "Cust Postcode"
+	display tmp-stock-code     		@1,14 title is "Stock Code"
+	display concat(strconcat(tmp-stk-description) " " strconcat(tmp-stk-desc-line-2))	@1,16 title is "Stock Description"
+	display tmp-sol-ordered-qty		@1,18 title is "Qty Ordered"
+	display tmp-sol-line-amount		@1,20 title is "Line Amount inc GST"
+	display ws-sales-total-ex-gst	@19,65 title is "Total Sales ex GST"
+	display ws-sales-total-inc-gst	@20,65 title is "Total Sales inc GST"
+	display "created in /2k12export/pmm/" @19,15 background title "Flat Files:"
+confirm
+	auto
+confirmed
+	if screen-mode() = md-cust-addr
+		do display-in-grid-customer
+	endif
+endconfirm
+endscreen // display-in-grid-sales --------------------------------------------
+
+screen display-in-grid-customer
+	window @1,1 to @21,90 title is "Customers"
+	primary tmp-customer
+	datagrid occurs 18
+	allowed search
+	review-from-start
+detail
+	display tmp-accountcode			@1,2  title is "Cust Code"
+	display tmp-na-name     		@1,4  title is "Name"
+	display tmp-na-company  		@1,8  title is "Address 1"
+	display tmp-na-street   		@1,10 title is "Address 2"
+	display tmp-na-address-6		@1,12 title is "Address 3"
+	display tmp-na-suburb   		@1,14 title is "Suburb"
+	display tmp-na-country  		@1,16 title is "State"
+	display tmp-postcode    		@1,18 title is "Postcode"
+confirm
+	auto
+confirmed
+endconfirm
+
+endscreen // display-in-grid-customer -----------------------------------------
+
+//procedure process-cash-received-multi
+//local field
+//	lf-cash			like tr-amount
+//	lf-cash-ds		like tr-amount //37
+//	lf-territory	like territory //28oct08
+//
+//
+//	open indexed-sales-data truncate
+//	open cash-detail-data truncate temporary
+//	extract deb-master
+//		on index territory dr-sort-key accountcode
+//		all
+//		when territory != spaces
+//	before territory
+//
+//		set lf-cash = 0
+//		set lf-cash-ds = 0
+//		set isd-warehouse = territory
+//		set isd-start-date = ws-start-date
+//		set isd-end-date = ws-end-date
+//	detail
+//		//37 - date stamp pass
+//		extract deb-trans
+//			on index accountcode tr-sort-key
+//			key is accountcode spaces
+//			next same accountcode
+//			when dr-tr-date-stamp between ws-start-date and ws-end-date
+//			and trans-type in {"CR" "CP"}
+//		detail
+//			//message substring(br-acc-code,1,4)
+//			// 1.51 03sep08 new filter logic
+//			//if substring(accountcode,1,4) = "ZCSM"
+//			//	continue
+//			//endif
+//			//if substring(accountcode,1,3) = "ZCS"
+//			//	if num(substring(accountcode,4,6)) > 0 // accountcode = ZCS001 to ZCS999 and should be ignored
+//			//		continue
+//			//	endif
+//			//endif
+//			// the above reworded
+//			if substring(accountcode,1,4) in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"}
+//				continue
+//			endif
+//
+//			//if dr-cust-type = "P"
+//			//	// this is a finance account, ignore this transaction
+//			//	continue
+//			//endif
+//			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+//				// this should be shown, don't want the CC test in the next section to drop it out.
+//			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}
+//				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+//				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+//				get deb-master
+//				if dr-cust-type != "P"
+//					// this is a normal customer account, so this is the initial transaction and needs to be ignored
+//					// when the finance company pay us for this trans (less their cut) another CR will appear
+//					// and accountcode = finance company which will be used instead
+//					continue
+//				endif
+//			endif
+//			// 30sep08
+//			if substring(br-acc-code,1,4) = "ZCSM"
+//				//message substring(br-acc-code,1,4)
+//				continue
+//			endif
+//			set lf-cash-ds += -(tr-amount)
+//
+//
+//
+//			set cdd-rec-type		= "CD"
+//			set cdd-warehouse		= territory
+//			set cdd-start-date		= ws-start-date
+//			set cdd-end-date		= ws-end-date
+//			set cdd-trans-date		= dr-tr-date-stamp
+//			set cdd-user-date		= trans-date
+//			set cdd-trans-ref		= str(dr-tr-order-no)
+//			set cdd-accountcode		= accountcode
+//			set cdd-cash-ds			= -(tr-amount)
+//			set cdd-br-acc-code		= br-acc-code
+//			set cdd-tr-details		= tr-details
+//			insert cash-detail-data
+//		endextract
+//
+//		extract deb-trans-archive
+//			on index accountcode trans-ref
+//			key is accountcode spaces
+//			next same accountcode
+//			when dr-tr-date-stamp between ws-start-date and ws-end-date // start-trans-date and end-trans-date
+//			and trans-type in {"CR" "CP"}
+//		detail
+//			// 1.51 03sep08 new filter logic
+//			//message substring(br-acc-code,1,4)
+//			//if substring(accountcode,1,4) = "ZCSM"
+//			//	continue
+//			//endif
+//			//if substring(accountcode,1,3) = "ZCS"
+//			//	if num(substring(accountcode,4,6)) > 0 // accountcode = ZCS001 to ZCS999 and should be ignored
+//			//		continue
+//			//	endif
+//			//endif
+//			// the above reworded
+//			if substring(accountcode,1,4) in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"}
+//				continue
+//			endif
+//
+//			//if dr-cust-type = "P"
+//			//	// this is a finance account, ignore this transaction
+//			//	continue
+//			//endif
+//			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+//				// this should be shown, don't want the CC test in the next seciont to drop it out.
+//			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}
+//				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+//				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+//				get deb-master
+//				if dr-cust-type != "P"
+//					// this is a normal customer account, so this is the initial transaction and needs to be ignored
+//					// when the finance company pay us for hthis trans (less their cut) another CR will appear
+//					// and accountcode = finance company which will be used instead
+//					continue
+//				endif
+//			endif
+//			// 30sep08
+//			if substring(br-acc-code,1,4) = "ZCSM"
+//				//message substring(br-acc-code,1,4)
+//				continue
+//			endif
+//			set lf-cash-ds += -(tr-amount)
+//
+//			set cdd-rec-type		= "CD"
+//			set cdd-warehouse		= territory
+//			set cdd-start-date		= ws-start-date
+//			set cdd-end-date		= ws-end-date
+//			set cdd-trans-date		= dr-tr-date-stamp
+//			set cdd-user-date		= trans-date
+//			set cdd-trans-ref		= str(dr-tr-order-no)
+//			set cdd-accountcode		= accountcode
+//			set cdd-cash-ds			= -(tr-amount)
+//			set cdd-br-acc-code		= br-acc-code
+//			set cdd-tr-details		= tr-details
+//			insert cash-detail-data
+//		endextract
+//
+//
+//	after territory
+//		set isd-cash = lf-cash
+//		set isd-cash-ds = lf-cash-ds
+//		insert indexed-sales-data
+//	endextract
+//
+//endprocedure //process-cash-received-multi ------------------------------------
+
+/*
+procedure scan-sales
+	parameters
+		lp-store						like so-territory-code
+		lp-start-log-date				like order-log-date
+		lp-end-log-date					like order-log-date
+	//
+	local field
+		lf-event						pic 9(10)
+		lf-rep-code						like so-rep-code
+		lf-whse-code					like so-whse-code
+		lf-customer						like so-cust-code
+		lf-order-date					like so-order-date
+		lf-process-further				type boolean
+		lf-value-extax					like ordlog-new-value
+		lf-average-cost					like whse-avg-cost
+		lf-gross-profit-amount			like ordlog-new-value
+		lf-gross-profit-percent			like ordlog-new-value
+		lf-value-change					like ordlog-new-value
+		lf-record-counter				pic 9(8)
+	//
+	window @19,44 to @24,80
+		title "Scanning Sales"
+		colour white
+		no-hide
+	if not rbtchproc-in-background
+		display bitmap concat(getenv("BMS")"/images/repedge.gif") @19,44
+		display "Now at :" @23,45 background prompts left
+	endif
+	//
+	//do create-order-amendments
+	select *
+	from
+		sales-order-archive
+	order by
+		//so-processing-date
+		so-order-date
+		so-order-no
+	when
+		so-order-status not in {"99" "91"}
+		and
+		// 25aug08
+		so-order-type-code not in {"Q"}
+		and
+		//so-processing-date between :lp-start-log-date and :lp-end-log-date
+		so-order-date between :lp-start-log-date and :lp-end-log-date
+	detail
+		if not rbtchproc-in-background
+			set lf-event += 1
+			if fraction(lf-event / 1000) = ZERO
+				//display so-processing-date @23,55
+				display so-order-date @23,55
+			endif
+		endif
+		do determine-if-sales-record-required
+			parameters
+				so-cust-code
+				so-rep-code
+				so-territory-code
+			returning
+				lf-process-further
+		if not lf-process-further
+			continue
+		endif
+
+		extract sales-order-line-archive
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			// initialise sales-audit-file
+			if sol-line-type in {"SN" "KN"}
+				set lf-value-extax = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set lf-average-cost = sol-item-cost * sol-ordered-qty // sol-line-cost
+				set lf-gross-profit-amount = lf-value-extax - lf-average-cost
+				if lf-value-extax = 0
+					set lf-gross-profit-percent = 100
+				else
+					set lf-gross-profit-percent = 100 * (1 - (lf-average-cost / lf-value-extax)) //(lf-value-extax - ( lf-average-cost / lf-value-extax)) * 100
+				endif
+				set ordlog-type = 0
+				do update-order-amendments
+					parameters
+						"A"
+						so-territory-code
+						so-rep-code
+						so-order-no
+						so-bo-suffix
+						order-log-date // so-processing-date //order-log-date
+						so-cust-code//lf-customer
+						so-order-date //so-processing-date // lf-order-date
+						ordlog-type
+						stock-code // ordlog-old-info
+						SPACES // ordlog-new-info
+						0 // ordlog-old-value
+						0 // ordlog-new-value
+						lf-value-extax // (sol-line-amount / (1 + (sol-tax-rate / 100)))
+						lf-average-cost // sol-line-cost
+						lf-gross-profit-amount
+						lf-gross-profit-percent
+						lf-record-counter
+					returning
+						lf-record-counter
+			endif
+		endextract
+	endselect
+
+	select *
+	from
+		sales-order
+	order by
+		//so-processing-date
+		so-order-date
+		so-order-no
+	when
+		so-order-status not in {"99" "25" "35" "45" "55" "65" "75" "85"}
+		and
+		// 25aug08
+		so-order-type-code not in {"Q"}
+		and
+		//so-processing-date between :lp-start-log-date and :lp-end-log-date
+		so-order-date between :lp-start-log-date and :lp-end-log-date
+	detail
+		if not rbtchproc-in-background
+			set lf-event += 1
+			if fraction(lf-event / 1000) = ZERO
+				//display so-processing-date @23,55
+				display so-order-date @23,55
+			endif
+		endif
+		do determine-if-sales-record-required
+			parameters
+				so-cust-code
+				so-rep-code
+				so-territory-code
+			returning
+				lf-process-further
+		if not lf-process-further
+			continue
+		endif
+
+		extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			// initialise sales-audit-file
+			if sol-line-type in {"SN" "KN"}
+				set lf-value-extax = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set lf-average-cost = sol-item-cost * sol-ordered-qty // sol-line-cost
+				set lf-gross-profit-amount = lf-value-extax - lf-average-cost
+				if lf-value-extax = 0
+					set lf-gross-profit-percent = 100
+				else
+					set lf-gross-profit-percent = 100 * (1 - (lf-average-cost / lf-value-extax)) //(lf-value-extax - ( lf-average-cost / lf-value-extax)) * 100
+				endif
+				set ordlog-type = 0
+				do update-order-amendments
+					parameters
+						"A"
+						so-territory-code
+						so-rep-code
+						so-order-no
+						so-bo-suffix
+						order-log-date // so-processing-date //order-log-date
+						so-cust-code//lf-customer
+						so-order-date//so-processing-date // lf-order-date
+						ordlog-type
+						stock-code // ordlog-old-info
+						SPACES // ordlog-new-info
+						0 // ordlog-old-value
+						0 // ordlog-new-value
+						lf-value-extax // (sol-line-amount / (1 + (sol-tax-rate / 100)))
+						lf-average-cost // sol-line-cost
+						lf-gross-profit-amount
+						lf-gross-profit-percent
+						lf-record-counter
+					returning
+						lf-record-counter
+			endif
+		endextract
+	endselect
+
+	//16oct08 cancelled order pass
+	select *
+	from
+		sales-order //-archive
+	order by
+		//so-processing-date
+		so-order-date
+		so-order-no
+	when
+		so-order-status in {"99" "91"}
+		and
+		// 25aug08
+		so-order-type-code not in {"Q"}
+		and
+		//so-processing-date between :lp-start-log-date and :lp-end-log-date
+		so-order-date between :lp-start-log-date and :lp-end-log-date
+	detail
+		if not rbtchproc-in-background
+			set lf-event += 1
+			if fraction(lf-event / 1000) = ZERO
+				//display so-processing-date @23,55
+				display so-order-date @23,55
+			endif
+		endif
+		do determine-if-sales-record-required
+			parameters
+				so-cust-code
+				so-rep-code
+				so-territory-code
+			returning
+				lf-process-further
+		if not lf-process-further
+			continue
+		endif
+
+		extract sales-order-line-cancel
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			// initialise sales-audit-file
+			if sol-line-type in {"SN" "KN"}
+				set lf-value-extax = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set lf-average-cost = sol-item-cost * sol-ordered-qty // sol-line-cost
+				set lf-gross-profit-amount = lf-value-extax - lf-average-cost
+				if lf-value-extax = 0
+					set lf-gross-profit-percent = 100
+				else
+					set lf-gross-profit-percent = 100 * (1 - (lf-average-cost / lf-value-extax)) //(lf-value-extax - ( lf-average-cost / lf-value-extax)) * 100
+				endif
+				set ordlog-type = 0
+				do update-order-amendments
+					parameters
+						"A"
+						so-territory-code
+						so-rep-code
+						so-order-no
+						"*" // so-bo-suffix
+						order-log-date // so-processing-date //order-log-date
+						so-cust-code//lf-customer
+						so-order-date //so-processing-date // lf-order-date
+						ordlog-type
+						stock-code // ordlog-old-info
+						SPACES // ordlog-new-info
+						0 // ordlog-old-value
+						0 // ordlog-new-value
+						lf-value-extax // (sol-line-amount / (1 + (sol-tax-rate / 100)))
+						lf-average-cost // sol-line-cost
+						lf-gross-profit-amount
+						lf-gross-profit-percent
+						lf-record-counter
+					returning
+						lf-record-counter
+			endif
+		endextract
+	endselect
+	//16oct08
+
+endprocedure // scan-sales
+*/
+
+
+// pmmextract.spl

@@ -1,0 +1,178 @@
+////////////////////////////////////////////////////////////////////////////////
+//Program     : pvi-snz/so/x54trans.spl
+//Written By  : Mark Dill (Backburner Solutions)
+//Written On  : 12-Jun-2007
+//Description : Acts as a front end interface to invoice consolidation routines.
+//				When called, the correct parameter list is assembled and the
+//				invoice print program so/x54posnoxml is called with same.
+//Requested By: Rob Dexter
+//Copyright   : Captain Snooze Pty Ltd
+//              All Rights Reserved. Unauthorized copying is prohibited.
+////////////////////////////////////////////////////////////////////////////////
+//	04apr14	rmd	{5}	move away from layby mode even for split orders
+//	14feb14	rmd	{4}	convert to 710
+//	08feb13	rmd	{3}	new front end to point to pvi-snz/so/snzinvprnt
+//	19jul10	rmd		point to new invoice program rmd/so/snzinvprnt instead of
+//					so/x54posnoxml
+// 	12Jun07	rmd		Accepts up to 10 params and calls [x54posnoxml] translating
+//					params if required.
+// 	12Jun07	rmd		Set as override for INVOICE
+
+version-number "CUSTOM: pvi-snz/so/x54trans 20130208"
+
+field
+	ws-param							pic x(256) occurs 10
+
+//#define DEBUG
+
+procedure main
+	do process-parameters
+endprocedure //main ----------------------------------------------------------
+
+procedure process-parameters
+	local field
+		lf-i							pic 99
+	//
+	for lf-i = 1 to 10
+		set ws-param[lf-i] = get-param(lf-i)
+	endfor
+#ifdef DEBUG
+	for lf-i = 1 to 10
+		message concat( "Param" str(lf-i) ":" ws-param[lf-i])
+	endfor
+#endif
+	do translate-parameters
+endprocedure //process-parameters --------------------------------------------
+
+procedure translate-parameters
+	local field
+		lf-store-code					like so-territory-code
+		lf-whse-code					like so-whse-code
+		lf-found-in-archive				type boolean
+	//
+	if strlen(concat(ws-param[1],ws-param[2])) = 0
+#ifdef DEBUG
+		message "No params sent, call inv prog with NO params"
+#endif
+		do call-with-no-parameters
+		exit
+	endif
+	if ws-param[1] != "-layby"
+#ifdef DEBUG
+		message "No layby flag, testing for sibling S/O's in the archive"
+#endif
+		do search-sales-order-archive
+			parameters
+				num(ws-param[1])	//Order/Invoice No
+			returning
+				lf-store-code
+				lf-whse-code
+				lf-found-in-archive
+		if lf-found-in-archive
+#ifdef DEBUG
+			message "Siblings found - will pass calculated -layby params"
+#endif
+			do call-with-layby-parameters
+				parameters
+					lf-store-code
+					lf-whse-code
+		else
+#ifdef DEBUG
+			message "No siblings found - will pass params untouched"
+#endif
+			do call-with-original-parameters
+		endif
+	else
+		//<{5}
+		//do call-with-original-parameters
+		spl "pvi-snz/so/snzinvprnt"
+			parameters
+				ws-param[2]	// Order/Invoice No
+				SPACES
+				TRUE		
+		//>{5}				
+	endif
+endprocedure //translate-parameters ------------------------------------------
+
+procedure search-sales-order-archive
+	parameters
+		lp-order-no						like so-order-no
+	//
+	returning
+		lr-store-code					like so-territory-code
+		lr-whse-code					like so-whse-code
+		lr-found-in-archive				type boolean
+	//
+	set lr-found-in-archive = FALSE
+	select *
+	from
+		sales-order-archive
+	order by
+		so-order-no
+		so-bo-suffix
+	when
+		so-order-no = :lp-order-no
+	before
+		set lr-found-in-archive = TRUE
+	detail
+		set lr-store-code = so-territory-code
+		set lr-whse-code = so-whse-code
+		break
+	endselect
+endprocedure //search-sales-order-archive ------------------------------------
+
+procedure call-with-no-parameters
+	//spl "so/x54posnoxml"		//19jul10
+	//spl "rmd/so/snzinvprnt"		//19jul10   //{3}
+	spl "pvi-snz/so/snzinvprnt"		//19jul10	//{3}
+endprocedure //call-with-no-parameters ---------------------------------------
+
+
+procedure call-with-original-parameters
+	//spl "so/x54posnoxml"		//19jul10
+	//spl "rmd/so/snzinvprnt"		//19jul10  //{3}
+	spl "pvi-snz/so/snzinvprnt"		//19jul10  //{3}
+		parameters
+			ws-param[1]
+			ws-param[2]
+			ws-param[3]
+			ws-param[4]
+			ws-param[5]
+			ws-param[6]
+			ws-param[7]
+			ws-param[8]
+			ws-param[9]
+			ws-param[10]
+endprocedure //call-with-original-parameters ---------------------------------
+
+//<{5}
+procedure call-with-layby-parameters
+	parameters
+		lp-store-code					like so-territory-code
+		lp-whse-code					like so-whse-code
+	spl "pvi-snz/so/snzinvprnt"
+		parameters
+			ws-param[1]	// Order/Invoice No
+			SPACES
+			TRUE
+endprocedure //call-with-layby-parameters ------------------------------------
+//procedure call-with-layby-parameters
+//	parameters
+//		lp-store-code					like so-territory-code
+//		lp-whse-code					like so-whse-code
+//	//spl "so/x54posnoxml"		//19jul10
+//	//spl "rmd/so/snzinvprnt"		//19jul10 	//{3}
+//	spl "pvi-snz/so/snzinvprnt"		//19jul10   //{3}
+//		parameters
+//			"-layby"
+//			ws-param[1]	// Order/Invoice No
+//			SPACES
+//			today()
+//			lp-whse-code
+//			"114138"	// (cd-trans-seq-no) is it req'd? how about SPACES
+//			"0"
+//			"-store"
+//			lp-store-code
+//endprocedure //call-with-layby-parameters ------------------------------------
+//>{5}
+//EOF - x54trans.spl ---------------------------------------------------------

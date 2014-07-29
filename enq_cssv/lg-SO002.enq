@@ -1,0 +1,4 @@
+// update warehouse in Archive Sales Orders
+update sales-order-archive
+set
+	so-whse-code = input alpha "Change Warehouse to"

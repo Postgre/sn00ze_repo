@@ -1,0 +1,57 @@
+select
+	po-order-no
+	po-backorder-flag
+	cre-accountcode
+	po-l-seq
+	stock-code
+	po-order-line-total
+	stock-group
+	po-order-date
+	ws-start-date = input date "Enter start date:"
+	ws-end-date = input date "Enter   end date:"
+	company-name
+from
+	purchase-order
+	purchase-order-line
+	stock-master
+	system-control
+where
+	stock-group = "IS" 
+	and po-order-date between ws-start-date and ws-end-date 
+order by cre-accountcode 
+format is rpt
+field sub-tot-po-order-line-total like po-order-line-total
+field total-po-order-line-total like po-order-line-total
+report header
+	page
+header
+	print company-name in col 1
+	skip
+	print "rjbpo6" in col 1
+		"TOTAL OF ALL PURCHASE ORDER FOR INNER SPRINGS" in col 20
+	print "FOR  ALL SUPPLIERS " in col 31
+	print "BETWEEN" in col 21
+		ws-start-date in col 29 bold 
+		"AND" in col 41
+		ws-end-date in col 45 bold 
+	skip
+	print
+		"    cre" in col 6
+		" po order" in col 37
+	print
+		"accountcode" in col 6
+		"line total" in col 37
+	skip 1
+set total-po-order-line-total = 0
+before cre-accountcode
+	set sub-tot-po-order-line-total = 0
+
+detail
+	set sub-tot-po-order-line-total += po-order-line-total
+	set total-po-order-line-total += po-order-line-total
+after cre-accountcode
+report footer
+skip
+	print
+	"TOTAL" in col 10 bold
+	total-po-order-line-total in col 37 bold

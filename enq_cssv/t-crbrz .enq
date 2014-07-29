@@ -1,0 +1,10 @@
+select
+	cre-accountcode
+	cr-pay-to-code
+	cre-supp-accountcode
+	cre-co-op-advertising
+ 
+from
+	cre-master
+	cre-profile-details
+format is lst

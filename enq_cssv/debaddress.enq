@@ -1,0 +1,22 @@
+select
+	accountcode
+	shortname
+	na-type
+	na-company
+	na-street
+	na-suburb
+	postcode
+	na-phone
+from
+	deb-master
+	name-and-address-master
+where
+	na-type = 'C' 
+format is lst
+suppress na-type
+suppress na-phone
+field title of accountcode is "Customer" "Code"
+field title of shortname is "Customer" "Name"
+field title of postcode is "Post" "Code"
+field title of na-phone is "Phone" "Number"
+display pic of na-suburb is x(20)

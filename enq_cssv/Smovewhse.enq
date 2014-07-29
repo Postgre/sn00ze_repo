@@ -1,0 +1,11 @@
+select
+	stock-code
+	stk-trans-type
+	stk-trans-ref1
+	stk-trans-qty
+	stk-trans-cost
+from
+	stock-movements
+where stk-trans-whse = spaces
+and stk-trans-date = 25-JUL-2010
+format is lst

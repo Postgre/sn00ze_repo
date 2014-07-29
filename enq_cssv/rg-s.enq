@@ -1,0 +1,9 @@
+// looking for default credit limits
+select
+	accountcode
+	credit-limit
+from
+	deb-master
+where
+	( credit-limit != "S"  )
+format is lst

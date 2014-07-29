@@ -1,0 +1,23 @@
+select
+	territory
+	accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	last-sale
+	ws-start-date = input
+		date
+		prompt is "Enter start delivery date:"
+	ws-end-date = input
+		date
+		prompt is "Enter end   delivery date:"
+from
+	name-and-address-master
+	deb-master
+where
+	last-sale between ws-start-date and ws-end-date 
+	and na-type = 'C' 
+format is lotus

@@ -1,0 +1,77 @@
+//Mailling lables for delivered orders between specified delivery dates and
+//order value.
+//For labels 10.1cm wide and 3.5cm deep.  1 label accross page.
+select
+	so-order-no
+	so-bo-suffix
+	so-cust-code
+	so-actual-delivery-date
+	so-order-status
+	so-territory-code
+	so-order-total-amount
+	accountcode
+	na-type
+	na-name
+	na-company
+	na-street
+	na-suburb
+	postcode
+	ws-store-code = input string "Enter store code             :"
+	ws-start-date = input date "Enter start delivered date   :"
+	ws-end-date = input date "Enter end delivered date     :"
+	ws-start-value = input numeric "Enter start order total      :"
+	ws-end-value = input numeric "Enter end order total        :"
+from
+//	sales-order														//sgr13jun00
+	sales-order-archive												//sgr13jun00
+	name-and-address-master
+where
+	so-order-status = '90' 
+	and so-cust-code = accountcode 
+	and na-type = 'C' 
+	and so-order-total-amount between ws-start-value and ws-end-value
+	and so-territory-code = ws-store-code
+	and so-actual-delivery-date between ws-start-date and ws-end-date
+order by so-cust-code 
+format is rpt
+report header
+	print
+		"Name And Address Labels For Delivered Sales" in col 2
+	print
+		"Program               :   maillabel.enq" in col 2
+	print
+		"Store Code            :" in col 2
+		ws-store-code in col 28 pic x(4)
+	print
+		"Start Delivered Date  :" in col 2
+		ws-start-date in col 28
+	print
+		"End Delivered Date    :" in col 2
+		ws-end-date in col 28
+	print
+		"Start Order Total     :" in col 2
+		ws-start-value in col 30
+	print
+		"End Order Total       :" in col 2
+		ws-end-value in col 30
+
+	skip 1
+detail
+	skip
+	print
+		so-cust-code in col 2
+		so-order-no in col 32
+		so-bo-suffix in col 40
+	skip
+	print
+		na-name in col 2
+	print
+		na-company in col 2
+	print
+		na-street in col 2
+	print
+		na-suburb in col 2
+	print
+		postcode in col 27
+	skip
+report footer

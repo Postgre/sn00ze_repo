@@ -1,0 +1,75 @@
+select
+	cre-accountcode
+	cr-shortname
+	cr-settlement-disc-code
+	cr-def-payment-terms
+	accountcode
+	na-type
+	na-company
+	na-street
+	na-suburb
+	na-country
+	postcode
+	na-phone
+	na-fax-no
+	cq.sys-tbl-type
+	cq.sys-tbl-code
+	cq.sys-description
+	cj.sys-tbl-type
+	cj.sys-tbl-code
+	cj.sys-description
+from
+	cre-master
+	name-and-address-master
+	cj = system-table
+	cq = system-table
+where
+	cre-accountcode = accountcode 
+	and cq.sys-tbl-type = 'CQ' 
+	and cr-def-payment-terms = cq.sys-tbl-code 
+format is rpt
+report header
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"    cre" in col 1
+		"cr-shortname" in col 13
+		"na-company" in col 44
+		"na-street" in col 75
+		"na-suburb" in col 106
+	print
+		"accountcode" in col 1
+	skip 1
+
+detail
+	print
+		cre-accountcode in col 1
+		cr-shortname in col 13
+	print
+		na-company in col 13
+		"Payment Terms  :" in col 61
+		cr-def-payment-terms in col 81
+		cq.sys-description in col 86 pic x(30)
+	print
+		na-street in col 13
+	print
+		na-suburb in col 13
+		"Settlement Disc:" in col 61
+		cr-settlement-disc-code in col 81
+	print
+		na-country in col 13
+	print
+		postcode in col 13
+	print
+		"Ph:" in col 13
+		na-phone in col 16
+		"Fax:" in col 29
+		na-fax-no in col 33
+	skip 1
+//	print "-  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  -  " in col 1
+	skip 1
+report footer

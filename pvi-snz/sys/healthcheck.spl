@@ -1,0 +1,639 @@
+// healthcheck3.spl
+// 15may14	rmd upgrade for 710.3
+// 03apr13	rmd suppress days since rollover check
+// 05may11	rmd Ensure ZRNDBENEFIT has a stock-price record
+// 02may11	rmd	allow manual rollover days option
+// 27jul10	rmd	send emails to pronto.integrities@snooze.com.au
+// 22feb10	rmd check and repair empty rrp inc field
+// 07sep09	rmd check stk-price-per = 1
+// 12aug09	rmd add stock supplier cleanup routine
+// 09jun09	rmd	add orders still ready to update check
+// 01jun09	rmd	add days since rollover check
+
+//prospl rmd/sys/healthcheck3
+//prowp /backup/export/commondata/SNZHCL.txt
+
+object health-check-log
+//type is memory
+//file is "SNZHCL.txt"
+	type external
+	file "/backup/export/commondata/SNZHCL.txt"
+	record
+		hcl-dataset						like sys-consolidation-division
+		hcl-object                      pic x(50)
+		hcl-id-1                        pic x(50)
+		hcl-id-2                        pic x(50)
+		hcl-id-3                        pic x(50)
+		hcl-note                        pic x(50)
+		hcl-date                        type date
+		hcl-time                        type time
+		hcl-login-id					pic x(20)
+	endrecord
+	//key is hcr-object hcr-id-1 hcr-id-2 hcr-id-3
+
+
+field
+	ws-errors-exist						type boolean
+	ws-so-order-no                      like so-order-no
+	ws-so-bo-suffix                     like so-bo-suffix
+	ws-run-date							type date
+	ws-fin-yr       					like sys-stk-yr
+	ws-fin-per		                    like sys-stk-per
+	//ws-fin-yr-per						numeric // YYYYMM (fin YY and MM)
+	ws-fin-date							type date //  01/FM/FY
+
+
+procedure main
+	get system-control first
+
+	do open-hcl
+	if get-param(1) = "-email"
+		//set ws-run-date = julian2date(get-param(2))
+		set ws-run-date = today()
+		do build-email-body
+		//23jan13 no more send to google group
+		//do send-email-2
+		//parameters
+		//	//"nickfatool@hotmail.com"
+		//	"snooze_pronto_integrities@googlegroups.com" //"kareng@snooze.com.au"//;nickfatool@hotmail.com"
+		//	concat("Healthcheck: " julian2date(today()) " - " zstr(hour(tod()),2,0) ":" zstr(minute(tod()),2,0) ":" zstr(seconds(tod()),2,0))
+		//	//"/test/testing/test660/emailbody.txt"
+		//	"/backup/export/commondata/healthcheck.txt"
+
+		//do send-email-2
+		//parameters
+		//	//"nickfatool@hotmail.com"
+		//	"robd@snooze.com.au" //;rob@zencomputing.com.au;nickfatool@hotmail.com"
+		//	concat("Healthcheck: " julian2date(today()) " - " zstr(hour(tod()),2,0) ":" zstr(minute(tod()),2,0) ":" zstr(seconds(tod()),2,0))
+		//	//"/test/testing/test660/emailbody.txt"
+		//	"/backup/export/commondata/healthcheck.txt"
+
+		//do send-email-2
+		//parameters
+		//	//"nickfatool@hotmail.com"
+		//	"kareng@snooze.com.au" // "rob.dexter@proviewit.com.au"//"adslrsbp@tpg.com.au"
+		//	concat("Healthcheck: " julian2date(today()) " - " zstr(hour(tod()),2,0) ":" zstr(minute(tod()),2,0) ":" zstr(seconds(tod()),2,0))
+		//	//"/test/testing/test660/emailbody.txt"
+		//	"/backup/export/commondata/healthcheck.txt"
+
+		//rmd27jul10
+		do send-email-2
+		parameters
+			"pronto.integrities@snooze.com.au" // "rob.dexter@proviewit.com.au"//"adslrsbp@tpg.com.au"
+			concat("Healthcheck: " julian2date(today()) " - " zstr(hour(tod()),2,0) ":" zstr(minute(tod()),2,0) ":" zstr(seconds(tod()),2,0))
+			"/backup/export/commondata/healthcheck.txt"
+	else
+		if month(today()) > 6
+			set ws-fin-yr 	= year(today())
+			set ws-fin-per	= month(today()) - 6
+		else
+			set ws-fin-yr 	= year(today())  - 1
+			set ws-fin-per	= month(today()) + 6
+		endif
+		//set ws-fin-yr-per = (ws-fin-yr * 100) + ws-fin-per
+		//set ws-fin-yr-per = (ws-fin-yr) + ws-fin-per
+		set ws-fin-date = date2julian(strconcat("01/" str(ws-fin-per) "/" str(ws-fin-yr)))
+		//message "FD" ws-fin-date
+		do build-dataset
+	endif
+endprocedure // main ----------------------------------------------------------
+
+procedure open-hcl
+	open health-check-log
+		on error
+			open health-check-log create permanent
+		endon
+endprocedure // open-hcl ------------------------------------------------------
+
+procedure build-dataset
+	//do test-cash-on-bo
+	do test-integs
+	do test-posting-locks
+	//do test-sys-days-before-clearing	//03apr13
+	do test-ledger-dates
+	do test-ready-to-update // 090609
+	do stock-supplier-fix 	// 090812
+	do stock-price-per-test // rmd07sep09
+	do rrp-inc-fix			// rmd22feb10
+	do zrndbenefit-price-region-fix //rmd05may11
+endprocedure // build-dataset -------------------------------------------------
+
+procedure test-ready-to-update  // 090609
+	initialise health-check-log
+	get system-control first
+
+	//if sys-consolidation-division not in {"312"}
+		extract sales-order
+			on index so-order-status so-order-priority so-delivery-date so-order-no so-bo-suffix
+			key is "80" 0 0 0 SPACES
+			next same so-order-status
+		detail
+			//if so-date-stamp < (today()- 1)
+			if so-invoice-date < (today()- 1)
+				set hcl-dataset						= sys-consolidation-division
+				set hcl-object                      = concat(company-name "Status 80:")
+				set hcl-id-1                        = concat(str(so-order-no) so-bo-suffix ":")
+				set hcl-id-2                        = julian2date(so-invoice-date) //julian2date(so-date-stamp) // user-id //  pic x(50)
+				//set hcl-id-3                        pic x(50)
+				set hcl-note                        = "Sales Order" // SPACES // strconcat("Old Val:" str(sys-days-before-clearing) "  New Val: 10")
+				set hcl-date                        = today()
+				set hcl-time                        = tod()
+				set hcl-login-id					= SPACES //user-id
+				insert health-check-log
+			endif
+		endextract
+		// credit note ready to update
+		extract sales-order
+			on index so-order-status so-order-priority so-delivery-date so-order-no so-bo-suffix
+			key is "83" 0 0 0 SPACES
+			next same so-order-status
+		detail
+			//if so-date-stamp < (today()- 1)
+			if so-invoice-date < (today()- 1)
+				set hcl-dataset						= sys-consolidation-division
+				set hcl-object                      = concat(company-name "Status 83:")
+				set hcl-id-1                        = concat(str(so-order-no) so-bo-suffix ":")
+				set hcl-id-2                        = julian2date(so-invoice-date) //julian2date(so-date-stamp) // user-id //  pic x(50)
+				//set hcl-id-3                        pic x(50)
+				set hcl-note                        = "Credit Note" // SPACES // strconcat("Old Val:" str(sys-days-before-clearing) "  New Val: 10")
+				set hcl-date                        = today()
+				set hcl-time                        = tod()
+				set hcl-login-id					= SPACES //user-id
+				insert health-check-log
+			endif
+		endextract
+		// credit note ready to update
+		extract sales-order
+			on index so-order-status so-order-priority so-delivery-date so-order-no so-bo-suffix
+			key is "65" 0 0 0 SPACES
+			next same so-order-status
+		detail
+			//if so-date-stamp < (today()- 1)
+			if so-invoice-date < (today()- 1)
+				set hcl-dataset						= sys-consolidation-division
+				set hcl-object                      = concat(company-name "Status 65:")
+				set hcl-id-1                        = concat(str(so-order-no) so-bo-suffix ":")
+				set hcl-id-2                        = julian2date(so-invoice-date) //julian2date(so-date-stamp) // user-id //  pic x(50)
+				//set hcl-id-3                        pic x(50)
+				set hcl-note                        = "Transfer" // SPACES // strconcat("Old Val:" str(sys-days-before-clearing) "  New Val: 10")
+				set hcl-date                        = today()
+				set hcl-time                        = tod()
+				set hcl-login-id					= SPACES //user-id
+				insert health-check-log
+			endif
+		endextract
+	//endif
+endprocedure // test-ready-to-update ------------------------------------------
+
+procedure test-ledger-dates
+	local field
+		lf-gl-yr-per			type numeric
+		lf-dl-yr-per			type numeric
+		lf-stk-yr-per			type numeric
+		lf-gl-date				type date
+		lf-dl-date				type date
+		lf-stk-date				type date
+	initialise health-check-log
+	get system-control first
+	//set lf-gl-yr-per = (sys-gl-yr * 100) + sys-gl-per
+	//set lf-dl-yr-per = (sys-dl-yr * 100) + sys-dl-per
+	//set lf-stk-yr-per = (sys-stk-yr * 100) + sys-stk-per
+	set lf-gl-yr-per = (sys-gl-yr) + sys-gl-per
+	set lf-dl-yr-per = (sys-dl-yr) + sys-dl-per
+	set lf-stk-yr-per = (sys-stk-yr) + sys-stk-per
+	set ws-fin-date = date2julian(strconcat("01/" str(ws-fin-per) "/" str(ws-fin-yr)))
+	set lf-gl-date 		= date2julian(strconcat("01/" str(sys-gl-per) "/" str(sys-gl-yr)))
+	set lf-dl-date 		= date2julian(strconcat("01/" str(sys-dl-per) "/" str(sys-dl-yr)))
+	set lf-stk-date 	= date2julian(strconcat("01/" str(sys-stk-per) "/" str(sys-stk-yr)))
+	//message "G" lf-gl-date
+	//message "D" lf-dl-date
+	//message "S" lf-stk-date
+
+
+	//if (lf-gl-yr-per < (ws-fin-yr-per - 3)) or (lf-dl-yr-per < (ws-fin-yr-per - 3)) or  (lf-stk-yr-per < (ws-fin-yr-per - 3))
+	if (add-month(lf-gl-date,3,0) < ws-fin-date) or (add-month(lf-dl-date,3,0) < ws-fin-date) or (add-month(lf-stk-date,3,0) < ws-fin-date)
+		set hcl-dataset						= sys-consolidation-division
+		set hcl-object                      = concat(company-name "  Legders:")
+		set hcl-id-1                        = concat("G:" str(sys-gl-yr) zstr(sys-gl-per,2,0) " D:" str(sys-dl-yr) zstr(sys-dl-per,2,0) " S:" str(sys-stk-yr) zstr(sys-stk-per,2,0))
+		set hcl-id-2                        = SPACES //user-id //str(time-from-date-time(ledger-run-time)) // user-id //  pic x(50)
+		//set hcl-id-3                        pic x(50)
+		//set hcl-note                        = SPACES // strconcat("Old Val:" str(sys-days-before-clearing) "  New Val: 10")
+		set hcl-date                        = today()
+		set hcl-time                        = tod()
+		set hcl-login-id					= SPACES //user-id
+		insert health-check-log
+	endif
+endprocedure // endtest-ledger-dates ------------------------------------------
+
+procedure test-sys-days-before-clearing
+local field
+	lf-sys-days-before-clearing			like sys-days-before-clearing
+	get system-control first // lock
+	on error
+		initialise health-check-log
+			set hcl-dataset						= sys-consolidation-division
+			set hcl-object                      = concat(company-name " Rollover:")
+			set hcl-id-1                        = "no system-control"//strconcat("Old Val:" str(sys-days-before-clearing) "  New Val: 10")// ":" time-from-date-time(ledger-run-time)) //date2julian(ledger-run-date)
+			set hcl-id-2                        = user-id //str(time-from-date-time(ledger-run-time)) // user-id //  pic x(50)
+			//set hcl-id-3                        pic x(50)
+			//set hcl-note                        = SPACES // strconcat("Old Val:" str(sys-days-before-clearing) "  New Val: 10")
+			set hcl-date                        = today()
+			set hcl-time                        = tod()
+			set hcl-login-id					= user-id
+			insert health-check-log
+	else
+		set lf-sys-days-before-clearing			= sys-days-before-clearing
+		initialise health-check-log
+		//rmd 02may11
+		if sys-spare-alpha2 != SPACES
+			set hcl-dataset						= sys-consolidation-division
+			set hcl-object                      = concat(company-name " Rollover:")
+			set hcl-id-2                        = user-id //str(time-from-date-time(ledger-run-time)) // user-id //  pic x(50)
+			//set hcl-id-3                        pic x(50)
+			//set hcl-note                        = SPACES // strconcat("Old Val:" str(sys-days-before-clearing) "  New Val: 10")
+			set hcl-date                        = today()
+			set hcl-time                        = tod()
+			set hcl-login-id					= user-id
+			set sys-days-before-clearing 		= num(sys-spare-alpha2)
+			update system-control
+			on error
+				set hcl-id-1                  	= strconcat("USER RESET Old Val:" str(lf-sys-days-before-clearing) "  New Val: " sys-spare-alpha2)// ":" time-from-date-time(ledger-run-time)) //date2julian(ledger-run-date)
+				insert health-check-log
+			else
+				set hcl-id-1                   	= strconcat("USER RESET Old Val:" str(lf-sys-days-before-clearing) "  New Val: " sys-spare-alpha2)// ":" time-from-date-time(ledger-run-time)) //date2julian(ledger-run-date)
+				insert health-check-log
+			endon
+		elseif sys-days-before-clearing != 10
+			set hcl-dataset						= sys-consolidation-division
+			set hcl-object                      = concat(company-name " Rollover:")
+			set hcl-id-2                        = user-id //str(time-from-date-time(ledger-run-time)) // user-id //  pic x(50)
+			//set hcl-id-3                        pic x(50)
+			//set hcl-note                        = SPACES // strconcat("Old Val:" str(sys-days-before-clearing) "  New Val: 10")
+			set hcl-date                        = today()
+			set hcl-time                        = tod()
+			set hcl-login-id					= user-id
+			set sys-days-before-clearing = 10
+			update system-control
+			on error
+				set hcl-id-1                  	= strconcat("Old Val:" str(lf-sys-days-before-clearing) "  New Val: 10")// ":" time-from-date-time(ledger-run-time)) //date2julian(ledger-run-date)
+				insert health-check-log
+			else
+				set hcl-id-1                   	= strconcat("Old Val:" str(lf-sys-days-before-clearing) "  New Val: 10")// ":" time-from-date-time(ledger-run-time)) //date2julian(ledger-run-date)
+				insert health-check-log
+			endon
+		endif
+	endon
+endprocedure // test-sys-days-before-clearing ---------------------------------
+
+procedure test-integs
+	local field
+		lf-ledger-type							pic x(16)
+		lf-cannot-correct						like ledger-no-of-corrections // type numeric
+		lf-count								type numeric
+
+	extract ledger-log
+		on index ledger-run-date ledger-run-time ledger-type
+		key is today() - 1 0 spaces
+		//next same ledger-run-date
+		finish when ledger-run-date > today()
+	detail
+		initialise health-check-log
+		if ledger-no-of-errors > ledger-no-of-corrections
+			set lf-cannot-correct 				= ledger-no-of-errors - ledger-no-of-corrections
+			set lf-count						+= 1
+			switch on ledger-type
+				case "S"
+					set lf-ledger-type			= "Inventory"
+				case "G"
+					set lf-ledger-type			= "General Ledger"
+				case "O"
+					set lf-ledger-type			= "Sales Orders"
+				case "C"
+					set lf-ledger-type			= "Suppliers"
+				case "D"
+					set lf-ledger-type			= "Customers"
+				else
+					set lf-ledger-type			= "Other Integ"
+		    endswitch
+
+
+			set hcl-dataset						= sys-consolidation-division
+			set hcl-object                      = concat(strconcat(lf-ledger-type) " Integrity")
+			set hcl-id-1                        = strconcat(julian2date(ledger-run-date) ":" format-picture(ledger-run-time, "hh:mm"))// ":" time-from-date-time(ledger-run-time)) //date2julian(ledger-run-date)
+			set hcl-id-2                        = user-id //str(time-from-date-time(ledger-run-time)) // user-id //  pic x(50)
+			//set hcl-id-3                        pic x(50)
+			set hcl-note                        = concat(str(lf-cannot-correct) " uncorrected errors")
+			set hcl-date                        = ledger-run-date
+			set hcl-time                        = ledger-run-time
+			set hcl-login-id					= user-id
+			if ledger-run-date < today and ledger-run-time < 11:00
+			else
+				if hcl-login-id = "xi_night"
+					insert health-check-log
+				endif
+			endif
+		endif
+	endextract
+endprocedure // test-integs ---------------------------------------------------
+
+procedure test-posting-locks
+	extract system-locks
+	detail
+		initialise health-check-log
+		set hcl-dataset						= sys-consolidation-division
+		set hcl-object                      = concat(company-name "    Locks:" strconcat(sys-lock-type))
+		set hcl-id-1                        = julian2date(date-from-date-time(sys-lock-date-time,0)) //strconcat(zstr(day(sys-lock-date-time),2,0) "/" zstr(month(sys-lock-date-time),2,0) "/" zstr(year(sys-lock-date-time),4,0))//julian2date(sys-lock-date-time)//date2julian(sys-lock-date-time)
+		set hcl-id-2                        = sys-user-id //  pic x(50)
+		set hcl-note                        = concat("Posting Lock:" strconcat(sys-lock-type) " " strconcat(sys-program-name) " " strconcat(sys-upto-field-two))
+		set hcl-date                        = date-from-date-time(sys-lock-date-time,0) //date2julian(strconcat(zstr(day(sys-lock-date-time),2,0) "/" zstr(month(sys-lock-date-time),2,0) "/" zstr(year(sys-lock-date-time),4,0))) // sys-lock-date-time
+		set hcl-time                        = time-from-date-time(sys-lock-date-time,0) //sys-lock-date-time
+		set hcl-login-id					= sys-user-id
+		insert health-check-log
+	endextract
+endprocedure // test-posting-locks --------------------------------------------
+procedure build-email-body
+local field
+	lf-note-line						pic x(100)
+	command
+		"/usr/bin/nullfile"
+	parameters
+		 "/backup/export/commondata/healthcheck.txt"
+	extract health-check-log
+	detail
+		if (hcl-date between (ws-run-date - 1) and ws-run-date) //= ws-run-date
+		//or (substring(hcl-object,1,13) = "Posting Lock:")
+		or (substring(hcl-note,1,13) = "Posting Lock:")
+			set lf-note-line = concat("Dataset: " strconcat(hcl-dataset) " " strconcat(hcl-object) " " strconcat(hcl-id-1) " " strconcat(hcl-id-2) " " strconcat(hcl-note))
+			command
+				"/usr/bin/echo2file"
+			parameters
+				strconcat(lf-note-line)
+				"/backup/export/commondata/healthcheck.txt"
+	   	endif
+	endextract
+	//// append non correctable spoolfiles
+	//command
+	//	"/usr/bin/cannotcorrect"
+
+endprocedure // build-email-body ----------------------------------------------
+
+
+procedure test-cash-on-bo
+local field
+	lf-cash-account				type boolean
+
+	extract sales-order
+	on index so-order-no so-bo-suffix
+	detail
+		get deb-master
+    	on index accountcode
+    	key is so-cust-code
+    	on error
+
+    	else
+    		if accountcode = territory
+    			set lf-cash-account = TRUE
+    		endif
+    	endon
+    	if lf-cash-account
+    		if so-order-status != "70"
+    			set ws-so-order-no    = so-order-no
+				set ws-so-bo-suffix   = so-bo-suffix
+				set hcl-dataset		  = sys-consolidation-division
+    			set hcl-object        = "sales-order"
+				set hcl-id-1          = str(so-order-no)
+				set hcl-id-2          = so-bo-suffix
+				set hcl-id-3          = SPACES
+				set hcl-note          = "Cash account backorder"
+				set hcl-date          = today()
+				set hcl-time          = tod()
+				set hcl-login-id	  = login-id()
+    			insert health-check-log
+
+   	 			extract sales-order-line lock
+    			on index so-order-no so-bo-suffix sol-line-seq
+    			key is ws-so-order-no ws-so-bo-suffix 0
+    			next same so-order-no so-bo-suffix
+    			detail
+    				if sol-line-type in {"SN" "KN" "WN"} and sol-print-line != "T"
+    					set hcl-dataset		  = sys-consolidation-division
+						set hcl-object        = "sales-order"
+						set hcl-id-1          = str(so-order-no)
+						set hcl-id-2          = so-bo-suffix
+						set hcl-id-3          = str(sol-line-seq)
+						set hcl-note          = "Cash account line not taken"
+						set hcl-date          = today()
+						set hcl-time          = tod()
+						set hcl-login-id	  = login-id()
+    					insert health-check-log
+					endif
+    			endextract
+    		endif
+   	 	endif
+	endextract
+endprocedure // test-cash-on-bo -----------------------------------------------
+
+procedure stock-price-per-test
+	extract stock-master
+	detail
+		if stk-price-per != 1
+			initialise	health-check-log
+    		set hcl-dataset		  = sys-consolidation-division
+			set hcl-object        = concat(company-name "stock-master")
+			set hcl-id-1          = stock-code
+			set hcl-id-2          = SPACES
+			set hcl-id-3          = SPACES
+			set hcl-note      	  = "stk-price-per not 1"
+			set hcl-date          = today()
+			set hcl-time          = tod()
+			set hcl-login-id	  = login-id()
+    		insert health-check-log
+		endif
+	endextract
+endprocedure // stock-price-per-test ------------------------------------------
+
+procedure stock-supplier-fix
+local field
+	lf-update-required			type boolean
+	lf-desc-fix					type boolean
+	lf-uom-fix                  type boolean
+	//
+	extract stock-supplier lock
+		on index stock-code cre-accountcode
+	detail
+		set lf-update-required	= FALSE
+		set lf-desc-fix			= FALSE
+		set lf-uom-fix          = FALSE
+		if sup-stk-description != SPACES
+			set lf-update-required		= TRUE
+			set lf-desc-fix				= TRUE
+			set sup-user-only-alpha20-1 = sup-stk-description
+			set sup-stk-description 	= SPACES
+		endif
+		if sup-unit-desc = SPACES
+			set lf-update-required		= TRUE
+			set lf-uom-fix          	= TRUE
+			get stock-master
+				on error
+				else
+				endon
+			set sup-unit-desc 			= stk-unit-desc
+		endif
+		if lf-update-required
+			update stock-supplier
+		endif
+		if lf-desc-fix // if only a UOM fix - don't write to log
+			initialise	health-check-log
+    		set hcl-dataset		  = sys-consolidation-division
+			set hcl-object        = "stock-supplier"
+			set hcl-id-1          = stock-code
+			set hcl-id-2          = cre-accountcode
+			set hcl-id-3          = SPACES
+			if lf-uom-fix
+				set hcl-note      = "UOM Fix"
+			endif
+			if lf-desc-fix
+				if strlen(hcl-note) = 0
+					set hcl-note = concat("Desc Fix")
+				else
+					set hcl-note = concat(strconcat(hcl-note) " Desc Fix")
+				endif
+			endif
+			set hcl-date          = today()
+			set hcl-time          = tod()
+			set hcl-login-id	  = login-id()
+    		insert health-check-log
+		endif
+	endextract
+endprocedure // stock-supplier-fix --------------------------------------------
+
+procedure rrp-inc-fix //rmd22feb10
+local field
+	lf-price-region				pic x
+	lf-update-required			type boolean
+	//
+
+	if uppercase(get-env("PRCREGION")) = "REGIONAL"
+		set lf-price-region = "R"
+	elseif uppercase(get-env("PRCREGION")) = "METRO"
+		set lf-price-region = "M"
+	else
+		set lf-price-region = SPACES
+	endif
+	extract stock-price lock
+		on index stock-code prc-region-code
+	detail
+		get stock-master
+		set hcl-note = spaces
+		if prc-sales-tax-code = 1
+			if lf-price-region = "R"
+				if abs((prc-wholesale-price * 1.1) - prc-recommend-retail-inc-tax) > 0.05
+					set hcl-note = concat("RRP Fix (RG) Old:" str((prc-recommend-retail-inc-tax)))
+					set prc-recommend-retail-inc-tax = prc-wholesale-price * 1.1
+					update stock-price
+					set hcl-note = concat(strconcat(hcl-note) " New:" str(prc-recommend-retail-inc-tax))
+				endif
+			elseif lf-price-region = "M"
+				if abs((prc-recommend-retail * 1.1) - prc-recommend-retail-inc-tax) > 0.05
+					set hcl-note = concat("RRP Fix (MG) Old:" str((prc-recommend-retail-inc-tax)))
+					set prc-recommend-retail-inc-tax = prc-recommend-retail * 1.1
+					update stock-price
+					set hcl-note = concat(strconcat(hcl-note) " New:" str(prc-recommend-retail-inc-tax))
+				endif
+			endif
+		else // ex tax
+			if lf-price-region = "R"
+				if abs((prc-wholesale-price) - prc-recommend-retail-inc-tax) > 0.05
+					set hcl-note = concat("RRP Fix (RX) Old:" str((prc-recommend-retail-inc-tax)))
+					set prc-recommend-retail-inc-tax = prc-wholesale-price
+					update stock-price
+					set hcl-note = concat(strconcat(hcl-note) " New:" str(prc-recommend-retail-inc-tax))
+				endif
+			elseif lf-price-region = "M"
+				if abs((prc-recommend-retail) - prc-recommend-retail-inc-tax) > 0.05
+					set hcl-note = concat("RRP Fix (MX) Old:" str((prc-recommend-retail-inc-tax)))
+					set prc-recommend-retail-inc-tax = prc-recommend-retail
+					update stock-price
+					set hcl-note = concat(strconcat(hcl-note) " New:" str(prc-recommend-retail-inc-tax))
+				endif
+			endif
+		endif
+		if hcl-note != SPACES
+    		set hcl-dataset		  = sys-consolidation-division
+			set hcl-object        = "stock-price"
+			set hcl-id-1          = stock-code
+			set hcl-id-2          = lf-price-region
+			set hcl-id-3          = SPACES
+			set hcl-date          = today()
+			set hcl-time          = tod()
+			set hcl-login-id	  = login-id()
+    		insert health-check-log
+		endif
+	endextract
+endprocedure // rrp-inc-fix ---------------------------------------------------
+
+procedure zrndbenefit-price-region-fix //rmd05may11
+	get stock-price lock
+		on index stock-code prc-region-code
+		key is "ZRNDBENEFIT" SPACES
+	on error
+		set stock-code = "ZRNDBENEFIT"
+		set prc-region-code = SPACES
+		insert stock-price
+		set hcl-note = concat("Fixed missing ZRNDBENEFIT price")
+    	set hcl-dataset		  = sys-consolidation-division
+		set hcl-object        = "stock-price"
+		set hcl-id-1          = stock-code
+		set hcl-id-2          = prc-region-code
+		set hcl-id-3          = SPACES
+		set hcl-date          = today()
+		set hcl-time          = tod()
+		set hcl-login-id	  = login-id()
+    	insert health-check-log
+	endon
+endprocedure // zrndbenefit-price-region-fix ----------------------------------
+
+procedure send-email
+// /usr/bin/sendemail = echo "$3" | mailx -s "$2" $1
+parameters
+	lp-email-address					pic x(50)
+	//lp-body								pic x(80)
+	//lp-subject							pic x(80)
+	lp-subject							pic x(80)
+	lp-body								pic x(80)
+
+	//set lf-email-address = "0437129986@messagenet.com.au"
+	//set lf-body = "I'm the body"
+	//set lf-subject = "I'm the subject"
+
+
+	//set lf-command-string = strconcat(concat("echo '" lf-body " | mail -s " lf-subject "0437129986@messagenet.com.au"))
+	//message lf-command-string
+	command
+		"/usr/bin/sendemail"
+
+	parameters
+		lp-email-address
+		lp-subject
+		lp-body
+	//message "Message Sent"
+endprocedure // send-email ----------------------------------------------------
+
+procedure send-email-2
+parameters
+	lp-email-address					pic x(50)
+	lp-subject							pic x(80)
+	lp-body-file						pic x(80)
+
+	command
+		"/usr/bin/sendemailfile"
+
+	parameters
+		lp-email-address
+		lp-subject
+		lp-body-file
+
+endprocedure // send-email-2 --------------------------------------------------
+
+
+// healthcheck3.spl

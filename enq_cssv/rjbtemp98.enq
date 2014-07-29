@@ -1,0 +1,23 @@
+select
+	bom-parent-code
+	comp-code
+	stock-code
+	stock-group
+	stk-stock-status
+	prc-region-code
+	prc-recommend-retail
+from
+	bill-of-materials-detail
+	stock-master
+	stock-price
+where
+	stock-group = 'IS' 
+	and stk-stock-status = 'K' 
+	and stock-code = bom-parent-code 
+	and prc-region-code = 'V'
+order by comp-code 
+format is lst
+suppress stock-code
+suppress stock-group
+suppress stk-stock-status
+suppress prc-region-code

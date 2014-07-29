@@ -1,0 +1,8 @@
+// Query Wrong Warehouse from wrong Stock Control Code
+select *
+from
+        stock-take-variance
+where
+        ( ( whse-code LIKE INPUT ALPHA prompt is "Warehouse Code"   ) AND
+        ( stv-control-code LIKE INPUT ALPHA prompt is "Stock Control Code"   ) )
+format as lst

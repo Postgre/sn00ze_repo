@@ -1,0 +1,5 @@
+update stock-price
+set
+	prc-region-code = spaces
+where
+	prc-region-code <> spaces

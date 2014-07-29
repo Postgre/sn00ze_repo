@@ -1,0 +1,36 @@
+select
+	cre-accountcode
+	stock-code
+	so-order-no
+	sol-line-amount
+	sol-line-cost
+	so-cust-code
+//dr-tr-order-no
+//tr-sort-key
+//trans-ref
+//accountcode
+//trans-type
+//tr-amount
+//balance
+//future-bal
+from
+	sales-order-line
+	sales-order
+	stock-supplier
+//outer deb-trans
+//deb-master
+//where 
+//cre-accountcode = "SOP-Q"
+//trans-type = 'CR'
+order by cre-accountcode
+format is lst
+//unique record on stock-code
+//unique record on balance
+subtotal on sol-line-amount
+	with breaks on cre-accountcode
+subtotal on sol-line-cost
+	with breaks on cre-accountcode
+total on sol-line-amount
+total on sol-line-cost
+
+

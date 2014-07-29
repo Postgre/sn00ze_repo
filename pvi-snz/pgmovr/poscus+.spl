@@ -1,0 +1,17 @@
+procedure main
+	message "dbg: poscus+ SO:" str(num(get-param(1))) " BO: " get-param(2)
+	get sales-order lock
+		on index so-order-no so-bo-suffix
+		key is num(get-param(1)) get-param(2)
+	on error
+		message "SO not found"
+	else
+		set so-user-only-alpha4-4 = "TEST"
+		update sales-order
+		on error
+			message "Cannot update SO"
+		else
+			message "Updated SO"
+		endon
+	endon
+endprocedure // main ----------------------------------------------------------

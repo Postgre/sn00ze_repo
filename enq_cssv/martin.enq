@@ -1,0 +1,635 @@
+select
+	stock-code
+	stk-description
+	ash-whse
+	ash-type
+	ash-years-ago
+	ash-value
+	ash-cost
+	ash-qty
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+	sys-mth-name
+	ws-period = input numeric "Enter the required period (1=current):"
+	company-name
+	sys-gl-per
+	stock-group
+from
+	stock-master
+	stock-aged-sales-history
+	system-table
+	system-control
+where
+	sub-string (stock-code 1 3) = 'SOP' 
+	and stk-description like "%MADISON%" 
+	and ash-years-ago = 0
+	and ash-type = 'O' 
+	and sys-tbl-type = 'WH' 
+	and sys-tbl-code = ash-whse 
+order by stock-code ash-whse 
+format is rpt
+field new-stock-code pic 9
+field total-ash-value like ash-value
+field sub-tot-ash-value like ash-value
+field total-ash-cost like ash-cost
+field sub-tot-ash-cost like ash-cost
+field total-ash-qty like ash-qty
+field sub-tot-ash-qty like ash-qty
+report header
+	page
+	
+	set total-ash-value[1] = 0
+	set total-ash-value[2] = 0
+	set total-ash-value[3] = 0
+	set total-ash-value[4] = 0
+	set total-ash-value[5] = 0
+	set total-ash-value[6] = 0
+	set total-ash-value[7] = 0
+	set total-ash-value[8] = 0
+	set total-ash-value[9] = 0
+	set total-ash-value[10] = 0
+	set total-ash-value[11] = 0
+	set total-ash-value[12] = 0
+	set total-ash-cost[1] = 0
+	set total-ash-cost[2] = 0
+	set total-ash-cost[3] = 0
+	set total-ash-cost[4] = 0
+	set total-ash-cost[5] = 0
+	set total-ash-cost[6] = 0
+	set total-ash-cost[7] = 0
+	set total-ash-cost[8] = 0
+	set total-ash-cost[9] = 0
+	set total-ash-cost[10] = 0
+	set total-ash-cost[11] = 0
+	set total-ash-cost[12] = 0
+	set total-ash-qty[1] = 0
+	set total-ash-qty[2] = 0
+	set total-ash-qty[3] = 0
+	set total-ash-qty[4] = 0
+	set total-ash-qty[5] = 0
+	set total-ash-qty[6] = 0
+	set total-ash-qty[7] = 0
+	set total-ash-qty[8] = 0
+	set total-ash-qty[9] = 0
+	set total-ash-qty[10] = 0
+	set total-ash-qty[11] = 0
+	set total-ash-qty[12] = 0
+header
+	print company-name in col 1
+		"Sales For Madison Range by Store" in col 54
+		today () in col 103
+		"Page No." in col 116
+		pageno () in col 125
+	print "For The Month Of" in col 57 no newline
+	if ws-period = 1
+		print		
+			sys-mth-name[(((sys-gl-per) - ws-period ) + 1 )]      in col 74 bold
+	endif
+	if ws-period = 2
+		print		
+			sys-mth-name[2] in col 74 bold 
+	endif
+	if ws-period = 3
+		print		
+			sys-mth-name[3] in col 74 bold 
+	endif
+	if ws-period = 4
+		print		
+			sys-mth-name[4] in col 74 bold 
+	endif
+	if ws-period = 5
+		print		
+			sys-mth-name[5] in col 74 bold 
+	endif
+	if ws-period = 6
+		print		
+			sys-mth-name[6] in col 74 bold 
+	endif
+	if ws-period = 7
+		print		
+			sys-mth-name[7] in col 74 bold 
+	endif
+	if ws-period = 8
+		print		
+			sys-mth-name[8] in col 74 bold 
+	endif
+	if ws-period = 9
+		print		
+			sys-mth-name[9] in col 74 bold 
+	endif
+	if ws-period = 10
+		print		
+			sys-mth-name[10] in col 74 bold 
+	endif
+	if ws-period = 11
+		print		
+			sys-mth-name[11] in col 74 bold 
+	endif
+	if ws-period = 12
+		print		
+			sys-mth-name[12] in col 74 bold 
+	endif
+	skip 1
+	print
+		"Stock Code" in col 1
+		"Description" in col 15
+		"Warehouse" in col 49
+		"Qty" in col 71
+		"Cost" in col 82
+		"Sales" in col 95
+		"G.P. $" in col 109
+		"G.P. %" in col 123
+	print "=================================================================================================================================" in col 1
+before stock-code
+	set sub-tot-ash-value[1] = 0
+	set sub-tot-ash-value[2] = 0
+	set sub-tot-ash-value[3] = 0
+	set sub-tot-ash-value[4] = 0
+	set sub-tot-ash-value[5] = 0
+	set sub-tot-ash-value[6] = 0
+	set sub-tot-ash-value[7] = 0
+	set sub-tot-ash-value[8] = 0
+	set sub-tot-ash-value[9] = 0
+	set sub-tot-ash-value[10] = 0
+	set sub-tot-ash-value[11] = 0
+	set sub-tot-ash-value[12] = 0
+	set sub-tot-ash-cost[1] = 0
+	set sub-tot-ash-cost[2] = 0
+	set sub-tot-ash-cost[3] = 0
+	set sub-tot-ash-cost[4] = 0
+	set sub-tot-ash-cost[5] = 0
+	set sub-tot-ash-cost[6] = 0
+	set sub-tot-ash-cost[7] = 0
+	set sub-tot-ash-cost[8] = 0
+	set sub-tot-ash-cost[9] = 0
+	set sub-tot-ash-cost[10] = 0
+	set sub-tot-ash-cost[11] = 0
+	set sub-tot-ash-cost[12] = 0
+	set sub-tot-ash-qty[1] = 0
+	set sub-tot-ash-qty[2] = 0
+	set sub-tot-ash-qty[3] = 0
+	set sub-tot-ash-qty[4] = 0
+	set sub-tot-ash-qty[5] = 0
+	set sub-tot-ash-qty[6] = 0
+	set sub-tot-ash-qty[7] = 0
+	set sub-tot-ash-qty[8] = 0
+	set sub-tot-ash-qty[9] = 0
+	set sub-tot-ash-qty[10] = 0
+	set sub-tot-ash-qty[11] = 0
+	set sub-tot-ash-qty[12] = 0
+
+	set new-stock-code = 1
+
+detail
+	if (new-stock-code)
+	print
+		stock-code in col 1 pic x(12)
+		stk-description in col 15 no newline
+	endif
+
+	if ws-period = 1
+		if ash-qty[1] != 0
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[1] in col 68 pic z,zz9-
+		ash-cost[1] in col 75 pic z,zzz,zz9.99-
+		ash-value[1] in col 89 pic z,zzz,zz9.99-
+		(ash-value[1] - ash-cost[1]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[1] - ash-cost[1]) / ash-value[1]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+	endif
+
+	if ws-period = 2
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[2] in col 68 pic z,zz9-
+		ash-cost[2] in col 75 pic z,zzz,zz9.99-
+		ash-value[2] in col 89 pic z,zzz,zz9.99-
+		(ash-value[2] - ash-cost[2]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[2] - ash-cost[2]) / ash-value[2]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 3
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[3] in col 68 pic z,zz9-
+		ash-cost[3] in col 75 pic z,zzz,zz9.99-
+		ash-value[3] in col 89 pic z,zzz,zz9.99-
+		(ash-value[3] - ash-cost[3]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[3] - ash-cost[3]) / ash-value[3]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 4
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[4] in col 68 pic z,zz9-
+		ash-cost[4] in col 75 pic z,zzz,zz9.99-
+		ash-value[4] in col 89 pic z,zzz,zz9.99-
+		(ash-value[4] - ash-cost[4]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[4] - ash-cost[4]) / ash-value[4]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 5
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[5] in col 68 pic z,zz9-
+		ash-cost[5] in col 75 pic z,zzz,zz9.99-
+		ash-value[5] in col 89 pic z,zzz,zz9.99-
+		(ash-value[5] - ash-cost[5]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[5] - ash-cost[5]) / ash-value[5]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 6
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[6] in col 68 pic z,zz9-
+		ash-cost[6] in col 75 pic z,zzz,zz9.99-
+		ash-value[6] in col 89 pic z,zzz,zz9.99-
+		(ash-value[6] - ash-cost[6]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[6] - ash-cost[6]) / ash-value[6]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 7
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[7] in col 68 pic z,zz9-
+		ash-cost[7] in col 75 pic z,zzz,zz9.99-
+		ash-value[7] in col 89 pic z,zzz,zz9.99-
+		(ash-value[7] - ash-cost[7]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[7] - ash-cost[7]) / ash-value[7]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 8
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[8] in col 68 pic z,zz9-
+		ash-cost[8] in col 75 pic z,zzz,zz9.99-
+		ash-value[8] in col 89 pic z,zzz,zz9.99-
+		(ash-value[8] - ash-cost[8]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[8] - ash-cost[8]) / ash-value[8]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 9
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[9] in col 68 pic z,zz9-
+		ash-cost[9] in col 75 pic z,zzz,zz9.99-
+		ash-value[9] in col 89 pic z,zzz,zz9.99-
+		(ash-value[9] - ash-cost[9]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[9] - ash-cost[9]) / ash-value[9]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 10
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[10] in col 68 pic z,zz9-
+		ash-cost[10] in col 75 pic z,zzz,zz9.99-
+		ash-value[10] in col 89 pic z,zzz,zz9.99-
+		(ash-value[10] - ash-cost[10]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[10] - ash-cost[10]) / ash-value[10]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 11
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[11] in col 68 pic z,zz9-
+		ash-cost[11] in col 75 pic z,zzz,zz9.99-
+		ash-value[11] in col 89 pic z,zzz,zz9.99-
+		(ash-value[11] - ash-cost[11]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[11] - ash-cost[11]) / ash-value[11]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 12
+		print
+		ash-whse in col 49
+		sys-description in col 54 pic x(13)
+		ash-qty[12] in col 68 pic z,zz9-
+		ash-cost[12] in col 75 pic z,zzz,zz9.99-
+		ash-value[12] in col 89 pic z,zzz,zz9.99-
+		(ash-value[12] - ash-cost[12]) in col 103 pic z,zzz,zz9.99-
+		((ash-value[12] - ash-cost[12]) / ash-value[12]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	set total-ash-value[1] += ash-value[1]
+	set sub-tot-ash-value[1] += ash-value[1]
+	set total-ash-value[2] += ash-value[2]
+	set sub-tot-ash-value[2] += ash-value[2]
+	set total-ash-value[3] += ash-value[3]
+	set sub-tot-ash-value[3] += ash-value[3]
+	set total-ash-value[4] += ash-value[4]
+	set sub-tot-ash-value[4] += ash-value[4]
+	set total-ash-value[5] += ash-value[5]
+	set sub-tot-ash-value[5] += ash-value[5]
+	set total-ash-value[6] += ash-value[6]
+	set sub-tot-ash-value[6] += ash-value[6]
+	set total-ash-value[7] += ash-value[7]
+	set sub-tot-ash-value[7] += ash-value[7]
+	set total-ash-value[8] += ash-value[8]
+	set sub-tot-ash-value[8] += ash-value[8]
+	set total-ash-value[9] += ash-value[9]
+	set sub-tot-ash-value[9] += ash-value[9]
+	set total-ash-value[10] += ash-value[10]
+	set sub-tot-ash-value[10] += ash-value[10]
+	set total-ash-value[11] += ash-value[11]
+	set sub-tot-ash-value[11] += ash-value[11]
+	set total-ash-value[12] += ash-value[12]
+	set sub-tot-ash-value[12] += ash-value[12]
+
+	set total-ash-cost[1] += ash-cost[1]
+	set sub-tot-ash-cost[1] += ash-cost[1]
+	set total-ash-cost[2] += ash-cost[2]
+	set sub-tot-ash-cost[2] += ash-cost[2]
+	set total-ash-cost[3] += ash-cost[3]
+	set sub-tot-ash-cost[3] += ash-cost[3]
+	set total-ash-cost[4] += ash-cost[4]
+	set sub-tot-ash-cost[4] += ash-cost[4]
+	set total-ash-cost[5] += ash-cost[5]
+	set sub-tot-ash-cost[5] += ash-cost[5]
+	set total-ash-cost[6] += ash-cost[6]
+	set sub-tot-ash-cost[6] += ash-cost[6]
+	set total-ash-cost[7] += ash-cost[7]
+	set sub-tot-ash-cost[7] += ash-cost[7]
+	set total-ash-cost[8] += ash-cost[8]
+	set sub-tot-ash-cost[8] += ash-cost[8]
+	set total-ash-cost[9] += ash-cost[9]
+	set sub-tot-ash-cost[9] += ash-cost[9]
+	set total-ash-cost[10] += ash-cost[10]
+	set sub-tot-ash-cost[10] += ash-cost[10]
+	set total-ash-cost[11] += ash-cost[11]
+	set sub-tot-ash-cost[11] += ash-cost[11]
+	set total-ash-cost[12] += ash-cost[12]
+	set sub-tot-ash-cost[12] += ash-cost[12]
+
+	set total-ash-qty[1] += ash-qty[1]
+	set sub-tot-ash-qty[1] += ash-qty[1]
+	set total-ash-qty[2] += ash-qty[2]
+	set sub-tot-ash-qty[2] += ash-qty[2]
+	set total-ash-qty[3] += ash-qty[3]
+	set sub-tot-ash-qty[3] += ash-qty[3]
+	set total-ash-qty[4] += ash-qty[4]
+	set sub-tot-ash-qty[4] += ash-qty[4]
+	set total-ash-qty[5] += ash-qty[5]
+	set sub-tot-ash-qty[5] += ash-qty[5]
+	set total-ash-qty[6] += ash-qty[6]
+	set sub-tot-ash-qty[6] += ash-qty[6]
+	set total-ash-qty[7] += ash-qty[7]
+	set sub-tot-ash-qty[7] += ash-qty[7]
+	set total-ash-qty[8] += ash-qty[8]
+	set sub-tot-ash-qty[8] += ash-qty[8]
+	set total-ash-qty[9] += ash-qty[9]
+	set sub-tot-ash-qty[9] += ash-qty[9]
+	set total-ash-qty[10] += ash-qty[10]
+	set sub-tot-ash-qty[10] += ash-qty[10]
+	set total-ash-qty[11] += ash-qty[11]
+	set sub-tot-ash-qty[11] += ash-qty[11]
+	set total-ash-qty[12] += ash-qty[12]
+	set sub-tot-ash-qty[12] += ash-qty[12]
+
+	set new-stock-code = 0
+
+after stock-code
+	print
+		"------" in col 68
+		"-------------" in col 75
+		"-------------" in col 89
+		"-------------" in col 103
+		"-------------" in col 117
+	if ws-period = 1
+		print
+		sub-tot-ash-qty[1] in col 68 pic z,zz9-
+		sub-tot-ash-cost[1] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[1] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[1] - sub-tot-ash-cost[1]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[1] - sub-tot-ash-cost[1]) / sub-tot-ash-value[1]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 2
+		print
+		sub-tot-ash-qty[2] in col 68 pic z,zz9-
+		sub-tot-ash-cost[2] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[2] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[2] - sub-tot-ash-cost[2]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[2] - sub-tot-ash-cost[2]) / sub-tot-ash-value[2]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 3
+		print
+		sub-tot-ash-qty[3] in col 68 pic z,zz9-
+		sub-tot-ash-cost[3] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[3] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[3] - sub-tot-ash-cost[3]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[3] - sub-tot-ash-cost[3]) / sub-tot-ash-value[3]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 4
+		print
+		sub-tot-ash-qty[4] in col 68 pic z,zz9-
+		sub-tot-ash-cost[4] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[4] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[4] - sub-tot-ash-cost[4]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[4] - sub-tot-ash-cost[4]) / sub-tot-ash-value[4]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 5
+		print
+		sub-tot-ash-qty[5] in col 68 pic z,zz9-
+		sub-tot-ash-cost[5] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[5] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[5] - sub-tot-ash-cost[5]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[5] - sub-tot-ash-cost[5]) / sub-tot-ash-value[5]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 6
+		print
+		sub-tot-ash-qty[6] in col 68 pic z,zz9-
+		sub-tot-ash-cost[6] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[6] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[6] - sub-tot-ash-cost[6]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[6] - sub-tot-ash-cost[6]) / sub-tot-ash-value[6]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 7
+		print
+		sub-tot-ash-qty[7] in col 68 pic z,zz9-
+		sub-tot-ash-cost[7] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[7] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[7] - sub-tot-ash-cost[7]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[7] - sub-tot-ash-cost[7]) / sub-tot-ash-value[7]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 8 
+		print
+		sub-tot-ash-qty[8] in col 68 pic z,zz9-
+		sub-tot-ash-cost[8] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[8] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[8] - sub-tot-ash-cost[8]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[8] - sub-tot-ash-cost[8]) / sub-tot-ash-value[8]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 9
+		print
+		sub-tot-ash-qty[9] in col 68 pic z,zz9-
+		sub-tot-ash-cost[9] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[9] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[9] - sub-tot-ash-cost[9]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[9] - sub-tot-ash-cost[9]) / sub-tot-ash-value[9]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 10
+		print
+		sub-tot-ash-qty[10] in col 68 pic z,zz9-
+		sub-tot-ash-cost[10] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[10] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[10] - sub-tot-ash-cost[10]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[10] - sub-tot-ash-cost[10]) / sub-tot-ash-value[10]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 11
+		print
+		sub-tot-ash-qty[11] in col 68 pic z,zz9-
+		sub-tot-ash-cost[11] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[11] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[11] - sub-tot-ash-cost[11]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[11] - sub-tot-ash-cost[11]) / sub-tot-ash-value[11]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 12
+		print
+		sub-tot-ash-qty[12] in col 68 pic z,zz9-
+		sub-tot-ash-cost[12] in col 75 pic z,zzz,zz9.99-
+		sub-tot-ash-value[12] in col 89 pic z,zzz,zz9.99-
+		(sub-tot-ash-value[12] - sub-tot-ash-cost[12]) in col 103 pic z,zzz,zz9.99-
+		((sub-tot-ash-value[12] - sub-tot-ash-cost[12]) / sub-tot-ash-value[12]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+
+
+	skip
+report footer
+	print
+		"------" in col 68
+		"-------------" in col 75
+		"-------------" in col 89
+		"-------------" in col 103
+		"-------------" in col 117
+	if ws-period = 1
+		print
+		total-ash-qty[1] in col 68 pic z,zz9-
+		total-ash-cost[1] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[1] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[1] - total-ash-cost[1]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[1] - total-ash-cost[1]) / total-ash-value[1]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 2
+		print
+		total-ash-qty[2] in col 68 pic z,zz9-
+		total-ash-cost[2] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[2] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[2] - total-ash-cost[2]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[2] - total-ash-cost[2]) / total-ash-value[2]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 3
+		print
+		total-ash-qty[3] in col 68 pic z,zz9-
+		total-ash-cost[3] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[3] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[3] - total-ash-cost[3]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[3] - total-ash-cost[3]) / total-ash-value[3]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 4
+		print
+		total-ash-qty[4] in col 68 pic z,zz9-
+		total-ash-cost[4] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[4] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[4] - total-ash-cost[4]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[4] - total-ash-cost[4]) / total-ash-value[4]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 5
+		print
+		total-ash-qty[5] in col 68 pic z,zz9-
+		total-ash-cost[5] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[5] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[5] - total-ash-cost[5]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[5] - total-ash-cost[5]) / total-ash-value[5]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 6
+		print
+		total-ash-qty[6] in col 68 pic z,zz9-
+		total-ash-cost[6] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[6] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[6] - total-ash-cost[6]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[6] - total-ash-cost[6]) / total-ash-value[6]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 7
+		print
+		total-ash-qty[7] in col 68 pic z,zz9-
+		total-ash-cost[7] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[7] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[7] - total-ash-cost[7]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[7] - total-ash-cost[7]) / total-ash-value[7]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 8
+		print
+		total-ash-qty[8] in col 68 pic z,zz9-
+		total-ash-cost[8] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[8] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[8] - total-ash-cost[8]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[8] - total-ash-cost[8]) / total-ash-value[8]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 9
+		print
+		total-ash-qty[9] in col 68 pic z,zz9-
+		total-ash-cost[9] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[9] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[9] - total-ash-cost[9]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[9] - total-ash-cost[9]) / total-ash-value[9]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 10
+		print
+		total-ash-qty[10] in col 68 pic z,zz9-
+		total-ash-cost[10] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[10] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[10] - total-ash-cost[10]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[10] - total-ash-cost[10]) / total-ash-value[10]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 11
+		print
+		total-ash-qty[11] in col 68 pic z,zz9-
+		total-ash-cost[11] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[11] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[11] - total-ash-cost[11]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[11] - total-ash-cost[11]) / total-ash-value[11]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+	if ws-period = 12
+		print
+		total-ash-qty[12] in col 68 pic z,zz9-
+		total-ash-cost[12] in col 75 pic z,zzz,zz9.99-
+		total-ash-value[12] in col 89 pic z,zzz,zz9.99-
+		(total-ash-value[12] - total-ash-cost[12]) in col 103 pic z,zzz,zz9.99-
+		((total-ash-value[12] - total-ash-cost[12]) / total-ash-value[12]) * 100 in col 117 pic z,zzz,zz9.99-
+	endif
+
+

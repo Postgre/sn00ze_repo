@@ -1,0 +1,8 @@
+// del-store-mth.enq 
+// to remove a stores records for a month
+// required if the store data is incorrect when loaded
+//
+delete from stock-movements
+where
+	stk-trans-date = 1-may-94
+	and stk-trans-whse = '310'

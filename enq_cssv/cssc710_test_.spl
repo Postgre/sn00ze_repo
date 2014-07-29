@@ -1,0 +1,4130 @@
+// Capt'n Snooze Sales Cube extraction
+// Program : cssc1.54
+// usage prospl $CUS/cssc710 W 070513 130513
+//	17jun14	mb		{2}	710.3 export format is : '','text     Price Over'
+//			re-arrange to fit 660 export format of : 'Price Override:', 'text'
+//	12jun14	mb		{1}	upgrade to 710.3 - tests with date range / multisite
+//		 13may14 {710.3) rmd upgrade to 710.3
+//					retire file based ISAM tables
+//		 04apr14 {710} rmd upgraded for 710
+//					have dropped GLCM call as it needs to lookup trans rather than gl-master now
+//					and I don't think it is being passed on anyway
+//  25th Jul 2013 - Fixed by LG - add more Statuses to Ignore for Sales Orders - to be updated
+// 1.54: 26nov08 pickup gl-cm-movement for *1901 in each territory as "GLCM"
+//				 allow freeform args to trigger full extracts for ADDR, SOH
+//		 14jan09 return date range for GLCM records
+//				 merge 160 cash into 178 and convert 160 CD's to 178
+// 		 02mar09 so-edits to calculate cost for neg qty change correctly
+//		 11mar09 allow WN audit types
+//		 13mar09 if total so-order-total-amount across sibling orders = $0, ignore order set
+//				 if all non stock-code lines, ignore order
+//		 16mar09 treat "SC" charge line as normal stock line
+//		 03feb10 type 5 edits do not need cost to be multiplied by qty changed
+//		 14apr10 allow for negative line add/remove which have neg cost and neg qty
+//				 use abs(qty) to return correct polarity
+//		 29apr10 add "DISC" record for price/discount audit
+//		 10may10 add "SYCAS" record for show your card and save detail
+//		 14may10 calculate full old and new pricing for "DISC" records so Sas can look like a star
+//		 31may10 zero div error during insert-disc on VIC 290510 - 300510
+//		 03jun10 100% disc caused a new div/0 error
+//		 07jun10 new method to determine old P price change
+//				 add extended fields to edit, type 1 prc o/ride, 11 disc, 12 order disc
+//		 10sep10 determine which DISC lines to pickup using dedicated timestamp sol-user-only-date1
+//				 no longer export SYCAS
+//		 13sep10 test date component of new DISC datestamp
+//		 14sep10 if DISC sol-user-only-date1 is empty, update with so-processing-date
+//				 cube cannot handle decimals in line seq, integer(seq) as it's copied to ff
+//		 28sep10 add Timestamp, Member #, Stock Desc, StoreName, Club and State to DISC
+//		 13oct10 ensure new gift voucher trans don't appear in CASH
+// 1.53: 28oct08 test for env var MULTISITE=1, if not force CASH and CD to
+//			master territory (sys-consolidation-division)
+// 1.52: 08sep08 scan for rep change in so header, create "REPCHG" entry for each sol
+//		 add cdd-user-date to capture trans-date for cash detail (column 9)
+//		 30sep08 ignore trans if "branch" = ZCSM*, add br-acc-code to ouput
+//		 17oct08 newer ZCS* logic across the board
+// 1.51: 03sep08 revised deb-trans filter for cash collections
+// 1.50: test territory prior to writing record, if sys-tbl-type WH.sys-tbl-alpha-4[1] = "X" ignore
+// 1.49: "CD" record for Cash Detail (insert-cash-detail)
+// 1.48: new logic for post dated transactions,
+//			ensure so-order-type-code J (cost adj) don't affect qty
+// 08jul08 add email address to ADDR
+// 08jul08 remove CASH total based on trans-date, only returning date-stamp figure for now
+// 1.47: ignore edits if the sales order is a quotation
+// 1.46: ignore 'ZCSM' when building tps table 						//rmd20feb08
+// 1.45: added total quotations. record type QUOT					//mdd13jun07
+//		 added ff-stock flat file summary.							//mdd13jun07
+//		 added customer names and addresses. record type ADDR		//mdd13jun06
+// 1.44: ignore transfer orders ('05' '15' '25' '35' '38' '45' '48' '55' '64' '65' '75' '91')
+// 1.43: 1.42 was truncating output prior to so-edits
+// 1.42: so-edits return correct value, miscalculating qty, use whse-avg-cost for cost
+// 1.41: Add store name column (sys-control.company-name)
+// 40: Add ALL so#'s witihn date range to so collection to avoid edits to non standard orders being considered
+// (edited insert-cancellations) also add two columns to output; ff-prog-version (eg cssc40) and ff-open-archive-status
+// (O or A) to determine if the order was found in sales-order or sales-order-archive.
+// Add a 5th argument, if = I then ignore sol with whose stock-codes do not appear in stock-master.
+// 39: Weekly/Monthly mode - if Monthly, return SOH - new param order;
+// (W)eekly/(M)onthly, StartDate, EndDate, (S)upplied/(O)rdered
+// 38: Add SOH records, drop old cash (tps-sol-line-type = 'OC')
+// 37: Some stores (NSW and CSM and Canberra so far) are using dr-tr-date-stamp instead of trans-date
+// when processing cash received, run a second loop of deb-trans/archive using dr-tr-time-stamp
+// and bring the total back in a column (#7) appended to the current return - output file now 'cssc.csv'
+// 36: If an order is cancelled within the same week it's raised an unneccessary edit will be
+// considered. The so-collection does not contained cancelled orders so the edit process
+// will not find a match and insert the cancelled audit as if it's done against a sales order
+// from a previous week. Add a routine to insert s/o #'s of cancelled orders (insert-cancellations)
+// after tps and ranged trans but before process-edits
+// 35: Use so-collection to determine s/o existence if not here - include edit, inclusion of edit
+// will not insert a new s/o so subseqent ED records will be regarded as well
+// 34: If so# found in collection it must carry a line type of "SN" for edit to be ignored
+// 33: Switch edits to search only against so/bo (not so/bo/sol#) to determine if an edit should be included
+// 32: Remove old method of cash extract, run with local fields within each routine
+// set all ff fields to pic x(40) to allow insert of any data type into final flatfile - convert to str as required.
+// 31: Add CASH record: RecType, Store, DateStart, DateEnd, CustCount, Cash, (CASH, 310, 030406, 090506, 120, 45678.44)
+// 30: if repcode = NA, random rep descriptions should be blank, set both code and desc to spaces.
+// If record is an 'OC' (Old Cash) the so-order-date is blank, copy the trans-date into sales-order-date
+// 29: sometime deb-trans would point to an s/o that had no shipped amounts and therefore
+// prorata's were all 0's. Could see a b/o with shipped items but the deb-trans bo field is blank
+// so it does not join.
+// 28: if an order contains mixed returns and sales, prorata calc not holding a neg value
+// 27: If an orders so-order-total-shipped-amount = 0, the prorata calcs return 0, base them on
+// (so-order-total-amount - so-order-total-charges)
+// add ff-record-identifier = 'PROD'
+// 26: if an s/o is at a status of being purchased, the so-tot-amt = 0 and the prorata
+// calcs have nothing to compare to leaving the sol's at prorata=0 and ultimately
+// no pr-cash value. - could use so-order-total-amount instead of so-order-total-shipped-amount
+// 25: remove ambiguous debug deb tr values from build-ranged-trans sections in cssc24
+// returning only the cash value, disregarding total trans
+// 24: cssc23 trans without s/o have no territory - pick it up via deb-master.territory
+// 23: cssc22 cost values too low, rep desc missing attempt to bring orphaned cash amounts back agains so# 0
+
+
+#define 	NO_OF_SELECTION_PARAMETERS	"5"
+#define 	PROG_VERSION				"cssc1.54"
+// version-number "CUSTOM: csscl 45 20070613"
+
+
+
+field
+	ws-start-date				type date
+	ws-end-date					type date
+	ws-shipped-ordered			type alpha pic x
+	ws-period-mode				type alpha pic x
+	ws-ignore-non-stock			type alpha pic x
+	ws-company-name				like company-name
+	tmp-dir						pic x(50) type string
+	ws-multi-site				type boolean			//28oct08
+	ws-param-mode				type boolean
+	ws-get-soh                  type boolean
+	ws-get-addr                 type boolean
+	ws-get-quot                 type boolean
+	ws-get-glcm                 type boolean
+	ws-cssc-file				pic x(20)
+
+object indexed-sales-data
+	type is memory
+	record is
+		isd-rec-type		pic x(4)
+		isd-warehouse		like whse-code
+		isd-start-date		type date
+		isd-end-date		type date
+		isd-num-of-custs	pic s9(6)
+		isd-cash			like tr-amount
+		isd-cash-ds			like tr-amount
+	endrecord
+	key is isd-warehouse unique
+
+object cash-detail-data
+	type is memory
+	record is
+		cdd-rec-type		pic x(4)
+		cdd-warehouse		like whse-code
+		cdd-start-date		type date
+		cdd-end-date		type date
+		cdd-trans-date		like trans-date
+		cdd-user-date		like trans-date
+		cdd-trans-ref		like trans-ref
+		cdd-accountcode		like accountcode
+		cdd-cash-ds			like tr-amount
+		cdd-br-acc-code		like br-acc-code
+		cdd-tr-details		like tr-details
+	endrecord
+	key is cdd-warehouse cdd-trans-date cdd-accountcode
+
+
+object ff-isd
+	type is prn
+	file is 'ff-isd.prn'
+	record is
+		ff-rec-type		pic x(40)
+		ff-warehouse		pic x(40)
+		ff-start-date		pic x(40)
+		ff-end-date		pic x(40)
+		ff-num-of-custs		pic x(40)
+		ff-cash			pic x(40)
+		ff-cash-ds		pic x(40)
+	end-record
+
+object tmp-cust-file
+	type is memory //isam {710.3)
+	record
+		so-territory-code
+		so-order-no
+	endrecord
+	key is so-territory-code so-order-no
+
+object unique-stock-supplier
+	type is memory
+	record is
+		uss-stock-code				like stock-code
+		uss-cre-accountcode			like cre-accountcode
+		uss-cre-desc				like cr-shortname
+		uss-sup-count				like sup-priority
+		uss-sup-priority			type numeric
+	end-record
+	key is uss-stock-code uss-cre-accountcode unique
+
+object ff-uss
+	type is prn
+	file is 'ff-uss.prn'
+	record is
+		ff-uss-stock-code			like stock-code
+		ff-uss-cre-accountcode			like cre-accountcode
+	end-record
+
+object so-collection
+	type is memory
+	record is
+		soc-order-no				like so-order-no
+		soc-bo-suffix				like so-bo-suffix
+	end-record
+	key is soc-order-no soc-bo-suffix unique
+
+
+object tmp-prorata-sol
+	type is memory
+	record is
+		tps-so-territory-code			like so-territory-code
+		tps-accountcode				like accountcode
+		tps-so-order-no				like so-order-no
+		tps-so-bo-suffix			pic x(10)
+		tps-so-order-date			like so-order-date
+		tps-sol-line-seq			like sol-line-seq
+		tps-sol-line-type			like sol-line-type
+		tps-stock-code				like stock-code
+		tps-stk-description			like stk-description
+		tps-stk-unit-desc			like stk-unit-desc
+		tps-stock-group				like stock-group
+		tps-stk-sort-analysis-code		like stk-sort-analysis-code
+		tps-so-rep-code				like so-rep-code
+		tps-so-rep-desc				like rep-description
+		tps-cre-accountcode			like cre-accountcode
+		tps-cre-desc				like cr-shortname
+		tps-sup-priority			like sup-priority
+		tps-sup-count				type numeric
+		tps-sol-total-cost			like sol-item-cost
+		tps-sol-unit-shipped-value		like sol-shipped-amount
+		tps-sol-shipped-qty			like sol-shipped-qty
+		tps-so-order-total-shipped-amount	like so-order-total-shipped-amount
+		tps-sol-shipped-amount			like sol-shipped-amount
+		tps-unit-prorata			pic -9.99999
+		tps-ext-prorata				pic -9.99999
+		// the next two fields are used on the 2nd pass, after prorata for each sol has been determined
+		tps-trans-date				like trans-date
+		tps-unit-cash-amt			like tr-amount
+		tps-tr-amount				like tr-amount
+		tps-trans-tested			like stock-code
+		tps-edit-qty				like sol-ordered-qty
+		tps-edit-price				like sol-line-amount
+		tps-edit-cost				like sol-item-cost
+		tps-prog-version				pic x(10)
+		tps-open-archive-status			pic x
+		tps-company-name				like company-name
+
+	end-record
+	key is tps-so-order-no tps-so-bo-suffix tps-sol-line-seq
+	key is tps-so-order-no tps-so-bo-suffix tps-sol-line-type
+
+//object ff-tps
+//	type is prn
+//	file is 'ff-tps.prn'
+//	record is
+//		ff-record-identifier			pic x(4)
+//		ff-tps-so-territory-code		like so-territory-code
+//		ff-tps-accountcode			like accountcode
+//		ff-tps-so-order-no			like so-order-no
+//		ff-tps-so-bo-suffix			pic x(11) // like so-bo-suffix
+//		ff-tps-so-order-date			like so-order-date
+//		ff-tps-sol-line-seq			like sol-line-seq
+//		ff-tps-sol-line-type			like sol-line-type
+//		ff-tps-stock-code			like stock-code
+//		ff-tps-stk-description			like stk-description
+//		ff-tps-stk-unit-desc			like stk-unit-desc
+//		ff-tps-stock-group			like stock-group
+//		ff-tps-stk-sort-analysis-code		like stk-sort-analysis-code
+//		ff-tps-so-rep-code			like so-rep-code
+//		ff-tps-so-rep-desc			like rep-description
+//		ff-tps-cre-accountcode			like cre-accountcode
+//		ff-tps-cre-desc				like cr-shortname
+//		ff-tps-sup-priority			like sup-priority
+//		ff-tps-sup-count			type numeric
+//		ff-tps-sol-total-cost			like sol-item-cost
+//		ff-tps-sol-unit-shipped-value		like sol-shipped-amount
+//		ff-tps-sol-shipped-qty			like sol-shipped-qty
+//		ff-tps-so-order-total-shipped-amount	like so-order-total-shipped-amount
+//		ff-tps-sol-shipped-amount		like sol-shipped-amount
+//		ff-tps-unit-prorata			pic -9.99999
+//		ff-tps-ext-prorata			pic -9.99999
+//		ff-tps-trans-date			like trans-date
+//		ff-tps-unit-cash-amt			like tr-amount
+//		ff-tps-tr-amount			like tr-amount
+//		ff-tps-trans-tested			like stock-code
+//		ff-tps-edit-qty				like sol-ordered-qty
+//		ff-tps-edit-price			like sol-line-amount
+//		ff-tps-edit-cost			like sol-item-cost
+
+object ff-tps
+	type is prn
+	file is 'cssc.csv'
+	record is
+		ff-record-identifier			pic x(40)
+		ff-tps-so-territory-code		pic x(40)
+		ff-tps-accountcode			pic x(40)
+		ff-tps-so-order-no			pic x(40)
+		ff-tps-so-bo-suffix			pic x(40)
+		ff-tps-so-order-date			pic x(40)
+		ff-tps-sol-line-seq			pic x(40)
+		ff-tps-sol-line-type			pic x(40)
+		ff-tps-stock-code			pic x(40)
+		ff-tps-stk-description			pic x(40)
+		ff-tps-stk-unit-desc			pic x(40)
+		ff-tps-stock-group			pic x(40)
+		ff-tps-stk-sort-analysis-code		pic x(40)
+		ff-tps-so-rep-code			pic x(40)
+		ff-tps-so-rep-desc			pic x(40)
+		ff-tps-cre-accountcode			pic x(40)
+		ff-tps-cre-desc				pic x(40)
+		ff-tps-sup-priority			pic x(40)
+		ff-tps-sup-count			pic x(40)
+		ff-tps-sol-total-cost			pic x(40)
+		ff-tps-sol-unit-shipped-value		pic x(40)
+		ff-tps-sol-shipped-qty			pic x(40)
+		ff-tps-so-order-total-shipped-amount	pic x(40)
+		ff-tps-sol-shipped-amount		pic x(40)
+		ff-tps-unit-prorata			pic x(40)
+		ff-tps-ext-prorata			pic x(40)
+		ff-tps-trans-date			pic x(40)
+		ff-tps-unit-cash-amt			pic x(40)
+		ff-tps-tr-amount			pic x(40)
+		ff-tps-trans-tested			pic x(40)
+		ff-tps-edit-qty				pic x(40)
+		ff-tps-edit-price			pic x(40)
+		ff-tps-edit-cost			pic x(40)
+		ff-prog-version				pic x(40)
+		ff-open-archive-status		pic x(40)
+		ff-company-name				pic x(40)
+
+	end-record
+//header record
+//so-territory-code,so-order-no,so-bo-suffix,sol-line-seq,sol-line-type,stock-code,stk-description,stk-unit-desc,stock-group,stk-sort-analysis-code,so-rep-code,cre-accountcode,sol-unit-shipped-value,sol-shipped-qty,so-order-total-shipped-amount,sol-shipped-amount,unit-prorata,ext-prorata
+//16mar09
+//record-type,so-territory-code,accountcode,so-order-no,so-bo-suffix,order-date,sol-line-seq,sol-line-type,stock-code,stk-description,stk-unit-desc,stock-group,stk-sort-analysis-code,so-rep-code,rep-description,cre-accountcode,cre-description,sup-priority,sup-count,sol-total-cost,sol-unit-shipped-value,sol-shipped-qty,so-order-total-shipped-amount,sol-shipped-amount,unit-prorata,ext-prorata,trans-date,unit-cash-amt,tr-amount,trans-tested,edit-qty,edit-price,edit-cost,prog-version,open-archive-status,company-name
+//start-------------------------------------------------------------//mdd13jun07
+object ff-stock
+	type
+		prn
+	file
+		"214-stock.csv"
+	record
+		ffs-year						pic x(40)
+		ffs-store						pic x(40)
+		ffs-stock-code					pic x(40)
+		ffs-qty-sold					pic x(40)
+		ffs-cost-sold					pic x(40)
+		ffs-value-sold					pic x(40)
+		ffs-start-date					pic x(40)
+		ffs-end-date					pic x(40)
+		ffs-edits-value					pic x(40)
+	endrecord
+
+object tmp-stock-summary
+	type
+		memory
+	record
+		tmpss-store						like so-territory-code
+		tmpss-stock-code				like stock-code
+		tmpss-qty-sold					like sol-ordered-qty
+		tmpss-cost-sold					like sol-line-amount
+		tmpss-value-sold				like sol-line-amount
+		tmpss-edits-value				like sol-line-amount
+	endrecord
+	key
+		tmpss-store
+		tmpss-stock-code
+	unique
+
+object tmp-customer-details
+	type
+		memory
+	record
+		tmpcd-store						like so-territory-code
+		tmpcd-customer					like accountcode
+		tmpcd-name						like na-name
+		tmpcd-company					like na-company
+		tmpcd-street					like na-street
+		tmpcd-suburb					like na-suburb
+		tmpcd-country					like na-country
+		tmpcd-address-6					pic x(30)	//New in 660like na-address-6
+		tmpcd-address-7					pic x(30)	//New in 660like na-address-7
+		tmpcd-postcode					like postcode
+		tmpcd-phone						like na-phone
+		tmpcd-fax-no					like na-fax-no
+		tmpcd-email-address				like na-name	// 08jul08
+	endrecord
+	key
+		tmpcd-store
+		tmpcd-customer
+	unique
+//end---------------------------------------------------------------//mdd13jun07
+
+object whse-soh
+	type is memory //isam {710.3)
+	file is '$HOME/store_soh'
+	record is
+		soh-store-code				like so-territory-code
+		soh-whse-code				like whse-code // in most cases this will = store code
+		soh-date				type date
+		soh-stock-code				like stock-code
+		soh-stk-description			like stk-description
+		soh-stk-unit-desc			like stk-unit-desc
+		soh-stock-group				like stock-group
+		soh-whse-qty-on-hand			like whse-qty-on-hand
+		soh-whse-avg-cost			like whse-avg-cost
+		soh-stk-sort-analysis-code		like stk-sort-analysis-code
+	endrecord
+	key is soh-store-code soh-whse-code soh-stock-code
+
+
+//<{710.3
+/*
+object sycas-lines //rmd10may10
+	type isam
+	//file "/data/common/sycas-lines"
+	file "sycas-lines"
+	record
+		sl-consolidation-division       like sys-consolidation-division
+		sl-order-no                     like so-order-no
+		sl-bo-suffix                    like so-bo-suffix
+		sl-line-seq						like sol-line-seq
+		//following fields satisfy sycas record 055 design
+		sl-record-type					pic x(3) 		//055
+		sl-action						pic x			//(A)dd
+		sl-time-stamp					pic x(14)		//CCYYMMDDHHMMSS
+		sl-member-number				pic x(20)
+		sl-stock-code					like stock-code
+		sl-stk-description				pic x(50)
+		sl-qty                          pic x(10)		//IIIIIIIIDD
+		sl-gross-price                  pic x(10)		//IIIIIIIIDD
+		sl-discount-amount              pic x(10) 		//IIIIIIIDDS $100 = 10000$ 15% = 1500%
+		sl-source-location				pic x(50)
+		sl-sub-category                 pic x(50)
+		sl-category                     pic x(50)
+		sl-short-description            pic x(50)
+		sl-motor-club                   pic x(5) //    RAA, RACQ, RAC, RACT, AANT, RACV, NRMA
+		sl-status						pic x	//(R)eady, (S)ent, (H)old
+	endrecord
+	key is sl-consolidation-division sl-order-no sl-bo-suffix sl-line-seq
+	key is sl-time-stamp
+*/
+//>{710.3
+
+
+procedure main
+local field
+	i					type numeric
+	lf-file-suffix		pic x(10)
+	get system-control first
+	set tmp-dir = getenv("TMPDIR")
+	set ws-company-name = company-name
+	if tmp-dir = spaces
+		set tmp-dir = "/tmp"
+	endif
+
+	if get-env("MULTISITE") = "1"
+		set ws-multi-site = true
+		//message concat("MULTI:TRUE:" get-env("MULTISITE"))
+	else
+		//message concat("MULTI:FALSE:" get-env("MULTISITE"))
+		set ws-multi-site = false
+	endif
+
+// < {1}
+set ws-multi-site = true
+message "zaz: multisite = " ws-multi-site
+// > {1}
+	//prospl cssc W 010108 070108
+	//prospl cssc -p -a -s -g
+	if get-param(1) = "-p" //rmd26nov08
+		set ws-param-mode = TRUE
+	     //expect random arguments
+		for i = 2 to 10
+			switch on get-param(i)
+				case "-a"
+					set lf-file-suffix  = strconcat(lf-file-suffix "-a")
+					set ws-get-addr = TRUE
+				case "-g"
+					set lf-file-suffix  = strconcat(lf-file-suffix "-g")
+					set ws-get-glcm = TRUE
+				case "-q"
+					set lf-file-suffix  = strconcat(lf-file-suffix "-q")
+					set ws-get-quot = TRUE
+				case "-s"
+					set lf-file-suffix  = strconcat(lf-file-suffix "-s")
+					set ws-get-soh = TRUE
+			endswitch
+		endfor
+		set ws-cssc-file = strconcat("cssc-p" lf-file-suffix ".csv")
+	else
+		set ws-cssc-file = "cssc.csv"
+		if str-len(get-param(1)) > 0 //(W)eekly or (M)onthly
+			set ws-period-mode = uppercase(get-param(1))
+		else
+			set ws-period-mode = 'W'
+		endif
+
+		if str-len(get-param(2)) > 0
+			set ws-start-date = date2julian(get-param(2))
+		else
+			set ws-start-date = today() - 7
+		end-if
+
+		if str-len(get-param(3)) > 0
+			set ws-end-date = date2julian(get-param(3))
+		else
+			set ws-end-date = today() - 1
+		end-if
+// < {1}
+set ws-start-date	= date2julian("04-mar-2013")
+set ws-end-date	= date2julian("10-mar-2013")
+message "zaz: ws-period-mode = " ws-period-mode
+message concat("zaz: start / end date = " julian2date(ws-start-date) " / " julian2date(ws-end-date) )
+// > {1}
+
+		if str-len(get-param(4)) > 0
+			set ws-shipped-ordered = uppercase(get-param(4))
+		else
+			set ws-shipped-ordered = 'O'
+		end-if
+
+		if str-len(get-param(5)) > 0
+			set ws-ignore-non-stock = uppercase(get-param(5))
+		else
+			set ws-ignore-non-stock = 'I'
+		end-if
+	endif
+
+
+	if ws-param-mode
+		open ff-tps truncate permanent
+		file is ws-cssc-file
+
+		if ws-get-addr
+			// build full ADDR list
+			do create-customer-details
+			extract deb-master
+			detail
+				do update-customer-details
+				parameters
+					territory
+					accountcode
+			endextract
+			do insert-customer-details
+		endif
+		if ws-get-glcm
+			//do insert-gl-cm-movement	//{710}
+		endif
+		if ws-get-quot
+			do insert-quotations
+		endif
+		if ws-get-soh
+			do insert-soh
+		endif
+	else
+
+
+
+
+		open so-collection truncate temporary
+		do create-stock-summary											//mdd13jun07
+		do create-customer-details										//mdd13jun07
+
+		do build-uss
+		do build-tps
+		do build-tps-archive
+		do insert-rep-change											//rmd08sep08
+		do build-ranged-trans
+		//do build-ranged-trans-archive	//{710}
+		do insert-cancellations
+		do so-edits
+		open indexed-sales-data temporary
+			file is concat(tmp-dir,'/ff',str(pid()))
+		// do process-cash-received 									//rmd28oct08
+		if ws-multi-site                                                //rmd28oct08
+			do process-cash-received-multi                              //rmd28oct08
+		else                                                            //rmd28oct08
+			do process-cash-received-single                             //rmd28oct08
+		endif                                                           //rmd28oct08
+
+		do process-number-of-customers
+		if ws-period-mode = 'M'
+			do get-stock-warehouse-detail
+		endif
+		//12jan09
+
+		do merge-cash-records
+		//12jan09
+		do unload-to-flat-file
+		do insert-cash
+		do insert-cash-detail
+		if ws-period-mode = 'M'
+			do insert-soh
+		endif
+		do insert-customer-details										//mdd13jun07
+		do insert-quotations											//mdd13jun07
+		//do insert-gl-cm-movement										//rmd26nov08	//{710}
+		do disc-time-stamp-fix											//rmd14sep10
+		do insert-disc													//rmd29apr10
+		do create-flat-file-stock										//mdd13jun07
+		do insert-flat-file-stock										//mdd13jun07
+		//10sep10 do sycas														//rmd10may10
+		close indexed-sales-data and remove
+	endif
+endprocedure //main ----------------------------------------------------------
+
+//<{710.3
+/*
+procedure sycas //rmd10may10
+local field
+	lf-price			type numeric
+	lf-disc				type numeric
+	lf-qty-sign			pic x
+	lf-partner			pic x(10)
+	lf-counter			type numeric
+	//lf-sol-line-seq		like sol-line-seq
+	get sycas-lines first
+	on error
+		open sycas-lines create permanent
+	endon
+	set lf-partner = "EXTSNOOZE"
+	//message "build-dataset"
+	extract sales-order-line-notes //sales-order-line-archive
+		when soln-type = "PS" and fraction(soln-seq-no) = 0.1
+	detail
+		//message so-order-no so-bo-suffix sol-line-seq soln-seq-no
+		//set lf-sol-line-seq = sol-line-seq - 0.1
+		get sales-order-line-archive
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is so-order-no so-bo-suffix sol-line-seq
+		on error
+			//message "no sola"
+			continue
+		else
+			//message "found sola"
+			if sol-user-only-num2 = 140267
+				// already captured
+				continue
+			endif
+		endon
+		// sycas discount
+		set sol-user-only-num2 = 140267
+		set sl-stock-code = stock-code
+		set lf-price 	= sol-item-price
+		if sol-shipped-qty < 0
+			set lf-qty-sign = "-"
+		else
+			set lf-qty-sign = SPACES
+		endif
+		if sol-shipped-qty = 0 //avoid div by 0 error
+			set lf-disc 	= 0
+		else
+			set lf-disc 	= sol-shipped-discount-amt / sol-shipped-qty
+		endif
+		get stock-master
+		on error
+			set sl-stk-description 	= "ITEM NOT FOUND"
+		else
+			set sl-stk-description 	= substring(concat(strconcat(stk-description) " " strconcat(stk-desc-line-2)),1,50)
+		endon
+		get sales-order-archive
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error
+			continue
+		endon
+		get deb-master
+			on index accountcode
+			key is so-cust-code
+		on error
+			set sl-member-number 	= "MEMBER NOT FOUND"
+		else
+			set sl-member-number 	= dr-user-only-alpha20-2
+			set sl-motor-club 		= dr-user-only-alpha4-2
+		endon
+		get sycas-lines
+			on index sl-consolidation-division sl-order-no sl-bo-suffix sl-line-seq
+			key is sys-consolidation-division so-order-no so-bo-suffix sol-line-seq
+		on error
+			set sl-consolidation-division       = sys-consolidation-division
+			set sl-order-no                     = so-order-no
+			set sl-bo-suffix                    = so-bo-suffix
+			set sl-line-seq						= sol-line-seq
+			//following fields satisfy sycas record 055 design
+			set sl-record-type					= "055"
+			set sl-action						= "A"
+			set sl-time-stamp					= strconcat(format-picture(sol-date-stamp,"YYYYMMDD") format-picture(sol-time-stamp,"HHMMSS")) //pic x(14)		//CCYYMMDDHHMMS
+			set sl-qty                          = strconcat(lf-qty-sign str(sol-shipped-qty))
+			set sl-gross-price                  = left-justify(concat(substring(fstr(lf-price,8,2)1,8) substring(fstr(lf-price,8,2)10,11)))
+			set sl-discount-amount              = left-justify(concat(substring(fstr(lf-disc,7,2)1,7) substring(fstr(lf-disc,7,2)9,10)))
+			set sl-status						= "C"
+			insert sycas-lines
+		endon
+	endextract
+	//ff-record-identifier				pic x(40)
+	//ff-tps-so-territory-code			pic x(40)
+	//ff-tps-accountcode				pic x(40)
+	//ff-tps-so-order-no				pic x(40)
+	//ff-tps-so-bo-suffix				pic x(40)
+	//ff-tps-so-order-date				pic x(40)
+	//ff-tps-sol-line-seq				pic x(40)
+	//ff-tps-sol-line-type				pic x(40)
+	//ff-tps-stock-code					pic x(40)
+	//ff-tps-stk-description			pic x(40)
+	//ff-tps-stk-unit-desc				pic x(40)
+	//ff-tps-stock-group				pic x(40)
+	//ff-tps-stk-sort-analysis-code		pic x(40)
+	//ff-tps-so-rep-code				pic x(40)
+
+
+
+
+	//insert SYCAS header
+	//set ff-record = strconcat("HEADER," lf-partner ",FILE")
+	//insert flat-file
+	//set ff-record = strconcat("HEADER,PARTNER")
+	//insert flat-file
+	//set ff-record = strconcat("030,X," lf-partner)
+	//insert flat-file
+	//set ff-record = strconcat("FOOTER,PARTNER,1")
+	//insert flat-file
+	initialise ff-tps
+	set ff-record-identifier 		= "SYCAS"
+	set ff-tps-so-territory-code	= "HEADER"
+	set ff-tps-accountcode		    = lf-partner
+	set ff-tps-so-order-no		    = "FILE"
+	insert ff-tps
+	//
+	initialise ff-tps
+	set ff-record-identifier 		= "SYCAS"
+	set ff-tps-so-territory-code	= "HEADER"
+	set ff-tps-accountcode		    = "PARTNER"
+	insert ff-tps
+	//
+	initialise ff-tps
+	set ff-record-identifier 		= "SYCAS"
+	set ff-tps-so-territory-code	= "030"
+	set ff-tps-accountcode		    = "X"
+	set ff-tps-so-order-no		    = lf-partner
+	insert ff-tps
+	//
+	initialise ff-tps
+	set ff-record-identifier 		= "SYCAS"
+	set ff-tps-so-territory-code	= "FOOTER"
+	set ff-tps-accountcode		    = "PARTNER"
+	set ff-tps-so-order-no		    = "1"
+	insert ff-tps
+
+	set lf-counter = 0
+	//set ff-record = strconcat("HEADER,TXNREC")
+	//insert flat-file
+	initialise ff-tps
+	set ff-record-identifier 		= "SYCAS"
+	set ff-tps-so-territory-code	= "HEADER"
+	set ff-tps-accountcode		    = "TXNREC"
+	insert ff-tps
+	initialise ff-tps
+	extract sycas-lines
+		on index sl-time-stamp
+		when sl-time-stamp between "200801" and "201012"
+	detail
+		//set ff-record = strconcat(sl-record-type "," sl-action "," sl-time-stamp "," sl-member-number "," sl-stock-code """ "," """ sl-stk-description """ "," sl-qty "," sl-gross-price "," sl-discount-amount ",,,,," sl-motor-club ",,,,")
+		//set ff-record = strconcat(sl-record-type ',' sl-action ',' sl-time-stamp ',' sl-member-number ',"' sl-stock-code '","' sl-stk-description '"
+		//,' sl-qty ',' sl-gross-price ',' sl-discount-amount ',,,,,' sl-motor-club ',,,,')
+		set ff-record-identifier			    = "SYCAS"
+		set ff-tps-so-territory-code		    = sl-record-type
+		set ff-tps-accountcode			        = sl-action
+		set ff-tps-so-order-no			        = sl-time-stamp
+		set ff-tps-so-bo-suffix			        = sl-member-number
+		set ff-tps-so-order-date			    = sl-stock-code
+		set ff-tps-sol-line-seq			        = sl-stk-description
+		set ff-tps-sol-line-type			    = sl-qty
+		set ff-tps-stock-code				    = sl-gross-price
+		set ff-tps-stk-description		        = sl-discount-amount
+		set ff-tps-stk-unit-desc			    = SPACES
+		set ff-tps-stock-group			        = SPACES
+		set ff-tps-stk-sort-analysis-code	    = SPACES
+		set ff-tps-so-rep-code					= SPACES
+		set ff-tps-so-rep-desc                	= sl-motor-club
+		insert ff-tps // flat-file
+		set lf-counter += 1
+	endextract
+
+
+	//insert SYCAS footer
+	//set ff-record = strconcat("FOOTER,TXNREC," str(lf-counter))
+	//insert flat-file
+	//// footer
+	//set ff-record = strconcat("FOOTER," lf-partner ",FILE")
+	//insert flat-file
+	initialise ff-tps
+	set ff-record-identifier 		= "SYCAS"
+	set ff-tps-so-territory-code	= "FOOTER"
+	set ff-tps-accountcode		    = "TXNREC"
+	set ff-tps-so-order-no		    = str(lf-counter)
+	insert ff-tps
+	initialise ff-tps
+	set ff-record-identifier 		= "SYCAS"
+	set ff-tps-so-territory-code	= lf-partner
+	set ff-tps-accountcode		    = "FILE"
+	insert ff-tps
+endprocedure // sycas ---------------------------------------------------------
+*/
+//>{710.3
+
+
+procedure merge-cash-records
+local field
+	lf-num-of-custs		pic s9(6)
+	lf-cash				like tr-amount
+	lf-cash-ds			like tr-amount
+
+		//12jan09 merge certain territories
+		// Newcastle, merge 160 into 178
+		set lf-num-of-custs	 = 0
+		set lf-cash			 = 0
+		set lf-cash-ds		 = 0
+
+		get indexed-sales-data lock
+		on index isd-warehouse
+		key is "160"
+		on error
+		else
+			//isd-rec-type			pic x(4)
+			//isd-warehouse			like whse-code
+			//isd-start-date		type date
+			//isd-end-date			type date
+			set lf-num-of-custs	 	= isd-num-of-custs
+			set lf-cash			 	= isd-cash
+			set lf-cash-ds		 	= isd-cash-ds
+			//delete indexed-sales-data
+
+			get indexed-sales-data lock
+			on index isd-warehouse
+			key is "178"
+			on error
+			else
+				// add the 160 values to the 168 record
+				//set isd-num-of-custs	+= lf-num-of-custs
+				// Above line altered to make sure Customer transactions not incorrectly added to Kotara(178)
+				set isd-cash			+= lf-cash
+				set isd-cash-ds		 	+= lf-cash-ds
+				update indexed-sales-data
+
+				// remove the 160 record
+				get indexed-sales-data lock
+				on index isd-warehouse
+				key is "160"
+				delete indexed-sales-data
+
+				// convert 160 CD's to 178
+
+				extract cash-detail-data lock
+				on index cdd-warehouse cdd-trans-date cdd-accountcode
+				//key is "160" 01-JAN-1970 SPACES
+				//next same cdd-warehouse
+				detail
+					if cdd-warehouse = "160"
+						set cdd-warehouse = "178"
+						update cash-detail-data
+					endif
+				endextract
+			endon
+		endon
+		//12jan09
+
+
+endprocedure // merge-cash-records --------------------------------------------
+
+procedure insert-rep-change
+local field
+	lf-archived					type boolean
+
+	open tmp-prorata-sol
+
+	select * from sales-order-notes
+	where
+		so-user-code = "REPCHG"
+		and so-note-date between ws-start-date and ws-end-date
+	detail
+		get sales-order
+		on error
+			// must be an archived order - might be skipping soa's, need to check
+			get sales-order-archive
+			on error
+				// orphan, ignore.
+				set lf-archived = true
+				continue
+			else
+			endon
+		else endon
+
+		// still here? check the accountcode prefix, skip if required
+		if substring(so-cust-code,1,4) in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"}
+			continue
+		endif
+
+
+		get so-collection
+		on index soc-order-no soc-bo-suffix
+		key is so-order-no so-bo-suffix
+		on error // New Sales Order - add it to the collection
+			set soc-order-no = so-order-no
+			set soc-bo-suffix = so-bo-suffix
+			insert so-collection
+		else
+			// already being reported in this run, the most up to date rep will be in place - ignore.
+			continue
+		end-on
+
+		if lf-archived
+			// get the line detail
+			select *
+			from sales-order-line-archive
+			where so-order-no = :so-order-no
+				and so-bo-suffix = :so-bo-suffix
+				and sol-ordered-qty != 0
+			detail
+				set tps-so-order-no = so-order-no
+				set tps-so-bo-suffix = so-bo-suffix
+				set tps-so-territory-code = so-territory-code
+				set tps-so-order-date = so-order-date
+				set tps-accountcode = so-cust-code
+				set tps-so-rep-code = so-rep-code
+				//27: set tps-so-order-total-shipped-amount = so-order-total-shipped-amount / 1.1
+				set tps-so-order-total-shipped-amount = (so-order-total-amount - so-order-total-charges) / 1.1
+
+				set tps-sol-line-seq = sol-line-seq
+				set tps-sol-line-type = sol-line-type
+				set tps-stock-code = stock-code
+				if ws-shipped-ordered = 'O'
+					set tps-sol-shipped-qty = sol-ordered-qty
+					set tps-sol-shipped-amount = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+					set tps-sol-unit-shipped-value = (sol-line-amount / (1 + (sol-tax-rate / 100))) / sol-ordered-qty
+				else
+					set tps-sol-shipped-qty = sol-shipped-qty
+					set tps-sol-shipped-amount = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+					set tps-sol-unit-shipped-value = (sol-line-amount / (1 + (sol-tax-rate / 100))) / sol-shipped-qty
+				end-if
+
+				// 06jun08
+				if so-order-type-code = "J"
+					set tps-sol-shipped-qty 		= 0
+					set tps-sol-shipped-amount 		= 0
+					set tps-sol-unit-shipped-value 	= 0
+				endif
+
+				set tps-sol-total-cost = (sol-item-cost * sol-ordered-qty)
+
+				get unique-stock-supplier
+				on index uss-stock-code
+				key is tps-stock-code
+				on error
+					set tps-cre-accountcode = 'NA'
+				else
+					set tps-cre-accountcode = uss-cre-accountcode
+					set tps-cre-desc = uss-cre-desc
+					set tps-sup-count = uss-sup-count
+					set tps-sup-priority = uss-sup-priority
+				end-on
+
+				get rep-master
+				on index rep-code
+				key is so-rep-code
+				on error
+					set tps-so-rep-desc = 'NA'
+				else
+					set tps-so-rep-desc = rep-description
+				end-on
+
+
+				get stock-master
+				on index stock-code
+				key is tps-stock-code
+				on error
+					set tps-stk-description = 'NA'
+					set tps-stk-unit-desc = 'NA'
+					set tps-stock-group = 'NA'
+					set tps-stk-sort-analysis-code = 'NA'
+				else
+					if substring(stk-description,1,5) = 'AUDIT'
+						set tps-stk-description = 'NA'
+					else
+						set tps-stk-description = stk-description
+					endif
+					set tps-stk-unit-desc = stk-unit-desc
+					set tps-stock-group = stock-group
+					set tps-stk-sort-analysis-code = stk-sort-analysis-code
+				end-on
+
+
+//				message concat(tps-stock-code ":" tps-stk-sort-analysis-code)
+
+				if tps-so-order-total-shipped-amount != 0
+					set tps-unit-prorata = tps-sol-unit-shipped-value / tps-so-order-total-shipped-amount
+					set tps-ext-prorata = tps-sol-shipped-amount / tps-so-order-total-shipped-amount
+				else
+					set tps-unit-prorata = 0
+					set tps-ext-prorata = 0
+				end-if
+				set tps-prog-version = PROG_VERSION
+				set tps-company-name = ws-company-name
+				set tps-open-archive-status = "C"  // (C)hange
+				if ws-ignore-non-stock = 'I'
+					if tps-stk-description != 'NA'
+						insert tmp-prorata-sol
+					endif
+				else
+					insert tmp-prorata-sol
+				endif
+			//message
+			endselect
+		else
+			// get the line detail
+			select *
+			from sales-order-line
+			where so-order-no = :so-order-no
+				and so-bo-suffix = :so-bo-suffix
+				and sol-ordered-qty != 0
+			detail
+				set tps-so-order-no = so-order-no
+				set tps-so-bo-suffix = so-bo-suffix
+				set tps-so-territory-code = so-territory-code
+				set tps-so-order-date = so-order-date
+				set tps-accountcode = so-cust-code
+				set tps-so-rep-code = so-rep-code
+				//27: set tps-so-order-total-shipped-amount = so-order-total-shipped-amount / 1.1
+				set tps-so-order-total-shipped-amount = (so-order-total-amount - so-order-total-charges) / 1.1
+
+				set tps-sol-line-seq = sol-line-seq
+				set tps-sol-line-type = sol-line-type
+				set tps-stock-code = stock-code
+				if ws-shipped-ordered = 'O'
+					set tps-sol-shipped-qty = sol-ordered-qty
+					set tps-sol-shipped-amount = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+					set tps-sol-unit-shipped-value = (sol-line-amount / (1 + (sol-tax-rate / 100))) / sol-ordered-qty
+				else
+					set tps-sol-shipped-qty = sol-shipped-qty
+					set tps-sol-shipped-amount = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+					set tps-sol-unit-shipped-value = (sol-line-amount / (1 + (sol-tax-rate / 100))) / sol-shipped-qty
+				end-if
+
+				// 06jun08
+				if so-order-type-code = "J"
+					set tps-sol-shipped-qty 		= 0
+					set tps-sol-shipped-amount 		= 0
+					set tps-sol-unit-shipped-value 	= 0
+				endif
+
+				set tps-sol-total-cost = (sol-item-cost * sol-ordered-qty)
+
+				get unique-stock-supplier
+				on index uss-stock-code
+				key is tps-stock-code
+				on error
+					set tps-cre-accountcode = 'NA'
+				else
+					set tps-cre-accountcode = uss-cre-accountcode
+					set tps-cre-desc = uss-cre-desc
+					set tps-sup-count = uss-sup-count
+					set tps-sup-priority = uss-sup-priority
+				end-on
+
+				get rep-master
+				on index rep-code
+				key is so-rep-code
+				on error
+					set tps-so-rep-desc = 'NA'
+				else
+					set tps-so-rep-desc = rep-description
+				end-on
+
+
+				get stock-master
+				on index stock-code
+				key is tps-stock-code
+				on error
+					set tps-stk-description = 'NA'
+					set tps-stk-unit-desc = 'NA'
+					set tps-stock-group = 'NA'
+					set tps-stk-sort-analysis-code = 'NA'
+				else
+					if substring(stk-description,1,5) = 'AUDIT'
+						set tps-stk-description = 'NA'
+					else
+						set tps-stk-description = stk-description
+					endif
+					set tps-stk-unit-desc = stk-unit-desc
+					set tps-stock-group = stock-group
+					set tps-stk-sort-analysis-code = stk-sort-analysis-code
+				end-on
+
+//        		message concat(tps-stock-code ":" tps-stk-sort-analysis-code)
+
+				if tps-so-order-total-shipped-amount != 0
+					set tps-unit-prorata = tps-sol-unit-shipped-value / tps-so-order-total-shipped-amount
+					set tps-ext-prorata = tps-sol-shipped-amount / tps-so-order-total-shipped-amount
+				else
+					set tps-unit-prorata = 0
+					set tps-ext-prorata = 0
+				end-if
+				set tps-prog-version = PROG_VERSION
+				set tps-company-name = ws-company-name
+				set tps-open-archive-status = "C"  // (C)hange
+				if ws-ignore-non-stock = 'I'
+					if tps-stk-description != 'NA'
+						insert tmp-prorata-sol
+					endif
+				else
+					insert tmp-prorata-sol
+				endif
+			//message
+			endselect
+		endif
+	endselect
+endprocedure // insert-rep-change ---------------------------------------------
+
+
+procedure create-stock-summary										//mdd13jun07
+	open tmp-stock-summary
+		truncate
+		temporary
+endprocedure //create-stock-summary ------------------------------------------
+
+procedure create-customer-details									//mdd13jun07
+	open tmp-customer-details
+		truncate
+		temporary
+endprocedure //create-customer-details ---------------------------------------
+
+procedure build-uss
+	open unique-stock-supplier truncate temporary
+	select *
+	from stock-master
+	where
+		stock-code != 'Z'
+	detail
+		set uss-stock-code = stock-code
+		set uss-cre-accountcode = spaces //"NA"
+		set uss-sup-priority = 9
+		set uss-sup-count = 0
+		extract stock-supplier
+		on index stock-code cre-accountcode
+		key is uss-stock-code SPACES
+		next same stock-code
+		detail
+			set uss-sup-count += 1
+			if sup-priority < uss-sup-priority
+				set uss-sup-priority = sup-priority
+			end-if
+			if cre-accountcode != SPACES
+				set uss-cre-accountcode = cre-accountcode
+				get cre-master
+					on index cre-accountcode
+					key is uss-cre-accountcode
+					on error
+						set uss-cre-desc = spaces //'NA'
+					else
+						set uss-cre-desc = cr-shortname
+					end-on
+			end-if
+		end-extract
+		insert unique-stock-supplier
+	end-select
+end-procedure // build-uss ------------------------------------------------------
+
+procedure build-tps
+	open tmp-prorata-sol truncate temporary
+	select *
+	from sales-order
+	where
+		so-order-date between :ws-start-date and :ws-end-date
+		and so-order-type-code != 'Q'
+		// 1.44 ignoring transfer orders
+		// and so-order-status != '99'
+		//and so-order-status not in {'99' '02' '05' '14' '15' '25' '35' '38' '45' '48' '55' '64' '65' '75' '85' '91' '95' '96' '98'}
+		and so-order-type-code != "Q" // Any Quotation type
+		and so-order-status not in {"99" "25" "35" "45" "55" "65" "75" "85"}
+		//and substring(accountcode,1,4) != 'ZCSM' // 20feb08
+		and substring(so-cust-code,1,4) not in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"} // 17oct08
+
+	detail
+		get so-collection
+		on index soc-order-no soc-bo-suffix
+		key is so-order-no so-bo-suffix
+		on error // New Sales Order - add it to the collection
+			set soc-order-no = so-order-no
+			set soc-bo-suffix = so-bo-suffix
+			insert so-collection
+		end-on
+
+		select *
+		from sales-order-line
+		where so-order-no = :so-order-no
+			and so-bo-suffix = :so-bo-suffix
+			and sol-ordered-qty != 0
+		detail
+			set tps-so-order-no = so-order-no
+			set tps-so-bo-suffix = so-bo-suffix
+			set tps-so-territory-code = so-territory-code
+			set tps-so-order-date = so-order-date
+			set tps-accountcode = so-cust-code
+			set tps-so-rep-code = so-rep-code
+			//27: set tps-so-order-total-shipped-amount = so-order-total-shipped-amount / 1.1
+			set tps-so-order-total-shipped-amount = (so-order-total-amount - so-order-total-charges) / 1.1
+
+			set tps-sol-line-seq = sol-line-seq
+			set tps-sol-line-type = sol-line-type
+			set tps-stock-code = stock-code
+			if ws-shipped-ordered = 'O'
+				set tps-sol-shipped-qty = sol-ordered-qty
+				set tps-sol-shipped-amount = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set tps-sol-unit-shipped-value = (sol-line-amount / (1 + (sol-tax-rate / 100))) / sol-ordered-qty
+			else
+				set tps-sol-shipped-qty = sol-shipped-qty
+				set tps-sol-shipped-amount = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set tps-sol-unit-shipped-value = (sol-line-amount / (1 + (sol-tax-rate / 100))) / sol-shipped-qty
+			end-if
+
+			// 06jun08
+			if so-order-type-code = "J"
+				set tps-sol-shipped-qty 		= 0
+				set tps-sol-shipped-amount 		= 0
+				set tps-sol-unit-shipped-value 	= 0
+			endif
+
+			set tps-sol-total-cost = (sol-item-cost * sol-ordered-qty)
+
+			get unique-stock-supplier
+			on index uss-stock-code
+			key is tps-stock-code
+			on error
+				set tps-cre-accountcode = 'NA'
+			else
+				set tps-cre-accountcode = uss-cre-accountcode
+				set tps-cre-desc = uss-cre-desc
+				set tps-sup-count = uss-sup-count
+				set tps-sup-priority = uss-sup-priority
+			end-on
+
+			get rep-master
+			on index rep-code
+			key is so-rep-code
+			on error
+				set tps-so-rep-desc = 'NA'
+			else
+				set tps-so-rep-desc = rep-description
+			end-on
+
+			get stock-master
+			on index stock-code
+			key is tps-stock-code
+			on error
+				set tps-stk-description = 'NA'
+				set tps-stk-unit-desc = 'NA'
+				set tps-stock-group = 'NA'
+				set tps-stk-sort-analysis-code = 'NA'
+			else
+				if substring(stk-description,1,5) = 'AUDIT'
+					set tps-stk-description = 'NA'
+				else
+					set tps-stk-description = stk-description
+				endif
+				set tps-stk-unit-desc = stk-unit-desc
+				set tps-stock-group = stock-group
+				set tps-stk-sort-analysis-code = stk-sort-analysis-code
+			end-on
+
+
+			if tps-so-order-total-shipped-amount != 0
+				set tps-unit-prorata = tps-sol-unit-shipped-value / tps-so-order-total-shipped-amount
+				set tps-ext-prorata = tps-sol-shipped-amount / tps-so-order-total-shipped-amount
+			else
+				set tps-unit-prorata = 0
+				set tps-ext-prorata = 0
+			end-if
+			set tps-prog-version = PROG_VERSION
+			set tps-company-name = ws-company-name
+			set tps-open-archive-status = "O"
+			if ws-ignore-non-stock = 'I'
+				if tps-stk-description != 'NA'
+					insert tmp-prorata-sol
+				endif
+			else
+				insert tmp-prorata-sol
+			endif
+		end-select
+	end-select
+
+end-procedure //build-tps -------------------------------------------------
+
+procedure build-tps-archive
+	open tmp-prorata-sol
+	select *
+	from sales-order-archive
+	where
+		so-order-date between :ws-start-date and :ws-end-date
+		//and so-order-status != '99' //17oct08
+		//and so-order-status not in {'99' '02' '05' '14' '15' '25' '35' '38' '45' '48' '55' '64' '65' '75' '85' '91' '95' '96' '98'}
+		and so-order-type-code != "Q" // Any Quotation type
+                and so-order-status not in {"99" "25" "35" "45" "55" "65" "75" "85"}
+		//and substring(accountcode,1,4) != 'ZCSM' // 20feb08
+		and substring(so-cust-code,1,4) not in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"} // 17oct08
+	detail
+		get so-collection
+		on index soc-order-no soc-bo-suffix
+		key is so-order-no so-bo-suffix
+		on error // New Sales Order - add it to the collection
+			set soc-order-no = so-order-no
+			set soc-bo-suffix = so-bo-suffix
+			insert so-collection
+		end-on
+
+		select *
+		from sales-order-line-archive
+		where so-order-no = :so-order-no
+			and so-bo-suffix = :so-bo-suffix
+			and sol-ordered-qty != 0
+		detail
+			set tps-so-order-no = so-order-no
+			set tps-so-bo-suffix = so-bo-suffix
+			set tps-so-territory-code = so-territory-code
+			set tps-so-order-date = so-order-date
+			set tps-accountcode = so-cust-code
+			set tps-so-rep-code = so-rep-code
+			//27: set tps-so-order-total-shipped-amount = so-order-total-shipped-amount / 1.1
+			set tps-so-order-total-shipped-amount = (so-order-total-amount - so-order-total-charges) / 1.1
+
+			set tps-sol-line-seq = sol-line-seq
+			set tps-sol-line-type = sol-line-type
+			set tps-stock-code = stock-code
+			if ws-shipped-ordered = 'O'
+				set tps-sol-shipped-qty = sol-ordered-qty
+				set tps-sol-shipped-amount = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set tps-sol-unit-shipped-value = (sol-line-amount / (1 + (sol-tax-rate / 100))) / sol-ordered-qty
+			else
+				set tps-sol-shipped-qty = sol-shipped-qty
+				set tps-sol-shipped-amount = (sol-line-amount / (1 + (sol-tax-rate / 100)))
+				set tps-sol-unit-shipped-value = (sol-line-amount / (1 + (sol-tax-rate / 100))) / sol-shipped-qty
+			end-if
+
+			// 06jun08
+			if so-order-type-code = "J"
+				set tps-sol-shipped-qty 		= 0
+				set tps-sol-shipped-amount 		= 0
+				set tps-sol-unit-shipped-value 	= 0
+			endif
+
+			set tps-sol-total-cost = (sol-item-cost * sol-ordered-qty)
+
+			get unique-stock-supplier
+			on index uss-stock-code
+			key is tps-stock-code
+			on error
+				set tps-cre-accountcode = 'NA'
+			else
+				set tps-cre-accountcode = uss-cre-accountcode
+				set tps-cre-desc = uss-cre-desc
+				set tps-sup-count = uss-sup-count
+				set tps-sup-priority = uss-sup-priority
+			end-on
+
+			get rep-master
+			on index rep-code
+			key is so-rep-code
+			on error
+				set tps-so-rep-desc = 'NA'
+			else
+				set tps-so-rep-desc = rep-description
+			end-on
+
+
+			get stock-master
+			on index stock-code
+			key is tps-stock-code
+			on error
+				set tps-stk-description = 'NA'
+				set tps-stk-unit-desc = 'NA'
+				set tps-stock-group = 'NA'
+				set tps-stk-sort-analysis-code = 'NA'
+			else
+				if substring(stk-description,1,5) = 'AUDIT'
+					set tps-stk-description = 'NA'
+				else
+					set tps-stk-description = stk-description
+				endif
+				set tps-stk-unit-desc = stk-unit-desc
+				set tps-stock-group = stock-group
+				set tps-stk-sort-analysis-code = stk-sort-analysis-code
+			end-on
+
+
+			if tps-so-order-total-shipped-amount != 0
+				set tps-unit-prorata = tps-sol-unit-shipped-value / tps-so-order-total-shipped-amount
+				set tps-ext-prorata = tps-sol-shipped-amount / tps-so-order-total-shipped-amount
+			else
+				set tps-unit-prorata = 0
+				set tps-ext-prorata = 0
+			end-if
+			set tps-prog-version = PROG_VERSION
+			set tps-company-name = ws-company-name
+			set tps-open-archive-status = "A"
+			if ws-ignore-non-stock = 'I'
+				if tps-stk-description != 'NA'
+					insert tmp-prorata-sol
+				endif
+			else
+				insert tmp-prorata-sol
+			endif
+		end-select
+	end-select
+
+end-procedure //build-tps-archive -------------------------------------------------
+
+
+
+
+
+procedure build-ranged-trans
+	open tmp-prorata-sol
+	select *
+	from deb-trans
+	where trans-date between :ws-start-date and :ws-end-date
+	and (trans-type in {'CR', 'CP'}
+	and substring (tr-details 1 2) not in {'CC','AC','DC'}
+	or substring(tr-details,1,3) = "CCT") //CCTPOS - Credit transfer
+	and substring(accountcode,1,4) != 'ZCSM'
+	detail
+		get so-collection
+		on index soc-order-no soc-bo-suffix
+		key is dr-tr-order-no dr-tr-bo-suffix
+		on error // New Sales Order - add it to the tos collection as an Old Cash entry
+		initialise tmp-prorata-sol
+			get deb-master
+			key is accountcode
+			set tps-accountcode = accountcode
+			set tps-so-territory-code = territory
+			set tps-so-order-no = dr-tr-order-no
+			set tps-so-bo-suffix = dr-tr-bo-suffix
+			set tps-sol-line-seq = 0
+			set tps-trans-date = trans-date
+			// There will be no prorata value so remove '* tps-ext-prorata'
+			set tps-unit-cash-amt += -1 * tr-amount
+			// set tps-trans-tested = 'Yes'
+			// Want to check the parameter fed in - tested column not used in this incarnation, use it to display param 3
+			set tps-trans-tested = ws-shipped-ordered
+			set tps-sol-line-type = 'OC' //Old Cash indicator
+			insert tmp-prorata-sol
+		else
+
+			extract tmp-prorata-sol
+			on index tps-so-order-no tps-so-bo-suffix tps-sol-line-seq
+			key is dr-tr-order-no dr-tr-bo-suffix 0
+			next same tps-so-order-no tps-so-bo-suffix
+			detail
+				if trans-date > tps-trans-date
+					set tps-trans-date = trans-date
+				end-if
+				//29: if prorata is 0, take the whole amount
+				if tps-ext-prorata != 0
+					set tps-unit-cash-amt += -1 * tr-amount * tps-ext-prorata
+					set tps-trans-tested = 'PR'
+				else
+					set tps-unit-cash-amt += -1 * tr-amount
+					set tps-trans-tested = 'FF'
+				end-if
+				update tmp-prorata-sol
+			end-extract
+		end-on
+	end-select
+end-procedure // build-ranged-trans ---------------------------------------------
+
+/*//{710}
+procedure build-ranged-trans-archive
+	open tmp-prorata-sol
+	select *
+	from deb-trans-archive
+	where trans-date between :ws-start-date and :ws-end-date
+	and (trans-type in {'CR', 'CP'}
+	and substring (tr-details 1 2) not in {'CC','AC','DC'}
+	or substring(tr-details,1,3) = "CCT") //CCTPOS - Credit transfer
+	and substring(accountcode,1,4) != 'ZCSM'
+	detail
+		get so-collection
+		on index soc-order-no soc-bo-suffix
+		key is dr-tr-order-no dr-tr-bo-suffix
+		on error // New Sales Order - add it to the tos collection as an Old Cash entry
+		initialise tmp-prorata-sol
+			get deb-master
+			key is accountcode
+			set tps-accountcode = accountcode
+			set tps-so-territory-code = territory
+			set tps-so-order-no = dr-tr-order-no
+			set tps-so-bo-suffix = dr-tr-bo-suffix
+			set tps-sol-line-seq = 0
+			set tps-trans-date = trans-date
+			// There will be no prorata value so remove '* tps-ext-prorata'
+			set tps-unit-cash-amt += -1 * tr-amount
+			// set tps-trans-tested = 'Yes'
+			// Want to check the parameter fed in - tested column not used in this incarnation, use it to display param 3
+			set tps-trans-tested = ws-shipped-ordered
+			set tps-sol-line-type = 'OC' //Old Cash indicator
+			insert tmp-prorata-sol
+		else
+			extract tmp-prorata-sol
+			on index tps-so-order-no tps-so-bo-suffix tps-sol-line-seq
+			key is dr-tr-order-no dr-tr-bo-suffix 0
+			next same tps-so-order-no tps-so-bo-suffix
+			detail
+				if trans-date > tps-trans-date
+					set tps-trans-date = trans-date
+				end-if
+				//29: if prorata is 0, take the whole amount
+				if tps-ext-prorata != 0
+					set tps-unit-cash-amt += -1 * tr-amount * tps-ext-prorata
+					set tps-trans-tested = 'PR'
+				else
+					set tps-unit-cash-amt += -1 * tr-amount
+					set tps-trans-tested = 'FF'
+				end-if
+				update tmp-prorata-sol
+			end-extract
+		end-on
+	end-select
+end-procedure // build-ranged-trans ---------------------------------------------
+*/
+
+
+procedure so-edits
+// Pickup changes made this week to Sales Orders created prior to this week.
+// For every record in the audit file, check if audited sales order number/sol-seq
+// has a match in the so #'s we have already collected.
+// If found, check for an edit value and add to it, if no edit value
+// assume a 'normal' sales-order recorded this week whose values
+// will include the edit so exit the procedure.
+
+
+local field
+		lf-edit-qty		like sol-ordered-qty
+		lf-edit-price		like sol-line-amount
+		lf-edit-cost		like sol-item-cost
+		lf-discount-impact	type numeric
+		lf-value-extax		type numeric
+
+	select *
+	from sales-audit-file
+	where
+		order-log-date between :ws-start-date and :ws-end-date
+		and ordlog-type in ( 1 5 6 9 10 11 12 )
+		//11mar09
+		//and ordlog-line-type = 'SN'
+		and ordlog-line-type in {"SN" "WN"}
+
+		//11mar09
+	detail
+		////14sep10 ZRNDBENEFIT breaks cssc import
+		//if ordlog-old-info = "ZRNDBENEFIT"
+		//	continue
+		//endif
+		Set lf-edit-qty = 0
+		Set lf-edit-price = 0
+		Set lf-edit-cost = 0
+
+		// Need to extract sundry fields to pass to tmp-prorata-sol
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is so-order-no so-bo-suffix sol-line-seq
+		on error //If not in open Orders - try the archive
+			get sales-order-line-archive
+				on index so-order-no so-bo-suffix sol-line-seq
+				key is so-order-no so-bo-suffix sol-line-seq
+			on error // Should not happen!!
+			end-on
+		end-on
+
+		get sales-order
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error //If not in open Orders - try the archive
+			get sales-order-archive
+				on index so-order-no so-bo-suffix
+				key is so-order-no so-bo-suffix
+			on error // Should not happen!!
+			end-on
+		endon
+
+		// 26may08 if the affected order is a quote, do not record this edit
+		if so-order-status in { "02" "06" "14" "95" "96" "98"} and so-order-type-code = "Q"
+			continue
+		endif
+
+	get stock-warehouse-detail
+	on index stock-code whse-code
+	key is ordlog-old-info so-whse-code
+	on error
+		set whse-avg-cost = 0
+	else
+	endon
+
+
+		set tps-sol-total-cost = sol-item-cost
+		set tps-prog-version = str(ordlog-type)
+		switch on ordlog-type
+			case 1  // * item price change
+				if ordlog-new-info != " "
+					Set lf-edit-qty = 0
+					//Set lf-edit-price = (ordlog-new-value - ordlog-old-value) - ordlog-ordered-tax-chg-value
+					Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+					Set lf-edit-cost = 0
+				end-if
+			case 5  // * qty change
+				Set lf-edit-qty = ordlog-new-value - ordlog-old-value
+				Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+				//Set lf-edit-cost = tps-sol-total-cost * (ordlog-new-value - ordlog-old-value)
+
+				//start --------------------------------------rmd03feb10
+				//lf-edit-cost should = whse-avg-cost no multiplier
+				//Set lf-edit-cost = whse-avg-cost * (ordlog-new-value - ordlog-old-value)
+				set lf-edit-cost = whse-avg-cost
+				//end --------------------------------------- rmd03feb10
+
+				//02mar09 if value is neg, ensure cost is also neg
+				if lf-edit-price < 0
+					set lf-edit-cost = 0 - lf-edit-cost
+				endif
+				//02mar09
+
+			case 6  // * cancellation
+				Set lf-edit-qty = ordlog-new-value * -1
+				Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+				//Set lf-edit-cost = tps-sol-total-cost * -1
+				Set lf-edit-cost = whse-avg-cost * (ordlog-new-value * -1)
+
+			case 9  // * item removed
+				Set lf-edit-qty = ordlog-old-value * -1
+				Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+				//Set lf-edit-cost =  tps-sol-total-cost * (ordlog-old-value * -1)
+				//14apr10 ----------------------------- start
+				//Set lf-edit-cost =  whse-avg-cost * (ordlog-old-value * -1)
+				set lf-edit-cost =  whse-avg-cost * (abs(ordlog-old-value) * -1)
+				//14apr10 ------------------------------- end
+			case 10 // * item added
+				Set lf-edit-qty = ordlog-old-value
+				Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+				//Set lf-edit-cost = tps-sol-total-cost * ordlog-old-value
+				//14apr10 ----------------------------- start
+				//set lf-edit-cost = whse-avg-cost * ordlog-old-value
+				set lf-edit-cost = whse-avg-cost * abs(ordlog-old-value)
+				//14apr10 ------------------------------- end
+           	case 11 // * line discount change
+     	        set lf-edit-qty = 0
+           	    //		Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+                set lf-edit-cost = 0
+
+				if ordlog-new-info = SPACES // Discount button pressed impact = change in percentage against original price (sol-item-price = full price of one item)
+					set lf-discount-impact = ordlog-new-value - ordlog-old-value
+					set lf-value-extax			= (sol-item-price / (1 + (sol-tax-rate / 100))) * (lf-discount-impact / 100)
+				else // Discount overridden using correct
+					set lf-value-extax 			= sol-ordered-qty * ordlog-item-wholesale-price * (num(substring(ordlog-new-info,1,7)) - num(substring(ordlog-new-info,8,14))) / 100
+				endif
+
+			case 12 // * order discount change
+				Set lf-edit-qty = 0
+				//Set lf-edit-price = ordlog-ordered-change-value - (ordlog-ordered-change-value - (ordlog-ordered-change-value / 1.1))
+				Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+				Set lf-edit-cost = 0
+
+		end-switch
+
+
+
+
+  		get so-collection
+	  		on index soc-order-no soc-bo-suffix
+			key is so-order-no so-bo-suffix
+  		on error 	// No matching Sales Order recorded, capture the edit
+				// inserting a FULL tps record
+			initialise tmp-prorata-sol
+
+				set tps-so-order-no = so-order-no
+				set tps-so-bo-suffix = so-bo-suffix
+				set tps-so-territory-code = so-territory-code
+				//set tps-so-order-date = so-order-date // Check with LV for these options
+				set tps-so-order-date = order-log-date
+				set tps-accountcode = so-cust-code
+				set tps-so-rep-code = so-rep-code
+
+				// Check with LV/SAS for these options
+				set tps-sol-shipped-amount = lf-edit-price
+				set tps-sol-shipped-qty = lf-edit-qty
+				set tps-sol-total-cost = lf-edit-cost
+
+				set tps-sol-line-seq = sol-line-seq
+				set tps-sol-line-type = str(ordlog-type) //'ED' //Edit indicator
+				set tps-stock-code = ordlog-old-info
+
+
+			get unique-stock-supplier
+			on index uss-stock-code
+			key is tps-stock-code
+			on error
+				set tps-cre-accountcode = 'NA'
+			else
+				set tps-cre-accountcode = uss-cre-accountcode
+				set tps-cre-desc = uss-cre-desc
+				set tps-sup-count = uss-sup-count
+				set tps-sup-priority = uss-sup-priority
+			end-on
+
+
+			get stock-master
+			on index stock-code
+			key is tps-stock-code
+			on error
+				set tps-stk-description = 'NA'
+				set tps-stk-unit-desc = 'NA'
+				set tps-stock-group = 'NA'
+				set tps-stk-sort-analysis-code = 'NA'
+			else
+				set tps-stk-description = stk-description
+				set tps-stk-unit-desc = stk-unit-desc
+				set tps-stock-group = stock-group
+				set tps-stk-sort-analysis-code = stk-sort-analysis-code
+			end-on
+
+			get rep-master
+			on index rep-code
+			key is so-rep-code
+			on error
+				set tps-so-rep-desc = 'NA'
+			else
+				set tps-so-rep-desc = rep-description
+			end-on
+
+
+			set tps-edit-qty = lf-edit-qty
+			set tps-edit-price = lf-edit-price
+			set tps-edit-cost = lf-edit-cost
+			//07jun10 get price/discount reason
+			insert tmp-prorata-sol
+
+		else		// Match found, if it's a standard sales order, exit
+//				// if it's an edit, add to the values
+//			if tps-edit-qty + tps-edit-price + tps-edit-cost = 0 // This is a sales order, do nothing
+//
+//			else
+//				set tps-edit-qty += lf-edit-qty
+//				set tps-edit-price += lf-edit-price
+//				set tps-edit-cost += lf-edit-cost
+//				update tmp-prorata-sol
+//			end-if
+
+
+		end-on
+	end-select
+end-procedure //so-edits ------------------------------------------------------
+
+
+//<{2}
+#define STR_PRICE_OVER "Price Over"
+#define STR_660_PRICE_OVER "Price Override:"
+field ws-str-pos type numeric
+//-- STR_660_FORMAT(ff-tps-stock-code,ff-tps-stk-description)
+#define STR_660_FORMAT(ASTR,BSTR) \
+		set ws-str-pos = pattern(BSTR, STR_PRICE_OVER) \
+		if ws-str-pos \
+			if ASTR = spaces \
+				/* //-- 710 export format is : '','text     Price Over' */ \
+				/* //-- re-arrange to fit 660 export format of : 'Price Override:', 'text' */ \
+				set ASTR = STR_660_PRICE_OVER \
+				if ws-str-pos > 1 \
+					set BSTR = strconcat( sub-string(BSTR,1,(ws-str-pos - 1)) ) \
+				endif \
+			endif \
+		endif
+//#define STR_660_FORMAT(ASTR,BSTR)
+//>{2}
+
+procedure unload-to-flat-file
+	open ff-isd truncate permanent
+	select *
+	from indexed-sales-data
+	detail
+		set ff-rec-type = isd-rec-type
+		set ff-warehouse = isd-warehouse
+		set ff-start-date = julian2date(isd-start-date)
+		set ff-end-date = julian2date(isd-end-date)
+		set ff-num-of-custs = str(isd-num-of-custs)
+		set ff-cash = str(isd-cash)
+		set ff-cash-ds = str(isd-cash-ds)
+		insert ff-isd
+	endselect
+
+	open ff-uss truncate permanent
+	select *
+	from unique-stock-supplier
+	detail
+		set ff-uss-stock-code = uss-stock-code
+		set ff-uss-cre-accountcode = uss-cre-accountcode
+		insert ff-uss
+	end-select
+
+
+	open ff-tps truncate permanent
+	file is ws-cssc-file
+	select *
+	from tmp-prorata-sol
+	// where tps-trans-tested = 'Yes'
+	detail
+	if tps-sol-line-type != 'OC' //add back in if cash by prorata stock is required
+
+		// 08aug08 test if store should be dropped
+		get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "WH" tps-so-territory-code
+		on error
+		else
+			if sys-tbl-alpha-4[1] = "X"
+			continue
+			endif
+		endon
+
+		if tps-open-archive-status = "C"
+			// not an open or archved order, it's a result of a rep change
+			set ff-record-identifier = "REPCHG"
+		else
+			set ff-record-identifier = 'PROD'
+		endif
+		set ff-tps-so-territory-code = tps-so-territory-code
+		set ff-tps-accountcode = tps-accountcode
+		set ff-tps-so-order-no = str(tps-so-order-no)
+		set ff-tps-so-bo-suffix	= tps-so-bo-suffix
+		set ff-tps-so-order-date = julian2date(tps-so-order-date)
+		//set ff-tps-sol-line-seq	= str(tps-sol-line-seq) 	//14sep10
+		//set ff-tps-sol-line-seq	= fstr(tps-sol-line-seq,7,0)    //14sep10
+		set ff-tps-sol-line-seq	= str(integer(tps-sol-line-seq))    //14sep10
+		set ff-tps-sol-line-type = tps-sol-line-type
+		set ff-tps-stock-code =	tps-stock-code
+		set ff-tps-stk-description = tps-stk-description
+		STR_660_FORMAT(ff-tps-stock-code,ff-tps-stk-description) //{2}
+		set ff-tps-stk-unit-desc = tps-stk-unit-desc
+		set ff-tps-stock-group = tps-stock-group
+		set ff-tps-stk-sort-analysis-code = tps-stk-sort-analysis-code
+		set ff-tps-so-rep-code = tps-so-rep-code
+		set ff-tps-so-rep-desc = tps-so-rep-desc
+		set ff-tps-cre-accountcode = tps-cre-accountcode
+		set ff-tps-cre-desc = tps-cre-desc
+		set ff-tps-sup-priority = str(tps-sup-priority)
+		set ff-tps-sup-count = str(tps-sup-count)
+		set ff-tps-sol-total-cost = str(tps-sol-total-cost)
+		set ff-tps-sol-unit-shipped-value = str(tps-sol-unit-shipped-value)
+		set ff-tps-sol-shipped-qty = str(tps-sol-shipped-qty)
+		set ff-tps-so-order-total-shipped-amount = str(tps-so-order-total-shipped-amount)
+		set ff-tps-sol-shipped-amount = str(tps-sol-shipped-amount)
+		set ff-tps-unit-prorata = str(tps-unit-prorata)
+		set ff-tps-ext-prorata = str(tps-ext-prorata)
+		set ff-tps-trans-date = julian2date(tps-trans-date)
+		set ff-tps-unit-cash-amt = str(tps-unit-cash-amt)
+		set ff-tps-tr-amount = str(tps-tr-amount)
+		set ff-tps-trans-tested = tps-trans-tested
+		set ff-tps-edit-qty = str(tps-edit-qty)
+		set ff-tps-edit-price = str(tps-edit-price)
+		set ff-tps-edit-cost = str(tps-edit-cost)
+		set ff-prog-version = tps-prog-version
+		set ff-open-archive-status = tps-open-archive-status
+		set ff-company-name = tps-company-name
+		insert ff-tps
+		//start-----------------------------------------------------//mdd13jun07
+		do update-stock-summary
+			parameters
+				tps-so-territory-code
+				tps-stock-code
+				tps-sol-shipped-qty
+				tps-sol-total-cost
+				tps-sol-shipped-amount
+				tps-edit-qty * tps-edit-price
+		do update-customer-details
+			parameters
+				tps-so-territory-code
+				tps-accountcode
+		//end-------------------------------------------------------//mdd13jun07
+	endif
+	end-select
+end-procedure //unload-to-flat-file ---------------------------------------------
+
+//set ws-start-date = date2julian(get-param(1))
+
+/*
+procedure update-price-audit-reason
+		//07jun10 rmd if edit is disc or price override show disc code and reason
+		extract ff.
+			if rec = audit type 1 or 6
+				get sol with disc info
+				set ff-prog-version = disc-reason-code
+				set ff-open-archive-status = disc-reason-description
+
+endprocedure // update-price-audit-reason ---------------------------------------
+*/
+
+procedure process-cash-received-multi
+local field
+	lf-cash			like tr-amount
+	lf-cash-ds		like tr-amount //37
+	lf-territory	like territory //28oct08
+	open indexed-sales-data truncate
+	open cash-detail-data truncate temporary
+	extract deb-master
+		on index territory dr-sort-key accountcode
+		all
+		when territory != spaces
+	before territory
+
+		set lf-cash = 0
+		set lf-cash-ds = 0
+		set isd-warehouse = territory
+		set isd-start-date = ws-start-date
+		set isd-end-date = ws-end-date
+	detail
+		//37 - date stamp pass
+		extract deb-trans
+//<{1}
+			on index accountcode //trans-ref batch-ref dr-tr-trans-no
+			key is accountcode
+//>{1}
+/* //<{1}
+			//on index accountcode tr-sort-key
+			key is accountcode trans-ref batch-ref dr-tr-trans-no
+*/ //>{1}
+			next same accountcode
+			when dr-tr-date-stamp between ws-start-date and ws-end-date
+			and trans-type in {"CR" "CP"}
+		detail
+			//message substring(br-acc-code,1,4)
+			// 1.51 03sep08 new filter logic
+			//if substring(accountcode,1,4) = "ZCSM"
+			//	continue
+			//endif
+			//if substring(accountcode,1,3) = "ZCS"
+			//	if num(substring(accountcode,4,6)) > 0 // accountcode = ZCS001 to ZCS999 and should be ignored
+			//		continue
+			//	endif
+			//endif
+			// the above reworded
+			if substring(accountcode,1,4) in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"}
+				continue
+			endif
+
+			//if dr-cust-type = "P"
+			//	// this is a finance account, ignore this transaction
+			//	continue
+			//endif
+			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+				// this should be shown, don't want the CC test in the next section to drop it out.
+			//elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}		//13oct10
+			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}  //13oct10
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, so this is the initial transaction and needs to be ignored
+					// when the finance company pay us for this trans (less their cut) another CR will appear
+					// and accountcode = finance company which will be used instead
+					continue
+				endif
+			endif
+			// 30sep08
+			if substring(br-acc-code,1,4) = "ZCSM"
+				//message substring(br-acc-code,1,4)
+				continue
+			endif
+			set lf-cash-ds += -(tr-amount)
+
+
+
+			set cdd-rec-type		= "CD"
+			set cdd-warehouse		= territory
+			set cdd-start-date		= ws-start-date
+			set cdd-end-date		= ws-end-date
+			set cdd-trans-date		= dr-tr-date-stamp
+			set cdd-user-date		= trans-date
+			set cdd-trans-ref		= str(dr-tr-order-no)
+			set cdd-accountcode		= accountcode
+			set cdd-cash-ds			= -(tr-amount)
+			set cdd-br-acc-code		= br-acc-code
+			set cdd-tr-details		= tr-details
+			insert cash-detail-data
+		endextract
+		/*	//{710}
+		extract deb-trans-archive
+			on index accountcode trans-ref
+			key is accountcode spaces
+			next same accountcode
+			when dr-tr-date-stamp between ws-start-date and ws-end-date // start-trans-date and end-trans-date
+			and trans-type in {"CR" "CP"}
+		detail
+			// 1.51 03sep08 new filter logic
+			//message substring(br-acc-code,1,4)
+			//if substring(accountcode,1,4) = "ZCSM"
+			//	continue
+			//endif
+			//if substring(accountcode,1,3) = "ZCS"
+			//	if num(substring(accountcode,4,6)) > 0 // accountcode = ZCS001 to ZCS999 and should be ignored
+			//		continue
+			//	endif
+			//endif
+			// the above reworded
+			if substring(accountcode,1,4) in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"}
+				continue
+			endif
+
+			//if dr-cust-type = "P"
+			//	// this is a finance account, ignore this transaction
+			//	continue
+			//endif
+			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+				// this should be shown, don't want the CC test in the next seciont to drop it out.
+			//elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}   	//13oct10
+			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}	//13oct10
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, so this is the initial transaction and needs to be ignored
+					// when the finance company pay us for hthis trans (less their cut) another CR will appear
+					// and accountcode = finance company which will be used instead
+					continue
+				endif
+			endif
+			// 30sep08
+			if substring(br-acc-code,1,4) = "ZCSM"
+				//message substring(br-acc-code,1,4)
+				continue
+			endif
+			set lf-cash-ds += -(tr-amount)
+
+			set cdd-rec-type		= "CD"
+			set cdd-warehouse		= territory
+			set cdd-start-date		= ws-start-date
+			set cdd-end-date		= ws-end-date
+			set cdd-trans-date		= dr-tr-date-stamp
+			set cdd-user-date		= trans-date
+			set cdd-trans-ref		= str(dr-tr-order-no)
+			set cdd-accountcode		= accountcode
+			set cdd-cash-ds			= -(tr-amount)
+			set cdd-br-acc-code		= br-acc-code
+			set cdd-tr-details		= tr-details
+			insert cash-detail-data
+		endextract
+		*/
+
+	after territory
+		set isd-cash = lf-cash
+		set isd-cash-ds = lf-cash-ds
+		insert indexed-sales-data
+	endextract
+
+endprocedure //process-cash-received-multi ------------------------------------
+
+procedure process-cash-received-single //28oct08
+local field
+	lf-cash			like tr-amount
+	lf-cash-ds		like tr-amount //37
+	lf-territory	like territory //28oct08
+	set lf-territory		= sys-consolidation-division
+	set lf-cash = 0
+	set lf-cash-ds = 0
+	set isd-warehouse = lf-territory
+	set isd-start-date = ws-start-date
+	set isd-end-date = ws-end-date
+	open indexed-sales-data truncate
+	open cash-detail-data truncate temporary
+	extract deb-master
+		on index territory dr-sort-key accountcode
+		all
+		when territory != spaces
+	detail
+		//37 - date stamp pass
+		extract deb-trans
+//<{1}
+			on index accountcode //trans-ref batch-ref dr-tr-trans-no
+			key is accountcode
+//>{1}
+/* //<{1}
+			//on index accountcode tr-sort-key
+			on index accountcode trans-ref batch-ref dr-tr-trans-no
+			key is accountcode spaces
+*/ //>{1}
+//>{710.3
+			next same accountcode
+			when dr-tr-date-stamp between ws-start-date and ws-end-date
+			and trans-type in {"CR" "CP"}
+		detail
+			//message substring(br-acc-code,1,4)
+			// 1.51 03sep08 new filter logic
+			//if substring(accountcode,1,4) = "ZCSM"
+			//	continue
+			//endif
+			//if substring(accountcode,1,3) = "ZCS"
+			//	if num(substring(accountcode,4,6)) > 0 // accountcode = ZCS001 to ZCS999 and should be ignored
+			//		continue
+			//	endif
+			//endif
+			// the above reworded
+			if substring(accountcode,1,4) in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"}
+				continue
+			endif
+
+			//if dr-cust-type = "P"
+			//	// this is a finance account, ignore this transaction
+			//	continue
+			//endif
+			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+				// this should be shown, don't want the CC test in the next section to drop it out.
+			//elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}   	//13oct10
+			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}  //13oct10
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, so this is the initial transaction and needs to be ignored
+					// when the finance company pay us for this trans (less their cut) another CR will appear
+					// and accountcode = finance company which will be used instead
+					continue
+				endif
+			endif
+			// 30sep08
+			if substring(br-acc-code,1,4) = "ZCSM"
+				//message substring(br-acc-code,1,4)
+				continue
+			endif
+			set lf-cash-ds += -(tr-amount)
+			set cdd-rec-type		= "CD"
+			set cdd-warehouse		= lf-territory
+			set cdd-start-date		= ws-start-date
+			set cdd-end-date		= ws-end-date
+			set cdd-trans-date		= dr-tr-date-stamp
+			set cdd-user-date		= trans-date
+			set cdd-trans-ref		= str(dr-tr-order-no)
+			set cdd-accountcode		= accountcode
+			set cdd-cash-ds			= -(tr-amount)
+			set cdd-br-acc-code		= br-acc-code
+			set cdd-tr-details		= tr-details
+			insert cash-detail-data
+		endextract
+		/*	//{710}
+		extract deb-trans-archive
+			on index accountcode trans-ref
+			key is accountcode spaces
+			next same accountcode
+			when dr-tr-date-stamp between ws-start-date and ws-end-date // start-trans-date and end-trans-date
+			and trans-type in {"CR" "CP"}
+		detail
+			// 1.51 03sep08 new filter logic
+			//message substring(br-acc-code,1,4)
+			//if substring(accountcode,1,4) = "ZCSM"
+			//	continue
+			//endif
+			//if substring(accountcode,1,3) = "ZCS"
+			//	if num(substring(accountcode,4,6)) > 0 // accountcode = ZCS001 to ZCS999 and should be ignored
+			//		continue
+			//	endif
+			//endif
+			// the above reworded
+			if substring(accountcode,1,4) in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"}
+				continue
+			endif
+
+			//if dr-cust-type = "P"
+			//	// this is a finance account, ignore this transaction
+			//	continue
+			//endif
+			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+				// this should be shown, don't want the CC test in the next seciont to drop it out.
+			//elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}   	//13oct10
+			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}  //13oct10
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, so this is the initial transaction and needs to be ignored
+					// when the finance company pay us for hthis trans (less their cut) another CR will appear
+					// and accountcode = finance company which will be used instead
+					continue
+				endif
+			endif
+			// 30sep08
+			if substring(br-acc-code,1,4) = "ZCSM"
+				//message substring(br-acc-code,1,4)
+				continue
+			endif
+			set lf-cash-ds += -(tr-amount)
+
+			set cdd-rec-type		= "CD"
+			set cdd-warehouse		= lf-territory
+			set cdd-start-date		= ws-start-date
+			set cdd-end-date		= ws-end-date
+			set cdd-trans-date		= dr-tr-date-stamp
+			set cdd-user-date		= trans-date
+			set cdd-trans-ref		= str(dr-tr-order-no)
+			set cdd-accountcode		= accountcode
+			set cdd-cash-ds			= -(tr-amount)
+			set cdd-br-acc-code		= br-acc-code
+			set cdd-tr-details		= tr-details
+			insert cash-detail-data
+		endextract
+		*/	//{710}
+	endextract
+	set isd-cash = lf-cash
+	set isd-cash-ds = lf-cash-ds
+	insert indexed-sales-data
+endprocedure // process-cash-received-single ----------------------------------
+
+//procedure process-cash-received-old
+//local field
+//	lf-cash			like tr-amount
+//	lf-cash-ds		like tr-amount //37
+//
+//
+//	open indexed-sales-data truncate
+//	open cash-detail-data truncate temporary
+//	extract deb-master
+//		on index territory dr-sort-key accountcode
+//		all
+//		when territory != spaces
+//	before territory
+//		set lf-cash = 0
+//		set lf-cash-ds = 0
+//		set isd-warehouse = territory
+//		set isd-start-date = ws-start-date
+//		set isd-end-date = ws-end-date
+//	detail
+//		extract deb-trans
+//			on index accountcode tr-sort-key
+//			key is accountcode spaces
+//			next same accountcode
+//			when trans-date between ws-start-date and ws-end-date
+//			and trans-type in {"CR" "CP"}
+//			// 03jun08 - new method of handling post dated transactions
+//			////Exclude Post dated - Other Credit Card, Diners, Amex
+//			//and substring(tr-details,1,2) not in {"CC","DC","AC"}
+//			//or substring(tr-details,1,3) = "CCT") //CCTPOS - Credit transfer
+//			//and substring(accountcode,1,4) != 'ZCSM'
+//		detail
+//			// 03jun08 - new method of determining if trans is postdated and if it is the cust or fincomp
+//			// Exclude Post dated - Other Credit Card, Diners, Amex
+//			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+//				// this should be shown
+//			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}
+//				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+//				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+//				get deb-master
+//				if dr-cust-type != "P"
+//					// this is a normal customer account, ignore this transaction
+//					continue
+//				endif
+//				// 30sep08
+//				//message substring(br-acc-code,1,4)
+//				if substring(br-acc-code,1,4) = "ZCSM"
+//					continue
+//				endif
+//			endif
+//			set lf-cash += -(tr-amount)
+//		endextract
+//
+//
+//
+//		extract deb-trans-archive
+//			on index accountcode trans-ref
+//			key is accountcode spaces
+//			next same accountcode
+//			when trans-date between ws-start-date and ws-end-date // start-trans-date and end-trans-date
+//			and trans-type in {"CR" "CP"}
+//			// 03jun08 - new method of handling post dated transactions
+//			////Exclude Post dated - Other Credit Card, Diners, Amex
+//			//and substring(tr-details,1,2) not in {"CC","DC","AC"}
+//			//or substring(tr-details,1,3) = "CCT") //CCTPOS - Credit transfer
+//			//and substring(accountcode,1,4) != 'ZCSM'
+//		detail
+//			// 03jun08 - new method of determining if trans is postdated and if it is the cust or fincomp
+//			// Exclude Post dated - Other Credit Card, Diners, Amex
+//			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+//				// this should be shown
+//			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}
+//				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+//				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+//				get deb-master
+//				if dr-cust-type != "P"
+//					// this is a normal customer account, ignore this transaction
+//					continue
+//				endif
+//				// 30sep08
+//				//message substring(br-acc-code,1,4)
+//				if substring(br-acc-code,1,4) = "ZCSM"
+//					continue
+//				endif
+//			endif
+//			set lf-cash += -(tr-amount)
+//		endextract
+//
+//		//37 - date stamp pass
+//		extract deb-trans
+//			on index accountcode tr-sort-key
+//			key is accountcode spaces
+//			next same accountcode
+//			when dr-tr-date-stamp between ws-start-date and ws-end-date
+//			and trans-type in {"CR" "CP"}
+//			// 03jun08 - new method of handling post dated transactions
+//			////Exclude Post dated - Other Credit Card, Diners, Amex
+//			//and substring(tr-details,1,2) not in {"CC","DC","AC"}
+//			//or substring(tr-details,1,3) = "CCT") //CCTPOS - Credit transfer
+//			//and substring(accountcode,1,4) != 'ZCSM'
+//		detail
+//			// 03jun08 - new method of determining if trans is postdated and if it is the cust or fincomp
+//			// Exclude Post dated - Other Credit Card, Diners, Amex
+//			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+//				// this should be shown
+//			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}
+//				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+//				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+//				get deb-master
+//				if dr-cust-type != "P"
+//					// this is a normal customer account, ignore this transaction
+//					continue
+//				endif
+//				// 30sep08
+//				//message substring(br-acc-code,1,4)
+//				if substring(br-acc-code,1,4) = "ZCSM"
+//					continue
+//				endif
+//			endif
+//			set lf-cash-ds += -(tr-amount)
+//
+//
+//
+//			set cdd-rec-type		= "CD"
+//			set cdd-warehouse		= territory
+//			set cdd-start-date		= ws-start-date
+//			set cdd-end-date		= ws-end-date
+//			set cdd-trans-date		= dr-tr-date-stamp
+//			set cdd-trans-ref		= str(dr-tr-order-no)
+//			set cdd-accountcode		= accountcode
+//			set cdd-cash-ds			= -(tr-amount)
+//			set cdd-br-acc-code		= br-acc-code
+//			set cdd-tr-details		= tr-details
+//			insert cash-detail-data
+//		endextract
+//
+//		extract deb-trans-archive
+//					on index accountcode trans-ref
+//			key is accountcode spaces
+//			next same accountcode
+//			when dr-tr-date-stamp between ws-start-date and ws-end-date // start-trans-date and end-trans-date
+//			and trans-type in {"CR" "CP"}
+//			// 03jun08 - new method of handling post dated transactions
+//			////Exclude Post dated - Other Credit Card, Diners, Amex
+//			//and substring(tr-details,1,2) not in {"CC","DC","AC"}
+//			//or substring(tr-details,1,3) = "CCT") //CCTPOS - Credit transfer
+//			//and substring(accountcode,1,4) != 'ZCSM'
+//		detail
+//			//message substring(br-acc-code,1,4)
+//			// 03jun08 - new method of determining if trans is postdated and if it is the cust or fincomp
+//			// Exclude Post dated - Other Credit Card, Diners, Amex
+//			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+//				// this should be shown
+//			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}
+//				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+//				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+//				get deb-master
+//				if dr-cust-type != "P"
+//					// this is a normal customer account, ignore this transaction
+//					continue
+//				endif
+//				// 30sep08
+//				if substring(br-acc-code,1,4) = "ZCSM"
+//					continue
+//				endif
+//			endif
+//			set lf-cash-ds += -(tr-amount)
+//
+//			set cdd-rec-type		= "CD"
+//			set cdd-warehouse		= territory
+//			set cdd-start-date		= ws-start-date
+//			set cdd-end-date		= ws-end-date
+//			set cdd-trans-date		= dr-tr-date-stamp
+//			set cdd-trans-ref		= str(dr-tr-order-no)
+//			set cdd-accountcode		= accountcode
+//			set cdd-cash-ds			= -(tr-amount)
+//			set cdd-br-acc-code		= br-acc-code
+//			set cdd-tr-details		= tr-details
+//			insert cash-detail-data
+//		endextract
+//
+//
+//	after territory
+//		set isd-cash = lf-cash
+//		set isd-cash-ds = lf-cash-ds
+//		insert indexed-sales-data
+//	endextract
+//endprocedure // process-cash-received-old -------------------------------------
+
+
+procedure process-number-of-customers
+field
+	lf-num-of-custs				type numeric
+	lf-warehouse				like so-territory-code
+	lf-order-total				like so-order-total-amount
+	lf-valid-stock-exists		type boolean
+
+	open indexed-sales-data
+	open tmp-cust-file temporary
+		file is concat(tmp-dir,'/so',str(pid()))
+	extract sales-order
+		on index so-order-no so-bo-suffix
+		// LG 25jun13
+		//on index so-order-no
+		key is 0 spaces
+		//when so-order-status <> "99"
+		//when so-order-status in {'70' '80' '90' '82' '83' '73'}
+                //when so-order-status not in {'99' '02' '05' '14' '15' '25' '35' '38' '45' '48' '55' '64' '65' '75' '85' '91' '95' '96' '98'}
+		when so-order-type-code != "Q" // Any Quotation type
+                and so-order-status not in {"99" "25" "35" "45" "55" "65" "75" "85"}
+		and so-order-date between ws-start-date and ws-end-date
+		and substring(so-cust-code,1,4) != 'ZCSM'
+		//13mar09
+		//and so-order-total-amount != 0
+	detail
+		set lf-valid-stock-exists = FALSE
+		extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		// LG 25jun13
+		//next same so-order-no
+		detail
+			//16mar09 treat charge as normal stock line
+			if sol-line-type = "SC"
+				set lf-valid-stock-exists = TRUE
+			else
+				get stock-master
+				on index stock-code
+				on error
+				else
+					set lf-valid-stock-exists = TRUE
+				endon
+			endif
+		endextract
+
+		if lf-valid-stock-exists
+			//if so-territory-code = "160"
+			//	message so-order-no
+			//endif
+			get tmp-cust-file
+			on error
+				insert tmp-cust-file
+			endon
+		endif
+	endextract
+
+	extract sales-order-archive
+		on index so-order-no so-bo-suffix
+                // LG 25jun13
+		//on index so-order-no
+		key is 0 spaces
+		//when so-order-status <> "99"
+                //when so-order-status in {'70' '80' '90' '82' '83' '73'}
+                //when so-order-status not in {'99' '02' '05' '14' '15' '25' '35' '38' '45' '48' '55' '64' '65' '75' '85' '91' '95' '96' '98'}
+                when so-order-type-code != "Q" // Any Quotation type
+                and so-order-status not in {"99" "25" "35" "45" "55" "65" "75" "85"}
+		and so-order-date between ws-start-date and ws-end-date
+		and substring(so-cust-code,1,4) != 'ZCSM'
+		//13mar09
+		//and so-order-total-amount != 0
+	detail
+		set lf-valid-stock-exists = FALSE
+		extract sales-order-line-archive
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		// LG 25jun13
+		//next same so-order-no
+		detail
+			//16mar09 treat charge as normal stock line
+			if sol-line-type = "SC"
+				set lf-valid-stock-exists = TRUE
+			else
+				get stock-master
+				on index stock-code
+				on error
+				else
+					set lf-valid-stock-exists = TRUE
+				endon
+			endif
+		endextract
+
+		if lf-valid-stock-exists
+			//if so-territory-code = "160"
+			//	message so-order-no
+			//endif
+			get tmp-cust-file
+			on error
+				insert tmp-cust-file
+			endon
+		endif
+	endextract
+
+
+	if ws-multi-site
+		extract tmp-cust-file all
+
+		before so-territory-code
+			set lf-num-of-custs = 0
+			set lf-warehouse = so-territory-code
+		detail
+			set lf-num-of-custs += 1
+
+		after so-territory-code
+			get indexed-sales-data
+			on index isd-warehouse
+			key is lf-warehouse
+			on error
+				set isd-warehouse = lf-warehouse
+				set isd-num-of-custs = lf-num-of-custs
+				set isd-start-date = ws-start-date
+				set isd-end-date = ws-end-date
+				insert indexed-sales-data
+			else
+				set isd-num-of-custs = lf-num-of-custs
+				update indexed-sales-data
+			endon
+		endextract
+	else
+		set lf-num-of-custs = 0
+		set lf-warehouse = sys-consolidation-division
+
+		extract tmp-cust-file all
+
+		detail
+			//13mar09
+			//set lf-num-of-custs += 1
+			//set lf-order-total = 0
+			////extract sales-order
+			////on index so-order-no so-bo-suffix
+			////key is so-order-no SPACES
+			////next same so-order-no
+			////detail
+			////	set lf-order-total += so-order-total-amount
+			////endextract
+			////extract sales-order-archive
+			////on index so-order-no so-bo-suffix
+			////key is so-order-no SPACES
+			////next same so-order-no
+			////detail
+			////	set lf-order-total += so-order-total-amount
+			////endextract
+			////if lf-order-total > 0
+			////	set lf-num-of-custs += 1
+			////endif
+			//select * from sales-order
+			//where so-order-no = so-order-no
+			//detail
+			//	set lf-order-total += so-order-total-amount
+			//endselect
+			//select * from sales-order-archive
+			//where so-order-no = so-order-no
+			//detail
+			//	set lf-order-total += so-order-total-amount
+			//endselect
+			//if lf-order-total > 0
+			//	set lf-num-of-custs += 1
+			//endif
+			// revert to this - ignoring any 0 value orders in the initial collections above.
+			set lf-num-of-custs += 1
+			//13mar09
+		endextract
+
+		get indexed-sales-data
+		on index isd-warehouse
+		key is lf-warehouse
+		on error
+			set isd-warehouse = lf-warehouse
+			set isd-num-of-custs = lf-num-of-custs
+			set isd-start-date = ws-start-date
+			set isd-end-date = ws-end-date
+			insert indexed-sales-data
+		else
+			set isd-num-of-custs = lf-num-of-custs
+			update indexed-sales-data
+		endon
+
+	endif
+
+	close tmp-cust-file and remove
+endprocedure //process-number-of-customers -----------------------------------
+
+procedure insert-cash
+//RecType, Store, DateStart, DateEnd, CustCount, Cash, Cash based on date-stamp
+	initialize ff-tps
+	open ff-tps
+	extract indexed-sales-data
+		all
+	detail
+		// 08aug08 test if store should be dropped
+		get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "WH" isd-warehouse
+		on error
+		else
+			if sys-tbl-alpha-4[1] = "X"
+			continue
+			endif
+		endon
+		set ff-record-identifier = 'CASH'
+		set ff-tps-so-territory-code = isd-warehouse
+		set ff-tps-accountcode = julian2date(isd-start-date)
+		set ff-tps-so-order-no = julian2date(isd-end-date)
+		set ff-tps-so-bo-suffix = str(isd-num-of-custs)
+		set ff-tps-so-order-date = SPACES // str(isd-cash) 08jul08
+		set ff-tps-sol-line-seq = str(isd-cash-ds)
+		set ff-prog-version = PROG_VERSION
+		set ff-company-name = ws-company-name
+		insert ff-tps
+	endextract
+endprocedure // insert-cash --------------------------------------------------
+
+procedure insert-cash-detail
+//RecType, Store, DateStart, DateEnd, CustCount, Cash, Cash based on date-stamp
+	initialize ff-tps
+	open ff-tps
+	extract cash-detail-data
+		all
+	detail
+		// 08aug08 test if store should be dropped
+		get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "WH" cdd-warehouse
+		on error
+		else
+			if sys-tbl-alpha-4[1] = "X"
+			continue
+			endif
+		endon
+		set ff-record-identifier 		= cdd-rec-type
+		set ff-tps-so-territory-code 	= cdd-warehouse
+		set ff-tps-accountcode 			= julian2date(cdd-start-date)
+		set ff-tps-so-order-no 			= julian2date(cdd-end-date)
+		set ff-tps-so-bo-suffix 		= julian2date(cdd-trans-date)
+		set ff-tps-so-order-date 		= cdd-trans-ref
+		set ff-tps-sol-line-seq 		= cdd-accountcode
+		set ff-tps-sol-line-type		= str(cdd-cash-ds)
+		set ff-tps-stock-code			= julian2date(cdd-user-date)
+		set ff-tps-stk-description		= cdd-br-acc-code
+		set ff-tps-stk-unit-desc		= cdd-tr-details
+		set ff-prog-version 			= PROG_VERSION
+		set ff-company-name 			= ws-company-name
+		insert ff-tps
+	endextract
+endprocedure // insert-cash-detail --------------------------------------------
+
+
+
+procedure insert-soh
+//RecType, Store, Whse, StockCode, DateEnd, Qty, AvgCost
+	initialize ff-tps
+	open ff-tps
+	extract whse-soh
+		all
+	detail
+		// 08aug08 test if store should be dropped
+		get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "WH" soh-store-code
+		on error
+		else
+			if sys-tbl-alpha-4[1] = "X"
+			continue
+			endif
+		endon
+		set ff-record-identifier = 'SOH'
+		set ff-tps-so-territory-code = soh-store-code
+		set ff-tps-accountcode = soh-whse-code
+		set ff-tps-so-order-no = julian2date(soh-date)
+		set ff-tps-so-bo-suffix = soh-stock-code
+		set ff-tps-so-order-date = soh-stk-description
+		set ff-tps-sol-line-seq = soh-stk-unit-desc
+		set ff-tps-sol-line-type = soh-stock-group
+		set ff-tps-stock-code =	str(soh-whse-qty-on-hand)
+		set ff-tps-stk-description = str(soh-whse-avg-cost)
+		set ff-tps-stk-unit-desc = soh-stk-sort-analysis-code
+		set ff-prog-version = PROG_VERSION
+		set ff-company-name = ws-company-name
+		insert ff-tps
+	endextract
+endprocedure //insert-soh ----------------------------------------------------
+
+procedure update-stock-summary										//mdd13jun07
+	parameters
+		lp-store						like so-territory-code
+		lp-stock-code					like stock-code
+		lp-qty-sold						like sol-ordered-qty
+		lp-cost-sold					like sol-line-amount
+		lp-value-sold					like sol-line-amount
+		lp-edits-value					like sol-line-amount
+	//
+	get tmp-stock-summary lock
+		on index tmpss-store tmpss-stock-code
+		key is lp-store lp-stock-code
+	on error
+		initialise tmp-stock-summary
+			leaving
+				tmpss-store
+				tmpss-stock-code
+		insert tmp-stock-summary
+		get tmp-stock-summary lock
+			on index tmpss-store tmpss-stock-code
+			key is tmpss-store tmpss-stock-code
+	endon
+	set tmpss-qty-sold += lp-qty-sold
+	set tmpss-cost-sold += lp-cost-sold
+	set tmpss-value-sold += lp-value-sold
+	set tmpss-edits-value += lp-edits-value
+	update tmp-stock-summary
+endprocedure //update-stock-summary ------------------------------------------
+
+procedure update-customer-details									//mdd13jun07
+	parameters
+		lp-store						like so-territory-code
+		lp-customer						like accountcode
+	//
+	get tmp-customer-details
+		on index tmpcd-store tmpcd-customer
+		key is lp-store lp-customer
+	on error
+		initialise tmp-customer-details
+			leaving
+				tmpcd-store
+				tmpcd-customer
+		do determine-customer-details
+			parameters
+				lp-customer
+			returning
+				tmpcd-name
+				tmpcd-company
+				tmpcd-street
+				tmpcd-suburb
+				tmpcd-country
+				tmpcd-address-6
+				tmpcd-address-7
+				tmpcd-postcode
+				tmpcd-phone
+				tmpcd-fax-no
+				tmpcd-email-address
+		insert tmp-customer-details
+	endon
+endprocedure //update-customer-details ---------------------------------------
+
+procedure determine-customer-details								//mdd13jun07
+	parameters
+		lp-customer						like so-cust-code
+	//
+	returning
+		lr-name							like na-name
+		lr-company						like na-company
+		lr-street						like na-street
+		lr-suburb						like na-suburb
+		lr-country						like na-country
+		lr-address-6					pic x(30)	//new in 660like na-address-6
+		lr-address-7					pic x(30)	//new in 660like na-address-7
+		lr-postcode						like postcode
+		lr-phone						like na-phone
+		lr-fax-no						like na-fax-no
+		lr-email-address				like na-name	// 08jul08
+	//
+	get name-and-address-master
+		on index accountcode na-type
+		key is lp-customer "C"
+	on error
+		initialise name-and-address-master
+			leaving
+				accountcode
+		get deb-master
+			on index accountcode
+			key is lp-customer
+		on error
+			initialise deb-master
+				leaving
+					accountcode
+		else
+			set na-name = shortname
+		endon
+	endon
+	set lr-name = na-name
+	set lr-company = na-company
+	set lr-street = na-street
+	set lr-suburb = na-suburb
+	set lr-country = na-country
+	set lr-address-6 = SPACES //New in 660 na-address-6
+	set lr-address-7 = SPACES //New in 660 na-address-7
+	set lr-postcode = postcode
+	set lr-phone = na-phone
+	set lr-fax-no = na-fax-no
+
+	// 08jul08 get email address
+	get name-and-address-master
+		on index accountcode na-type
+		key is lp-customer "E"
+	on error
+		set lr-email-address = SPACES
+	else
+		set lr-email-address = na-name
+	endon
+endprocedure //determine-customer-details ------------------------------------
+
+procedure create-flat-file-stock									//mdd13jun07
+	open ff-stock
+		truncate
+		permanent
+endprocedure //create-flat-file-stock ----------------------------------------
+
+procedure insert-flat-file-stock									//mdd13jun07
+	select *
+	from
+		tmp-stock-summary
+	order by
+		tmpss-store
+		tmpss-stock-code
+	before
+		set ffs-year = sub-string(zstr(year(today()),4,0),1,2)
+		set ffs-start-date = julian2date(ws-start-date)
+		set ffs-end-date = julian2date(ws-end-date)
+	detail
+		initialise ff-stock
+			leaving
+				ffs-year
+				ffs-start-date
+				ffs-end-date
+		set ffs-store = tmpss-store
+		set ffs-stock-code = tmpss-stock-code
+		set ffs-qty-sold = str(tmpss-qty-sold)
+		set ffs-cost-sold = str(tmpss-cost-sold)
+		set ffs-value-sold = str(tmpss-value-sold)
+		set ffs-edits-value = str(tmpss-edits-value)
+		insert ff-stock
+	endselect
+endprocedure //insert-flat-file-stock ----------------------------------------
+
+procedure insert-customer-details									//mdd13jun07
+	select *
+	from
+		tmp-customer-details
+	order by
+		tmpcd-store
+		tmpcd-customer
+	before
+		set ff-record-identifier = "ADDR"
+		set ff-prog-version = PROG_VERSION
+		set ff-company-name = ws-company-name
+	detail
+		initialize ff-tps
+			leaving
+				ff-record-identifier
+				ff-prog-version
+				ff-company-name
+		// 08aug08 test if store should be dropped
+		get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "WH" tmpcd-store
+		on error
+		else
+			if sys-tbl-alpha-4[1] = "X"
+			continue
+			endif
+		endon
+		set ff-tps-so-territory-code 		= tmpcd-store
+		set ff-tps-accountcode 				= tmpcd-customer
+		set ff-tps-so-order-no 				= tmpcd-name
+		set ff-tps-so-bo-suffix 			= tmpcd-company
+		set ff-tps-so-order-date 			= tmpcd-street
+		set ff-tps-sol-line-seq 			= tmpcd-suburb
+		set ff-tps-sol-line-type 			= tmpcd-country
+		set ff-tps-stock-code 				= tmpcd-address-6
+		set ff-tps-stk-description 			= tmpcd-address-7
+		STR_660_FORMAT(ff-tps-stock-code,ff-tps-stk-description) //{2}
+		set ff-tps-stk-unit-desc			= tmpcd-postcode
+		set ff-tps-stock-group 				= tmpcd-phone
+		set ff-tps-stk-sort-analysis-code 	= tmpcd-fax-no
+		set ff-tps-so-rep-code 				= tmpcd-email-address
+		insert ff-tps
+	endselect
+endprocedure //insert-customer-details ---------------------------------------
+
+procedure insert-quotations											//mdd13jun07
+	local field
+		lf-total-quotations				pic 9(8)
+	//
+	set lf-total-quotations = ZERO
+	select *
+	from
+		sales-order
+	order by
+		so-order-status
+		so-order-priority
+		so-delivery-date
+		so-order-no
+		so-bo-suffix
+	when
+		//Quotations that are at a status of;
+		//02 - Quotation
+		//06 - Quotation Accepted
+		//14 - Quotation Printed
+		//95 - Quotation Credit Check
+		//96 - Quotation In Progress
+		so-order-status in { "02" "06" "14" "95" "96" "98"}
+		and so-order-type-code = "Q"
+	detail
+		set lf-total-quotations += 1
+	endselect
+	//
+	initialize ff-tps
+	set ff-record-identifier = "QUOT"
+	set ff-tps-so-territory-code = str(lf-total-quotations)
+	set ff-prog-version = PROG_VERSION
+	set ff-company-name = ws-company-name
+	insert ff-tps
+endprocedure //insert-quotations ---------------------------------------------
+
+/*	//{710}
+procedure insert-gl-cm-movement
+	select *
+	from gl-master
+	where
+		substring(gl-accountcode,6,9) = "1901"
+	detail
+		//
+		initialize ff-tps
+		set ff-record-identifier 		= "GLCM"
+		set ff-tps-so-territory-code 	= substring(gl-accountcode,3,5)
+		set ff-tps-accountcode 			= str(gl-cm-movement)
+		//14jan09
+		set ff-tps-so-order-no 			= julian2date(isd-start-date)
+		set ff-tps-so-bo-suffix 		= julian2date(isd-end-date)
+		//14jan09
+		set ff-prog-version = PROG_VERSION
+		set ff-company-name = ws-company-name
+		insert ff-tps
+	endselect
+endprocedure // insert-gl-cm-movement -----------------------------------------
+*/
+
+
+procedure insert-cancellations
+/*
+	open so-collection
+	select *
+	from sales-order
+	where
+		so-order-date between :ws-start-date and :ws-end-date
+		and so-order-status = '99'
+	detail
+		get so-collection
+		on index soc-order-no soc-bo-suffix
+		key is so-order-no so-bo-suffix
+		on error // New Sales Order - add it to the collection
+			set soc-order-no = so-order-no
+			set soc-bo-suffix = so-bo-suffix
+			insert so-collection
+		end-on
+	endselect
+
+	select *
+	from sales-order-archive
+	where
+		so-order-date between :ws-start-date and :ws-end-date
+		and so-order-status = '99'
+	detail
+		get so-collection
+		on index soc-order-no soc-bo-suffix
+		key is so-order-no so-bo-suffix
+		on error // New Sales Order - add it to the collection
+			set soc-order-no = so-order-no
+			set soc-bo-suffix = so-bo-suffix
+			insert so-collection
+		end-on
+	endselect
+*/
+
+// cssc40 now inserts cancellations, quotes - any order with a type that hasn't already
+// been recorded while picking up 'normal' orders. This will ensure the edits picked
+// up after this routine will not consider edits to quotes or cancellations etc that
+// were raised during the same period.
+// 26may08 if it is a cancellation of a quote, ignore
+	open so-collection
+	select *
+	from sales-order
+	where
+		so-order-date between :ws-start-date and :ws-end-date
+		//and so-order-status = '99'
+	detail
+		get so-collection
+		on index soc-order-no soc-bo-suffix
+		key is so-order-no so-bo-suffix
+		on error // New Sales Order - add it to the collection
+			if so-order-status in { "02" "06" "14" "95" "96" "98"} and so-order-type-code = "Q"
+			else
+				set soc-order-no = so-order-no
+				set soc-bo-suffix = so-bo-suffix
+				insert so-collection
+			endif
+		end-on
+	endselect
+
+	select *
+	from sales-order-archive
+	where
+		so-order-date between :ws-start-date and :ws-end-date
+		//and so-order-status = '99'
+	detail
+		get so-collection
+		on index soc-order-no soc-bo-suffix
+		key is so-order-no so-bo-suffix
+		on error // New Sales Order - add it to the collection
+			if so-order-status in { "02" "06" "14" "95" "96" "98"} and so-order-type-code = "Q"
+			else
+				set soc-order-no = so-order-no
+				set soc-bo-suffix = so-bo-suffix
+				insert so-collection
+			endif
+		end-on
+	endselect
+
+
+endprocedure // insert-cancellations ----------------------------------------------
+
+procedure get-stock-warehouse-detail
+	open whse-soh truncate permanent
+	extract stock-warehouse-detail
+	detail
+		set soh-store-code = sys-consolidation-division
+		set soh-whse-code = whse-code
+		set soh-stock-code = stock-code
+		set soh-date = ws-end-date
+		set soh-whse-qty-on-hand	= whse-qty-on-hand
+		set soh-whse-avg-cost = whse-avg-cost
+		set soh-stock-group = " "
+		set soh-stk-description = " "
+		set soh-stk-unit-desc = " "
+		set soh-stk-sort-analysis-code = " "
+	get stock-master
+		on error
+		else
+			set soh-stock-group = stock-group
+			set soh-stk-description = stk-description
+			set soh-stk-unit-desc = stk-unit-desc
+			set soh-stk-sort-analysis-code = stk-sort-analysis-code
+		endon
+
+	if soh-whse-qty-on-hand != 0.0000
+		insert whse-soh
+	endif
+	endextract
+endprocedure //get-stock-warehouse-detail ---------------------------------------
+
+
+procedure insert-disc //rmd14may10
+local field
+	lf-so-order-no          	like so-order-no
+	lf-so-bo-suffix         	like so-bo-suffix
+	lf-sol-line-seq				like sol-line-seq
+	lf-sol-line-seq-int			like sol-line-seq
+	lf-rpt-qty             	    type numeric
+	lf-rpt-unit-cost		    type numeric
+	lf-rpt-unit-price-new-ex    type numeric
+	lf-rpt-unit-price-old-ex	type numeric
+	lf-rpt-unit-disc-amt        type numeric
+	lf-rpt-gp-perc			    type numeric
+	lf-fall-back-old-ex			type numeric //03jun10
+	lf-sol-tax-rate				like sol-tax-rate
+	lf-old-gp-amt				type numeric
+	lf-new-gp-amt              	type numeric
+	lf-old-gp-perc				type numeric
+	lf-new-gp-perc              type numeric
+	lf-testing-date				type date
+
+	//01. Record Type,02. Store Code,03. Debtor Code,04. S/O #,05. B/O suffix,06. S/O Date,07. S/O Line Seq,08. Stock Code,09. Action,10. Reason,11. Reason Code,12. Action Code,13. Old Value,14. New Value,15. Qty,16. Cost,17. New Val Ex,18. Old Val Ex,19. Disc Amt,20. GP Perc Change
+	// insert header
+	set ff-record-identifier			      	= "DISC"//01. Record Type
+	set ff-tps-so-territory-code		      	= "02. Store Code"
+	set ff-tps-accountcode				      	= "03. Debtor Code"
+	set ff-tps-so-order-no				      	= "04. S/O #"
+	set ff-tps-so-bo-suffix			          	= "05. B/O suffix"
+	set ff-tps-so-order-date			      	= "06. S/O Date"
+	set ff-tps-sol-line-seq			          	= "07. S/O Line Seq"
+	set ff-tps-sol-line-type			      	= "08. Stock Code"
+	set ff-tps-stock-code				      	= "09. Action"
+	set ff-tps-stk-description			      	= "10. Reason"
+	set ff-tps-stk-unit-desc			      	= "11. Reason Code"
+	set ff-tps-stock-group				      	= "12. Action Code"
+	set ff-tps-stk-sort-analysis-code	      	= "13. Old Value"
+	set ff-tps-so-rep-code				      	= "14. New Value"
+	set ff-tps-so-rep-desc				      	= "15. Qty"
+	set ff-tps-cre-accountcode			      	= "16. Cost"
+	set ff-tps-cre-desc				          	= "17. New Val Ex"
+	set ff-tps-sup-priority			          	= "18. Old Val Ex"
+	set ff-tps-sup-count				      	= "19. Disc Amt"
+	set ff-tps-sol-total-cost			      	= "20. GP Perc Change"
+	//28sep10rmd add SYCaS specific fields
+	//Timestamp, Member #, Stock Desc, StoreName, Club and State
+	set ff-tps-sol-unit-shipped-value       	= "21. Timestamp"
+	set ff-tps-sol-shipped-qty	            	= "22. Member #"
+	set ff-tps-so-order-total-shipped-amount	= "23. Stock Desc"
+	set ff-tps-sol-shipped-amount	        	= "24. Store Name"
+	set ff-tps-unit-prorata		            	= "25. Club"
+	set ff-tps-ext-prorata	                	= "26. State"
+	set ff-tps-trans-date						= "27. Dataset"
+	// in case any more are required
+	//	ff-tps-unit-cash-amt			pic x(40)
+	//	ff-tps-tr-amount			pic x(40)
+	//	ff-tps-trans-tested			pic x(40)
+	//	ff-tps-edit-qty				pic x(40)
+	//	ff-tps-edit-price			pic x(40)
+	//	ff-tps-edit-cost			pic x(40)
+	//	ff-prog-version				pic x(40)
+	//	ff-open-archive-status		pic x(40)
+	//	ff-company-name				pic x(40)
+	insert ff-tps
+
+
+	                                                                                                                                //01.ff-record-identifier					pic x(40)
+	set ff-record-identifier = "DISC"                                                                                               //02.ff-tps-so-territory-code				pic x(40)
+	set ff-prog-version = PROG_VERSION                                                                                              //03.ff-tps-accountcode						pic x(40)
+	set ff-company-name = ws-company-name                                                                                           //04.ff-tps-so-order-no						pic x(40)
+	extract sales-order-line//-archive                                                                                              //05.ff-tps-so-bo-suffix					pic x(40)
+		on index sol-line-type stock-code so-order-no so-bo-suffix                                                                  //06.ff-tps-so-order-date					pic x(40)
+		key is "DN" SPACES 0 SPACES                                                                                                 //07.ff-tps-sol-line-seq					pic x(40)
+		next same sol-line-type                                                                                                     //08.ff-tps-sol-line-type					pic x(40)
+	detail
+		set lf-testing-date = date-from-date-time(sol-user-only-date1,1) //13sep10                                                                                                                      //09.ff-tps-stock-code						pic x(40)
+		//if sol-date-stamp = xx and sol-line-type = "DN" and sol-user-only-alpha4-2 in {"P" "D"} //and sol-user-only-date1 = 0     //10.ff-tps-stk-description					pic x(40)
+		//if sol-user-only-alpha4-2 in {"P" "D"} and sol-date-stamp between ws-start-date and ws-end-date       //10sep10
+		//if sol-user-only-alpha4-2 in {"P" "D"} and sol-user-only-date1 between ws-start-date and ws-end-date	//10sep10
+		if sol-user-only-alpha4-2 in {"P" "D"} and lf-testing-date between ws-start-date and ws-end-date		//13sep10
+		else                                                                                                                        //12.ff-tps-stock-group						pic x(40)
+			continue                                                                                                                //13.ff-tps-stk-sort-analysis-code			pic x(40)
+		endif                                                                                                                       //14.ff-tps-so-rep-code						pic x(40)
+		get sales-order                                                                                                             //15.ff-tps-so-rep-desc						pic x(40)
+			on index so-order-no so-bo-suffix                                                                                       //16.ff-tps-cre-accountcode					pic x(40)
+			key is so-order-no so-bo-suffix                                                                                         //17.ff-tps-cre-desc						pic x(40)
+		on error                                                                                                                    //18.ff-tps-sup-priority					pic x(40)
+			//continue                                                                                                              //19.ff-tps-sup-count						pic x(40)
+			set so-territory-code = "NF"                                                                                            //20.ff-tps-sol-total-cost					pic x(40)
+			set so-cust-code = "No Order"                                                                                           //21.ff-tps-sol-unit-shipped-value			pic x(40)
+		endon                                                                                                                       //22.ff-tps-sol-shipped-qty					pic x(40)
+		//message "O" so-order-no so-bo-suffix sol-line-seq                                                                         //23.ff-tps-so-order-total-shipped-amount	pic x(40)
+		set lf-so-order-no          = so-order-no 																				    //24.ff-tps-sol-shipped-amount				pic x(40)
+		set lf-so-bo-suffix         = so-bo-suffix                                                                                  //25.ff-tps-unit-prorata					pic x(40)
+		set lf-sol-line-seq			= sol-line-seq                                                                                  //26.ff-tps-ext-prorata						pic x(40)
+		set lf-sol-line-seq-int		= integer(sol-line-seq)                                                                         //27.ff-tps-trans-date						pic x(40)
+		//                                                                                                                          //28.ff-tps-unit-cash-amt					pic x(40)
+		initialize ff-tps
+			leaving
+				ff-record-identifier                                        //01. Record Type DISC
+				ff-prog-version                                             //
+				ff-company-name                                             //
+		set ff-tps-so-territory-code 		= so-territory-code             //02. Store Code
+		set ff-tps-accountcode 				= so-cust-code                  //03. Debtor Code
+		set ff-tps-so-order-no 				= str(so-order-no)              //04. S/O #
+		set ff-tps-so-bo-suffix 			= so-bo-suffix                  //05. B/O suffix
+		set ff-tps-so-order-date 			= julian2date(so-order-date)    //06. S/O Date
+		set ff-tps-sol-line-seq 			= str(integer(sol-line-seq))    //07. S/O Line Seq
+		set ff-tps-stock-code 				= stock-code					//09. Action (Price Override or Discount Applied)
+		set ff-tps-stk-description 			= sol-line-description          //10. Reason
+		STR_660_FORMAT(ff-tps-stock-code,ff-tps-stk-description) //{2}
+		set ff-tps-stk-unit-desc			= sol-user-only-alpha4-1        //11. Reason Code
+		set ff-tps-stock-group 				= sol-user-only-alpha4-2        //12. Action Code (P = Price Override, D = Discount Applied)
+		set ff-tps-stk-sort-analysis-code 	= str(sol-user-only-num1)       //13. Old Value
+		set ff-tps-so-rep-code 				= str(sol-user-only-num2)       //14. New Value
+		//28sep10 ------------------------------------ start
+		if strconcat(sol-user-only-alpha4-1) in {"SC" "MW"}
+			//get member info
+			get deb-master
+				on index accountcode
+				key is so-cust-code
+			on error
+				//set sl-member-number 	= "MEMBER NOT FOUND"
+			else
+				if accountcode != territory
+					set ff-tps-sol-shipped-qty 	= dr-user-only-alpha20-2 //member
+					set ff-tps-unit-prorata 	= dr-user-only-alpha4-2 //club
+				else //cash sale
+					set ff-tps-sol-shipped-qty 	= "140267"
+					set ff-tps-unit-prorata 	= "RACV"
+				endif
+			endon
+			//get state
+			switch on substring(so-territory-code,1,1)
+				case "1"
+					set ff-tps-ext-prorata = "NSW*"
+				case "2"
+					set ff-tps-ext-prorata = "QLD*"
+				case "3"
+					set ff-tps-ext-prorata = "VIC*"
+				case "6"
+					set ff-tps-ext-prorata = "WA *"
+				case "8"
+					set ff-tps-ext-prorata = "SA *"
+				else
+					set ff-tps-ext-prorata = "VIC+"
+			endswitch
+			//get store name
+			set sys-description = SPACES
+			get system-table
+				on index sys-tbl-type sys-tbl-code
+				key is "TC" strconcat(so-territory-code)
+			on error
+				set ff-tps-sol-shipped-amount = SPACES
+			else
+				set ff-tps-sol-shipped-amount = sys-description
+			endon
+			set ff-tps-sol-unit-shipped-value       	= strconcat(format-picture(date-from-date-time(sol-user-only-date1,1),"YYYYMMDD") format-picture(time-from-date-time(sol-user-only-date1,1),"HHMMSS")) //pic x(14)		//CCYYMMDDHHMMS
+			//set ff-tps-sol-shipped-qty	            	= "22. Member #"
+			//set ff-tps-so-order-total-shipped-amount	= "23. Stock Desc"
+			//set ff-tps-sol-shipped-amount	        	= "24. StoreName"
+			//set ff-tps-unit-prorata		            	= "25. Club"
+			//set ff-tps-ext-prorata	                	= "26. State"
+			set ff-tps-trans-date						= sys-consolidation-division // "27. Dataset"
+		else
+			set ff-tps-sol-unit-shipped-value       	= SPACES
+			set ff-tps-sol-shipped-qty	            	= SPACES
+			//set ff-tps-so-order-total-shipped-amount	= SPACES
+			set ff-tps-sol-shipped-amount	        	= SPACES
+			set ff-tps-unit-prorata		            	= SPACES
+			set ff-tps-ext-prorata	                	= SPACES
+			set ff-tps-trans-date						= SPACES
+		endif
+		//28sep10 -------------------------------------- end
+		//rmd14may10 -------------------------------- start
+		//get stock-code from sales-order-line
+		//	on index so-order-no so-bo-suffix sol-line-seq
+		//	key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq-int
+		//on error
+		//else
+		//	set ff-tps-sol-line-type 			= stock-code
+		//endon
+		//// restore the line to continue the extract with correct record
+		//get sales-order-line
+		//	on index so-order-no so-bo-suffix sol-line-seq
+		//	key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+		//get stock-code from sales-order-line
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq-int
+		on error
+		else
+			set ff-tps-sol-line-type 		= stock-code  															//08. Stock Code
+			set lf-rpt-qty             		= sol-ordered-qty               										//15. rpt-qty
+			set lf-rpt-unit-cost			= sol-item-cost                 										//16. rpt-unit-cost
+			//31may10 ----------------------------------------- start
+			//set lf-rpt-unit-price-new-ex   	= (sol-line-amount - sol-ordered-sales-tax-amt) / sol-ordered-qty   //17.ff-tps-cre-desc
+			if sol-ordered-qty = 0
+				set lf-rpt-unit-price-new-ex   	= 0
+			else
+				set lf-rpt-unit-price-new-ex   	= (sol-line-amount - sol-ordered-sales-tax-amt) / sol-ordered-qty   //17.ff-tps-cre-desc
+			endif
+			//31may10 ------------------------------------------- end
+			set lf-fall-back-old-ex = sol-item-price // ex tax unit price //03jun10
+			set lf-sol-tax-rate = sol-tax-rate
+			//28sep10 get stock description
+			if ff-tps-sol-shipped-qty != SPACES //strconcat(sol-user-only-alpha4-1) in {"SC" "MW"}
+				get stock-master
+					on index stock-code
+				on error
+					set ff-tps-so-order-total-shipped-amount	= SPACES
+				else
+					set ff-tps-so-order-total-shipped-amount	= stk-description
+				endon
+			else
+				set ff-tps-so-order-total-shipped-amount	= SPACES
+			endif
+		endon
+		// restore the line to continue the extract with correct record
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+		//sol-line-amount is final sale amount of ord qty after price override and discount
+
+		//do calc-disc
+		//	parameters
+		//		sol-user-only-alpha4-2
+		//		lf-rpt-unit-price-new-ex
+		//		sol-user-only-num1
+		//		sol-user-only-num2
+		//		lf-rpt-unit-cost
+		//		lf-fall-back-old-ex	//03jun10
+		//		lf-sol-tax-rate
+		//	returning
+		//		lf-rpt-unit-price-old-ex      																		//18. rpt-unit-price-old-ex
+		//		lf-rpt-unit-disc-amt                                                                                //19. rpt-unit-disc-amt
+		//		lf-rpt-gp-perc
+		//25jun10 rmd inline disc calc
+		//message sol-user-only-num1
+
+		if lf-sol-tax-rate = 0
+			set lf-rpt-unit-price-old-ex	= sol-user-only-num1
+			set lf-rpt-unit-price-new-ex 	= sol-user-only-num2
+		else
+			set lf-rpt-unit-price-old-ex 	= sol-user-only-num1 / ( 1 + (lf-sol-tax-rate / 100))
+			set lf-rpt-unit-price-new-ex 	= sol-user-only-num2 / ( 1 + (lf-sol-tax-rate / 100))
+		endif
+		set lf-rpt-unit-disc-amt			= lf-rpt-unit-price-new-ex - lf-rpt-unit-price-old-ex
+		set lf-new-gp-amt					= lf-rpt-unit-price-new-ex - lf-rpt-unit-cost
+		set lf-old-gp-amt					= lf-rpt-unit-price-old-ex - lf-rpt-unit-cost
+		if lf-rpt-unit-price-old-ex = 0
+			set lf-old-gp-perc				= 0
+		else
+			set lf-old-gp-perc				= lf-old-gp-amt / lf-rpt-unit-price-old-ex * 100
+		endif
+		if lf-rpt-unit-price-new-ex = 0
+			set lf-new-gp-perc				= 0
+		else
+			set lf-new-gp-perc				= lf-new-gp-amt / lf-rpt-unit-price-new-ex * 100
+		endif
+		set lf-rpt-gp-perc					= lf-new-gp-perc - lf-old-gp-perc
+		//message "1 old: " sol-user-only-num1  ":" lf-sol-tax-rate ":" lf-rpt-unit-price-old-ex
+		//message "2 new: " sol-user-only-num2  ":" lf-sol-tax-rate ":" lf-rpt-unit-price-new-ex
+
+		                                                                        //20. rpt-gp-perc
+			//
+			set ff-tps-so-rep-desc	     	= str(lf-rpt-qty)
+			set ff-tps-cre-accountcode	 	= str(lf-rpt-unit-cost)
+			set ff-tps-cre-desc       	 	= str(lf-rpt-unit-price-new-ex)
+			set ff-tps-sup-priority  	 	= str(lf-rpt-unit-price-old-ex)
+		    set ff-tps-sup-count	     	= str(lf-rpt-unit-disc-amt)
+			set ff-tps-sol-total-cost    	= str(lf-rpt-gp-perc)
+		//rmd14may10 ---------------------------------- end
+		//03jun10 conditional insert, ignor if discount and old/new values are the same
+		if sol-user-only-alpha4-2 = "D" and sol-user-only-num1 = sol-user-only-num2
+			// ignore
+		else
+			if ff-tps-sol-line-type != SPACES // stock-code 28sep10
+				insert ff-tps
+			endif
+		endif
+	endextract
+	//
+	extract sales-order-line-archive
+		on index sol-line-type stock-code so-order-no so-bo-suffix
+		key is "DN" SPACES 0 SPACES
+		next same sol-line-type
+	detail
+		set lf-testing-date = date-from-date-time(sol-user-only-date1,1)	//13sep10
+		//if sol-date-stamp = xx and sol-line-type = "DN" and sol-user-only-alpha4-2 in {"P" "D"} //and sol-user-only-date1 = 0
+		//if sol-user-only-alpha4-2 in {"P" "D"} and sol-date-stamp between ws-start-date and ws-end-date         	//10sep10
+		//if sol-user-only-alpha4-2 in {"P" "D"} and sol-user-only-date1 between ws-start-date and ws-end-date      //10sep10
+		if sol-user-only-alpha4-2 in {"P" "D"} and lf-testing-date between ws-start-date and ws-end-date      		//13sep10
+		else
+			continue
+		endif
+		get sales-order-archive
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error
+			//continue
+			set so-territory-code = "NF"
+			set so-cust-code = "No Order"
+		endon
+		//message "O" so-order-no so-bo-suffix sol-line-seq
+		set lf-so-order-no          = so-order-no
+		set lf-so-bo-suffix         = so-bo-suffix
+		set lf-sol-line-seq			= sol-line-seq
+		set lf-sol-line-seq-int		= integer(sol-line-seq)
+		//
+		initialize ff-tps
+			leaving
+				ff-record-identifier                                        //01. Record Type DISC
+				ff-prog-version                                             //
+				ff-company-name                                             //
+		set ff-tps-so-territory-code 		= so-territory-code             //02. Store Code
+		set ff-tps-accountcode 				= so-cust-code                  //03. Debtor Code
+		set ff-tps-so-order-no 				= str(so-order-no)              //04. S/O #
+		set ff-tps-so-bo-suffix 			= so-bo-suffix                  //05. B/O suffix
+		set ff-tps-so-order-date 			= julian2date(so-order-date)    //06. S/O Date
+		set ff-tps-sol-line-seq 			= str(integer(sol-line-seq))    //07. S/O Line Seq
+		set ff-tps-stock-code 				= stock-code					//09. Action (Price Override or Discount Applied)
+		set ff-tps-stk-description 			= sol-line-description          //10. Reason
+		STR_660_FORMAT(ff-tps-stock-code,ff-tps-stk-description) //{2}
+		set ff-tps-stk-unit-desc			= sol-user-only-alpha4-1        //11. Reason Code
+		set ff-tps-stock-group 				= sol-user-only-alpha4-2        //12. Action Code (P = Price Override, D = Discount Applied)
+		set ff-tps-stk-sort-analysis-code 	= str(sol-user-only-num1)       //13. Old Value
+		set ff-tps-so-rep-code 				= str(sol-user-only-num2)       //14. New Value
+		//28sep10 ------------------------------------ start
+		if strconcat(sol-user-only-alpha4-1) in {"SC" "MW"}
+			//get member info
+			get deb-master
+				on index accountcode
+				key is so-cust-code
+			on error
+				//set sl-member-number 	= "MEMBER NOT FOUND"
+			else
+				if accountcode != territory
+					set ff-tps-sol-shipped-qty 	= dr-user-only-alpha20-2 //member
+					set ff-tps-unit-prorata 	= dr-user-only-alpha4-2 //club
+				else //cash sale
+					set ff-tps-sol-shipped-qty 	= "140267"
+					set ff-tps-unit-prorata 	= "RACV"
+				endif
+			endon
+			//get state
+			switch on substring(so-territory-code,1,1)
+				case "1"
+					set ff-tps-ext-prorata = "NSW*"
+				case "2"
+					set ff-tps-ext-prorata = "QLD*"
+				case "3"
+					set ff-tps-ext-prorata = "VIC*"
+				case "6"
+					set ff-tps-ext-prorata = "WA *"
+				case "8"
+					set ff-tps-ext-prorata = "SA *"
+				else
+					set ff-tps-ext-prorata = "VIC+"
+			endswitch
+			//get store name
+			set sys-description = SPACES
+			get system-table
+				on index sys-tbl-type sys-tbl-code
+				key is "TC" strconcat(so-territory-code)
+			on error
+				set ff-tps-sol-shipped-amount = SPACES
+			else
+				set ff-tps-sol-shipped-amount = sys-description
+			endon
+			set ff-tps-sol-unit-shipped-value       	= strconcat(format-picture(date-from-date-time(sol-user-only-date1,1),"YYYYMMDD") format-picture(time-from-date-time(sol-user-only-date1,1),"HHMMSS")) //pic x(14)		//CCYYMMDDHHMMS
+			//set ff-tps-sol-shipped-qty	            	= "22. Member #"
+			//set ff-tps-so-order-total-shipped-amount	= "23. Stock Desc"
+			//set ff-tps-sol-shipped-amount	        	= "24. StoreName"
+			//set ff-tps-unit-prorata		            	= "25. Club"
+			//set ff-tps-ext-prorata	                	= "26. State"
+			set ff-tps-trans-date						= sys-consolidation-division // "27. Dataset"
+		else
+			set ff-tps-sol-unit-shipped-value       	= SPACES
+			set ff-tps-sol-shipped-qty	            	= SPACES
+			//set ff-tps-so-order-total-shipped-amount	= SPACES
+			set ff-tps-sol-shipped-amount	        	= SPACES
+			set ff-tps-unit-prorata		            	= SPACES
+			set ff-tps-ext-prorata	                	= SPACES
+			set ff-tps-trans-date						= SPACES
+		endif
+		//28sep10 -------------------------------------- end
+		//rmd14may10 -------------------------------- start
+		//get stock-code from sales-order-line
+		//	on index so-order-no so-bo-suffix sol-line-seq
+		//	key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq-int
+		//on error
+		//else
+		//	set ff-tps-sol-line-type 			= stock-code
+		//endon
+		//// restore the line to continue the extract with correct record
+		//get sales-order-line
+		//	on index so-order-no so-bo-suffix sol-line-seq
+		//	key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+		//get stock-code from sales-order-line
+		get sales-order-line-archive
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq-int
+		on error
+		else
+			set ff-tps-sol-line-type 		= stock-code  															//08. Stock Code
+			set lf-rpt-qty             		= sol-ordered-qty               										//15.ff-tps-so-rep-desc
+			set lf-rpt-unit-cost			= sol-item-cost                 										//16.ff-tps-cre-accountcode
+			//31may10 ----------------------------------------- start
+			//set lf-rpt-unit-price-new-ex   	= (sol-line-amount - sol-ordered-sales-tax-amt) / sol-ordered-qty   //17.ff-tps-cre-desc
+			if sol-ordered-qty = 0
+				set lf-rpt-unit-price-new-ex   	= 0
+			else
+				set lf-rpt-unit-price-new-ex   	= (sol-line-amount - sol-ordered-sales-tax-amt) / sol-ordered-qty   //17.ff-tps-cre-desc
+			endif
+			//31may10 ------------------------------------------- end
+			set lf-fall-back-old-ex = sol-item-price // ex tax unit price //03jun10
+			set lf-sol-tax-rate = sol-tax-rate
+			//28sep10 get stock description
+			if ff-tps-sol-shipped-qty != SPACES // strconcat(sol-user-only-alpha4-1) in {"SC" "MW"}
+				get stock-master
+					on index stock-code
+				on error
+					set ff-tps-so-order-total-shipped-amount	= SPACES
+				else
+					set ff-tps-so-order-total-shipped-amount	= stk-description
+				endon
+			else
+				set ff-tps-so-order-total-shipped-amount	= SPACES
+			endif
+		endon
+		// restore the line to continue the extract with correct record
+		get sales-order-line-archive
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+		//sol-line-amount is final sale amount of ord qty after price override and discount
+		//do calc-disc
+		//	parameters
+		//		sol-user-only-alpha4-2
+		//		lf-rpt-unit-price-new-ex
+		//		sol-user-only-num1
+		//		sol-user-only-num2
+		//		lf-rpt-unit-cost
+		//		lf-fall-back-old-ex	//03jun10
+		//		lf-sol-tax-rate
+		//	returning
+		//		lf-rpt-unit-price-old-ex      																		//18.ff-tps-sup-priority
+		//		lf-rpt-unit-disc-amt                                                                                //19.ff-tps-sup-count
+		//		lf-rpt-gp-perc				                                                                        //20.ff-tps-sol-total-cost
+		//25jun10 rmd inline disc calc
+		if lf-sol-tax-rate = 0
+			set lf-rpt-unit-price-old-ex	= sol-user-only-num1
+			set lf-rpt-unit-price-new-ex 	= sol-user-only-num2
+		else
+			set lf-rpt-unit-price-old-ex 	= sol-user-only-num1 / ( 1 + (lf-sol-tax-rate / 100))
+			set lf-rpt-unit-price-new-ex 	= sol-user-only-num2 / ( 1 + (lf-sol-tax-rate / 100))
+		endif
+		set lf-rpt-unit-disc-amt			= lf-rpt-unit-price-new-ex - lf-rpt-unit-price-old-ex
+		set lf-new-gp-amt					= lf-rpt-unit-price-new-ex - lf-rpt-unit-cost
+		set lf-old-gp-amt					= lf-rpt-unit-price-old-ex - lf-rpt-unit-cost
+		if lf-rpt-unit-price-old-ex = 0
+			set lf-old-gp-perc				= 0
+		else
+			set lf-old-gp-perc				= lf-old-gp-amt / lf-rpt-unit-price-old-ex * 100
+		endif
+		if lf-rpt-unit-price-new-ex = 0
+			set lf-new-gp-perc				= 0
+		else
+			set lf-new-gp-perc				= lf-new-gp-amt / lf-rpt-unit-price-new-ex * 100
+		endif
+		set lf-rpt-gp-perc					= lf-new-gp-perc - lf-old-gp-perc
+		//message "a1 old: " sol-user-only-num1  ":" lf-sol-tax-rate ":" lf-rpt-unit-price-old-ex
+		//message "a2 new: " sol-user-only-num2  ":" lf-sol-tax-rate ":" lf-rpt-unit-price-new-ex
+
+			//
+			set ff-tps-so-rep-desc	     	= str(lf-rpt-qty)
+			set ff-tps-cre-accountcode	 	= str(lf-rpt-unit-cost)
+			set ff-tps-cre-desc       	 	= str(lf-rpt-unit-price-new-ex)
+			set ff-tps-sup-priority  	 	= str(lf-rpt-unit-price-old-ex)
+		    set ff-tps-sup-count	     	= str(lf-rpt-unit-disc-amt)
+			set ff-tps-sol-total-cost    	= str(lf-rpt-gp-perc)
+		//rmd14may10 ---------------------------------- end
+		//03jun10 conditional insert, ignor if discount and old/new values are the same
+		if sol-user-only-alpha4-2 = "D" and sol-user-only-num1 = sol-user-only-num2
+			// ignore
+		else
+			if ff-tps-sol-line-type != SPACES // stock-code 28sep10
+				insert ff-tps
+			endif
+		endif
+	endextract
+endprocedure // insert-disc ---------------------------------------------------
+
+procedure insert-disc-old //rmd29apr10
+local field
+	lf-so-order-no          like so-order-no
+	lf-so-bo-suffix         like so-bo-suffix
+	lf-sol-line-seq			like sol-line-seq
+	lf-sol-line-seq-int		like sol-line-seq
+
+	set ff-record-identifier = "DISC"
+	set ff-prog-version = PROG_VERSION
+	set ff-company-name = ws-company-name
+	extract sales-order-line//-archive
+		on index sol-line-type stock-code so-order-no so-bo-suffix
+		key is "DN" SPACES 0 SPACES
+		next same sol-line-type
+	detail
+		//if sol-date-stamp = xx and sol-line-type = "DN" and sol-user-only-alpha4-2 in {"P" "D"} //and sol-user-only-date1 = 0
+		if sol-user-only-alpha4-2 in {"P" "D"} and sol-date-stamp between ws-start-date and ws-end-date
+		else
+			continue
+		endif
+		get sales-order
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error
+			//continue
+			set so-territory-code = "NF"
+			set so-cust-code = "No Order"
+		endon
+		//message "O" so-order-no so-bo-suffix sol-line-seq
+		set lf-so-order-no          = so-order-no
+		set lf-so-bo-suffix         = so-bo-suffix
+		set lf-sol-line-seq			= sol-line-seq
+		set lf-sol-line-seq-int		= integer(sol-line-seq)
+		//
+		initialize ff-tps
+			leaving
+				ff-record-identifier
+				ff-prog-version
+				ff-company-name
+		set ff-tps-so-territory-code 		= so-territory-code
+		set ff-tps-accountcode 				= so-cust-code
+		set ff-tps-so-order-no 				= str(so-order-no)
+		set ff-tps-so-bo-suffix 			= so-bo-suffix
+		set ff-tps-so-order-date 			= julian2date(so-order-date)
+		set ff-tps-sol-line-seq 			= str(integer(sol-line-seq))
+		set ff-tps-stock-code 				= stock-code
+		set ff-tps-stk-description 			= sol-line-description
+		STR_660_FORMAT(ff-tps-stock-code,ff-tps-stk-description) //{2}
+		set ff-tps-stk-unit-desc			= sol-user-only-alpha4-1
+		set ff-tps-stock-group 				= sol-user-only-alpha4-2
+		set ff-tps-stk-sort-analysis-code 	= str(sol-user-only-num1)
+		set ff-tps-so-rep-code 				= str(sol-user-only-num2)
+		//rmd14may10 -------------------------------- start
+		get stock-code from sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq-int
+		on error
+		else
+			set ff-tps-sol-line-type 			= stock-code
+		endon
+		// restore the line to continue the extract with correct record
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+		insert ff-tps
+	endextract
+	//
+	extract sales-order-line-archive
+		on index sol-line-type stock-code so-order-no so-bo-suffix
+		key is "DN" SPACES 0 SPACES
+		next same sol-line-type
+	detail
+		//if sol-date-stamp = xx and sol-line-type = "DN" and sol-user-only-alpha4-2 in {"P" "D"} //and sol-user-only-date1 = 0
+		if sol-user-only-alpha4-2 in {"P" "D"} and sol-date-stamp between ws-start-date and ws-end-date
+		else
+			continue
+		endif
+		get sales-order-archive
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error
+			//continue
+			set so-territory-code = "NFA"
+			set so-cust-code = "No Order A"
+		endon
+		//message "A" so-order-no so-bo-suffix sol-line-seq
+		set lf-so-order-no          = so-order-no
+		set lf-so-bo-suffix         = so-bo-suffix
+		set lf-sol-line-seq			= sol-line-seq
+		set lf-sol-line-seq-int		= integer(sol-line-seq)
+		initialize ff-tps
+			leaving
+				ff-record-identifier
+				ff-prog-version
+				ff-company-name
+		set ff-tps-so-territory-code 		= so-territory-code
+		set ff-tps-accountcode 				= so-cust-code
+		set ff-tps-so-order-no 				= str(so-order-no)
+		set ff-tps-so-bo-suffix 			= so-bo-suffix
+		set ff-tps-so-order-date 			= julian2date(so-order-date)
+		set ff-tps-sol-line-seq 			= str(integer(sol-line-seq))
+		set ff-tps-stock-code 				= stock-code
+		set ff-tps-stk-description 			= sol-line-description
+		STR_660_FORMAT(ff-tps-stock-code,ff-tps-stk-description) //{2}
+		set ff-tps-stk-unit-desc			= sol-user-only-alpha4-1
+		set ff-tps-stock-group 				= sol-user-only-alpha4-2
+		set ff-tps-stk-sort-analysis-code 	= str(sol-user-only-num1)
+		set ff-tps-so-rep-code 				= str(sol-user-only-num2)
+		get stock-code from sales-order-line-archive
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq-int
+		on error
+		else
+			set ff-tps-sol-line-type 			= stock-code
+		endon
+		get sales-order-line-archive
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is lf-so-order-no lf-so-bo-suffix lf-sol-line-seq
+		insert ff-tps
+	endextract
+	//get stock-code
+	//extract ff-tps
+	//detail
+	//	if ff-record-identifier != "DISC"
+	//		continue
+	//	endif
+	//	get sales-order-line
+	//		on index so-order-no so-bo-suffix sol-line-seq
+	//		key is num(ff-tps-so-order-no) ff-tps-so-bo-suffix num(ff-tps-sol-line-seq)
+	//	on error
+	//		get sales-order-line-archive
+	//			on index so-order-no so-bo-suffix sol-line-seq
+	//			key is num(ff-tps-so-order-no) ff-tps-so-bo-suffix num(ff-tps-sol-line-seq)
+	//		on error
+	//			continue
+	//		endon
+	//	endon
+	//	set ff-tps-stock-code 				= stock-code
+	//	update ff-tps
+	//endextract
+endprocedure // insert-disc ---------------------------------------------------
+
+
+
+procedure calc-disc
+parameters
+	lp-sol-user-only-alpha4-2    	like sol-user-only-alpha4-2
+	lp-tmp-rpt-unit-price-new-ex 	type numeric
+	lp-sol-user-only-num1        	like sol-user-only-num1
+	lp-sol-user-only-num2        	like sol-user-only-num2
+	lp-tmp-rpt-unit-cost			type numeric
+	lp-fall-back-old-ex				type numeric	//03jun10
+	lp-sol-tax-rate					like sol-tax-rate
+returning
+	lr-tmp-rpt-unit-price-old-ex   	type numeric
+	lr-tmp-rpt-unit-disc-amt        type numeric
+	lr-tmp-rpt-gp-perc              type numeric
+local field
+	lf-old-gp-amt					type numeric
+	lf-new-gp-amt					type numeric
+	lf-old-gp-perc                  type numeric
+	lf-new-gp-perc                  type numeric
+	lf-disc-perc					type numeric
+
+
+	//message "so line:" so-order-no ":" so-bo-suffix ":" sol-line-seq
+	//message "lp-sol-user-only-alpha4-2    "  lp-sol-user-only-alpha4-2
+	//message "lp-tmp-rpt-unit-price-new-ex "  lp-tmp-rpt-unit-price-new-ex
+	//message "lp-sol-user-only-num1        "  lp-sol-user-only-num1
+	//message "lp-sol-user-only-num2        "  lp-sol-user-only-num2
+	//message "lp-tmp-rpt-unit-cost		  "  lp-tmp-rpt-unit-cost
+	//25jun10 base new ex on 'after' value for this edit, originally using final line amount
+	//but this could contain the combined effect of P and D, lp-sol-user-only-num2 contains
+	//inc tax 'after' price for this edit alone
+	set lp-tmp-rpt-unit-price-new-ex		= lp-sol-user-only-num2 - ( lp-sol-user-only-num2 * lp-sol-tax-rate / 100 )
+	if lp-sol-user-only-alpha4-2 in {"P" "D"}
+		//set lr-tmp-rpt-unit-price-old-ex 	= lp-tmp-rpt-unit-price-new-ex - (lp-sol-user-only-num1 - lp-sol-user-only-num2)
+		set lr-tmp-rpt-unit-price-old-ex 	= lp-sol-user-only-num1 - ( lp-sol-user-only-num1 * lp-sol-tax-rate / 100 )  //07jun10
+		set lr-tmp-rpt-unit-disc-amt		= lp-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+		set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+		set lf-new-gp-amt					= lp-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+		if lr-tmp-rpt-unit-price-old-ex = 0
+			set lf-old-gp-perc				= 0
+		else
+			set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+		endif
+		if lp-tmp-rpt-unit-price-new-ex = 0
+			set lf-new-gp-perc				= 0
+		else
+			set lf-new-gp-perc				= lf-new-gp-amt / lp-tmp-rpt-unit-price-new-ex * 100
+		endif
+		set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+	elseif lp-sol-user-only-alpha4-2 = "DEREK"
+		//24jun10 old ex can be calculated back from lp-sol-user-only-num1 with tax removed
+		//routine no longer sends disc perc old and new, now sends old and new values
+		set lr-tmp-rpt-unit-price-old-ex 	= lp-sol-user-only-num1 - ( lp-sol-user-only-num1 * lp-sol-tax-rate / 100 )
+		// e.g cost 60 old price 120, 20% disc = 96
+		set lf-disc-perc					= lp-sol-user-only-num2 - lp-sol-user-only-num1
+		if lf-disc-perc						= 100 // 100 % disc's cause a 0 div of their own..					//03jun10
+			//set lr-tmp-rpt-unit-price-old-ex 	= lp-tmp-rpt-unit-price-new-ex + (lp-tmp-rpt-unit-price-new-ex * 1 / (( 100 / lf-disc-perc) - 1)) //03jun10
+			//set lr-tmp-rpt-unit-price-old-ex 	= lp-fall-back-old-ex  //03jun10
+			set lr-tmp-rpt-unit-disc-amt		= lp-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+			set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+			set lf-new-gp-amt					= lp-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+			if lr-tmp-rpt-unit-price-old-ex = 0
+				set lf-old-gp-perc				= 0
+			else
+				set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+			endif
+			if lp-tmp-rpt-unit-price-new-ex = 0
+				set lf-new-gp-perc				= 0
+			else
+				set lf-new-gp-perc				= lf-new-gp-amt / lp-tmp-rpt-unit-price-new-ex * 100
+			endif
+			set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+		elseif lf-disc-perc						> 0
+			//set lr-tmp-rpt-unit-price-old-ex 	= lp-tmp-rpt-unit-price-new-ex + (lp-tmp-rpt-unit-price-new-ex * 1 / (( 100 / lf-disc-perc) - 1))
+			set lr-tmp-rpt-unit-disc-amt		= lp-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+			set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+			set lf-new-gp-amt					= lp-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+			if lr-tmp-rpt-unit-price-old-ex = 0
+				set lf-old-gp-perc				= 0
+			else
+				set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+			endif
+			if lp-tmp-rpt-unit-price-new-ex = 0
+				set lf-new-gp-perc				= 0
+			else
+				set lf-new-gp-perc				= lf-new-gp-amt / lp-tmp-rpt-unit-price-new-ex * 100
+			endif
+			set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+		endif
+	endif
+endprocedure // calc-disc -----------------------------------------------------
+
+
+procedure calc-disc-old-100625
+parameters
+	lp-sol-user-only-alpha4-2    	like sol-user-only-alpha4-2
+	lp-tmp-rpt-unit-price-new-ex 	type numeric
+	lp-sol-user-only-num1        	like sol-user-only-num1
+	lp-sol-user-only-num2        	like sol-user-only-num2
+	lp-tmp-rpt-unit-cost			type numeric
+	lp-fall-back-old-ex				type numeric	//03jun10
+	lp-sol-tax-rate					like sol-tax-rate
+returning
+	lr-tmp-rpt-unit-price-old-ex   	type numeric
+	lr-tmp-rpt-unit-disc-amt        type numeric
+	lr-tmp-rpt-gp-perc              type numeric
+local field
+	lf-old-gp-amt					type numeric
+	lf-new-gp-amt					type numeric
+	lf-old-gp-perc                  type numeric
+	lf-new-gp-perc                  type numeric
+	lf-disc-perc					type numeric
+
+
+	//message "so line:" so-order-no ":" so-bo-suffix ":" sol-line-seq
+	//message "lp-sol-user-only-alpha4-2    "  lp-sol-user-only-alpha4-2
+	//message "lp-tmp-rpt-unit-price-new-ex "  lp-tmp-rpt-unit-price-new-ex
+	//message "lp-sol-user-only-num1        "  lp-sol-user-only-num1
+	//message "lp-sol-user-only-num2        "  lp-sol-user-only-num2
+	//message "lp-tmp-rpt-unit-cost		  "  lp-tmp-rpt-unit-cost
+	//25jun10 base new ex on 'after' value for this edit, originally using final line amount
+	//but this could contain the combined effect of P and D, lp-sol-user-only-num2 contains
+	//inc tax 'after' price for this edit alone
+	set lp-tmp-rpt-unit-price-new-ex		= lp-sol-user-only-num2 - ( lp-sol-user-only-num2 * lp-sol-tax-rate / 100 )
+	if lp-sol-user-only-alpha4-2 = "P"
+		//set lr-tmp-rpt-unit-price-old-ex 	= lp-tmp-rpt-unit-price-new-ex - (lp-sol-user-only-num1 - lp-sol-user-only-num2)
+		set lr-tmp-rpt-unit-price-old-ex 	= lp-sol-user-only-num1 - ( lp-sol-user-only-num1 * lp-sol-tax-rate / 100 )  //07jun10
+		set lr-tmp-rpt-unit-disc-amt		= lp-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+		set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+		set lf-new-gp-amt					= lp-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+		if lr-tmp-rpt-unit-price-old-ex = 0
+			set lf-old-gp-perc				= 0
+		else
+			set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+		endif
+		if lp-tmp-rpt-unit-price-new-ex = 0
+			set lf-new-gp-perc				= 0
+		else
+			set lf-new-gp-perc				= lf-new-gp-amt / lp-tmp-rpt-unit-price-new-ex * 100
+		endif
+		set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+	elseif lp-sol-user-only-alpha4-2 = "D"
+		//24jun10 old ex can be calculated back from lp-sol-user-only-num1 with tax removed
+		//routine no longer sends disc perc old and new, now sends old and new values
+		set lr-tmp-rpt-unit-price-old-ex 	= lp-sol-user-only-num1 - ( lp-sol-user-only-num1 * lp-sol-tax-rate / 100 )
+		// e.g cost 60 old price 120, 20% disc = 96
+		set lf-disc-perc					= lp-sol-user-only-num2 - lp-sol-user-only-num1
+		if lf-disc-perc						= 100 // 100 % disc's cause a 0 div of their own..					//03jun10
+			//set lr-tmp-rpt-unit-price-old-ex 	= lp-tmp-rpt-unit-price-new-ex + (lp-tmp-rpt-unit-price-new-ex * 1 / (( 100 / lf-disc-perc) - 1)) //03jun10
+			//set lr-tmp-rpt-unit-price-old-ex 	= lp-fall-back-old-ex  //03jun10
+			set lr-tmp-rpt-unit-disc-amt		= lp-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+			set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+			set lf-new-gp-amt					= lp-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+			if lr-tmp-rpt-unit-price-old-ex = 0
+				set lf-old-gp-perc				= 0
+			else
+				set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+			endif
+			if lp-tmp-rpt-unit-price-new-ex = 0
+				set lf-new-gp-perc				= 0
+			else
+				set lf-new-gp-perc				= lf-new-gp-amt / lp-tmp-rpt-unit-price-new-ex * 100
+			endif
+			set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+		elseif lf-disc-perc						> 0
+			//set lr-tmp-rpt-unit-price-old-ex 	= lp-tmp-rpt-unit-price-new-ex + (lp-tmp-rpt-unit-price-new-ex * 1 / (( 100 / lf-disc-perc) - 1))
+			set lr-tmp-rpt-unit-disc-amt		= lp-tmp-rpt-unit-price-new-ex - lr-tmp-rpt-unit-price-old-ex
+			set lf-old-gp-amt					= lr-tmp-rpt-unit-price-old-ex - lp-tmp-rpt-unit-cost
+			set lf-new-gp-amt					= lp-tmp-rpt-unit-price-new-ex - lp-tmp-rpt-unit-cost
+			if lr-tmp-rpt-unit-price-old-ex = 0
+				set lf-old-gp-perc				= 0
+			else
+				set lf-old-gp-perc				= lf-old-gp-amt / lr-tmp-rpt-unit-price-old-ex * 100
+			endif
+			if lp-tmp-rpt-unit-price-new-ex = 0
+				set lf-new-gp-perc				= 0
+			else
+				set lf-new-gp-perc				= lf-new-gp-amt / lp-tmp-rpt-unit-price-new-ex * 100
+			endif
+			set lr-tmp-rpt-gp-perc				= lf-new-gp-perc - lf-old-gp-perc
+		endif
+	endif
+endprocedure // calc-disc -----------------------------------------------------
+
+procedure disc-time-stamp-fix //14sep10
+	report "disc-ts-fix"
+		spool-only
+	extract sales-order-line lock
+	detail
+		if sol-user-only-alpha4-2 in {"P" "D"} and sol-user-only-date1 = 0
+			get sales-order
+				on index so-order-no so-bo-suffix
+				key is so-order-no so-bo-suffix
+			on error
+				//set sol-user-only-date1 = date-time(today(),tod(),1)
+			else
+				set sol-user-only-date1 = date-time(so-order-date,tod(),1)
+				update sales-order-line
+			endon
+			print
+				so-order-no
+				so-bo-suffix
+				sol-line-seq
+				"New Disc TS:"
+				sol-user-only-date1
+		endif
+	endextract
+	extract sales-order-line-archive
+	detail
+		if sol-user-only-alpha4-2 in {"P" "D"} and sol-user-only-date1 = 0
+			get sales-order-archive
+				on index so-order-no so-bo-suffix
+				key is so-order-no so-bo-suffix
+			on error
+				//set sol-user-only-date1 = date-time(today(),tod(),1)
+			else
+				set sol-user-only-date1 = date-time(so-processing-date,tod(),1)
+				update sales-order-line-archive
+			endon
+			print
+				so-order-no
+				so-bo-suffix
+				sol-line-seq
+				"New Disc TS:"
+				sol-user-only-date1
+		endif
+	endextract
+	report finished
+endprocedure // disc-time-stamp-fix -------------------------------------------
+// old procedures /////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+
+
+/*
+procedure so-edits
+// Pickup changes made this week to Sales Orders created prior to this week.
+// For every record in the audit file, check if audited sales order number/sol-seq
+// has a match in the so #'s we have already collected.
+// If found, check for an edit value and add to it, if no edit value
+// assume a 'normal' sales-order recorded this week whose values
+// will include the edit so exit the procedure.
+
+
+local field
+		lf-edit-qty		like sol-ordered-qty
+		lf-edit-price		like sol-line-amount
+		lf-edit-cost		like sol-item-cost
+
+
+	select *
+	from sales-audit-file
+	where
+		order-log-date between :ws-start-date and :ws-end-date
+		and ordlog-type in ( 1 5 6 9 10 11 12 )
+		and ordlog-line-type = 'SN'
+	detail
+		Set lf-edit-qty = 0
+		Set lf-edit-price = 0
+		Set lf-edit-cost = 0
+
+
+
+		// Need to extract sundry fields to pass to tmp-prorata-sol
+		get sales-order-line
+			on index so-order-no so-bo-suffix sol-line-seq
+			key is so-order-no so-bo-suffix sol-line-seq
+		on error //If not in open Orders - try the archive
+			get sales-order-line-archive
+				on index so-order-no so-bo-suffix sol-line-seq
+				key is so-order-no so-bo-suffix sol-line-seq
+			on error // Should not happen!!
+			end-on
+		end-on
+
+		get sales-order
+			on index so-order-no so-bo-suffix
+			key is so-order-no so-bo-suffix
+		on error //If not in open Orders - try the archive
+			get sales-order-archive
+				on index so-order-no so-bo-suffix
+				key is so-order-no so-bo-suffix
+			on error // Should not happen!!
+			end-on
+		endon
+
+		set tps-sol-total-cost = sol-item-cost
+
+		switch on ordlog-type
+			case 1  // item price change
+				if ordlog-new-info != " "
+					Set lf-edit-qty = 0
+					Set lf-edit-price = (ordlog-new-value - ordlog-old-value) - ordlog-ordered-tax-chg-value
+					Set lf-edit-cost = 0
+				end-if
+			case 5  // qty change
+				Set lf-edit-qty = ordlog-new-value - ordlog-old-value
+				Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+				Set lf-edit-cost = tps-sol-total-cost * (ordlog-new-value - ordlog-old-value)
+
+			case 6  // cancellation
+				Set lf-edit-qty = ordlog-new-value * -1
+				Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+				Set lf-edit-cost = tps-sol-total-cost * -1
+
+			case 9  // item removed
+				Set lf-edit-qty = ordlog-old-value * -1
+				Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+				Set lf-edit-cost =  tps-sol-total-cost * (ordlog-old-value * -1)
+
+			case 10 // item added
+				Set lf-edit-qty = ordlog-old-value
+				Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+				Set lf-edit-cost = tps-sol-total-cost * ordlog-old-value
+
+                 	case 11 // line discount change
+     	                	Set lf-edit-qty = 0
+           	           	Set lf-edit-price = ordlog-ordered-change-value - ordlog-ordered-tax-chg-value
+                 	     	Set lf-edit-cost = 0
+
+			case 12 // order discount change
+				Set lf-edit-qty = 0
+				Set lf-edit-price = ordlog-ordered-change-value - (ordlog-ordered-change-value - (ordlog-ordered-change-value / 1.1))
+				Set lf-edit-cost = 0
+
+		end-switch
+
+
+
+
+  		get so-collection
+	  		on index soc-order-no soc-bo-suffix
+			key is so-order-no so-bo-suffix
+  		on error 	// No matching Sales Order recorded, capture the edit
+				// inserting a FULL tps record
+			initialise tmp-prorata-sol
+
+				set tps-so-order-no = so-order-no
+				set tps-so-bo-suffix = so-bo-suffix
+				set tps-so-territory-code = so-territory-code
+				//set tps-so-order-date = so-order-date // Check with LV for these options
+				set tps-so-order-date = order-log-date
+				set tps-accountcode = so-cust-code
+				set tps-so-rep-code = so-rep-code
+
+				// Check with LV/SAS for these options
+				set tps-sol-shipped-amount = lf-edit-price
+				set tps-sol-shipped-qty = lf-edit-qty
+				set tps-sol-total-cost = lf-edit-cost
+
+				set tps-sol-line-seq = sol-line-seq
+				set tps-sol-line-type = 'ED' //Edit indicator
+				set tps-stock-code = ordlog-old-info
+
+
+			get unique-stock-supplier
+			on index uss-stock-code
+			key is tps-stock-code
+			on error
+				set tps-cre-accountcode = 'NA'
+			else
+				set tps-cre-accountcode = uss-cre-accountcode
+				set tps-cre-desc = uss-cre-desc
+				set tps-sup-count = uss-sup-count
+				set tps-sup-priority = uss-sup-priority
+			end-on
+
+
+			get stock-master
+			on index stock-code
+			key is tps-stock-code
+			on error
+				set tps-stk-description = 'NA'
+				set tps-stk-unit-desc = 'NA'
+				set tps-stock-group = 'NA'
+				set tps-stk-sort-analysis-code = 'NA'
+			else
+				set tps-stk-description = stk-description
+				set tps-stk-unit-desc = stk-unit-desc
+				set tps-stock-group = stock-group
+				set tps-stk-sort-analysis-code = stk-sort-analysis-code
+			end-on
+
+			get rep-master
+			on index rep-code
+			key is so-rep-code
+			on error
+				set tps-so-rep-desc = 'NA'
+			else
+				set tps-so-rep-desc = rep-description
+			end-on
+
+
+			set tps-edit-qty = lf-edit-qty
+			set tps-edit-price = lf-edit-price
+			set tps-edit-cost = lf-edit-cost
+			set tps-prog-version = PROG_VERSION
+			set tps-company-name = ws-company-name
+			insert tmp-prorata-sol
+
+		else		// Match found, if it's a standard sales order, exit
+//				// if it's an edit, add to the values
+//			if tps-edit-qty + tps-edit-price + tps-edit-cost = 0 // This is a sales order, do nothing
+//
+//			else
+//				set tps-edit-qty += lf-edit-qty
+//				set tps-edit-price += lf-edit-price
+//				set tps-edit-cost += lf-edit-cost
+//				update tmp-prorata-sol
+//			end-if
+
+
+		end-on
+	end-select
+end-procedure //so-edits ------------------------------------------------------
+*/
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+
+
+//cssc1.54.spl

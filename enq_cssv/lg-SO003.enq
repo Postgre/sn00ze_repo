@@ -1,0 +1,4 @@
+// delete Sales Orders from invalid Territory
+delete from sales-order
+where
+	( so-territory-code NOT LIKE "660"  )

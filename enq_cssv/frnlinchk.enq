@@ -1,0 +1,12 @@
+select
+	stock-code
+	whse-code
+	whse-bin-location
+	stock-group
+from
+	stock-warehouse-detail
+	stock-master
+where
+	stock-group = "P"
+
+format is lst

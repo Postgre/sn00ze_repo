@@ -1,0 +1,9 @@
+select
+	stock-code
+	stk-desc-line-3
+	stk-abc-class
+	stk-sort-analysis-code
+from
+	stock-master
+where stk-desc-line-3 <> spaces
+format is lst

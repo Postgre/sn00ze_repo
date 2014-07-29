@@ -1,0 +1,7 @@
+// Written by sue 12/7/94
+// this program will remove all trans with a date less than 1/7/94,
+// a full gl integrity should then be run in "report and correct"
+// the opening balances for 1/7/94 should then be journalled in.
+delete from gl-trans
+where
+	gl-trans-date < 1-7-94

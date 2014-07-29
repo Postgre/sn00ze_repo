@@ -1,0 +1,10 @@
+// cre-type Search for the "DISC"
+select
+	cre-accountcode
+	cr-shortname
+	cr-type
+from
+	cre-master
+where
+	( cr-type LIKE "DISC" ) 
+format is lst

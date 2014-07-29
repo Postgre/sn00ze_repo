@@ -1,0 +1,6 @@
+update stock-master
+set
+	stk-unit-desc = stk-pack-desc
+	stk-apn-number = stk-pack-desc
+where
+	stk-pack-desc <> spaces

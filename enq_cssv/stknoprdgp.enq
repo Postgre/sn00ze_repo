@@ -1,0 +1,14 @@
+select
+	stock-code
+	stk-description
+	stk-desc-line-2
+	stk-pack-desc
+	stock-group
+from
+	stock-master
+where
+	stock-group = " " 
+order by stock-code 
+format is lst
+title line 1 is "List of products that have no product group" 
+field order is stock-code stk-description stk-desc-line-2 stk-pack-desc

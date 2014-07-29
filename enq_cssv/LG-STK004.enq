@@ -1,0 +1,9 @@
+// change a Stock Control code
+update stock-take-variance
+set
+	stv-control-code = input alpha "Change Control Code to"
+where
+	( ( stv-control-code LIKE INPUT ALPHA 
+	prompt is "Previous Control Code"   ) AND
+	( whse-code LIKE INPUT ALPHA prompt is "Where Warehouse code is"   ) )
+

@@ -1,0 +1,12 @@
+select
+	accountcode
+	na-company
+	na-street
+	postcode
+from
+	name-and-address-master
+where
+	sub-string (accountcode 1 3) = '903' 
+	and
+	postcode != spaces
+format is lotus

@@ -1,0 +1,26 @@
+// customer list of sales greater then 10 years ago
+select
+	accountcode
+	na-name
+	na-company
+	na-street
+	na-suburb
+	postcode
+	na-phone
+	last-sale
+from
+	deb-master
+	name-and-address-master
+where
+	(last-sale <= 01-nov-1998 ) 
+format is lst
+report width is 180
+field title of accountcode is "Account"
+field title of na-name is "Name"
+field title of na-company is "Street"
+field title of na-street is "Suburb"
+field title of na-suburb is "Suburb 2"
+field title of postcode is "Postcode"
+field title of na-phone is "Phone"
+field title of last-sale is "Last Sale"
+display type of na-name is string

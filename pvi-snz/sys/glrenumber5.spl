@@ -1,0 +1,1599 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	glrenumber5.spl
+//  Program Desc:	Renumber GL batches prior to dataset merge to avoid dupes
+//  Requested By:
+//  Request Date:	03jun11
+//===========================================================================//
+//  Copyright (C) ProView IT Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	22jun11	rmd			error handler for bect update
+//	20jun11	rmd			v4 builds batch list from batch-entry-control-file
+//	18jun11	rmd			add standing-rev-journal gl-trans-notes
+//	08jun11	rmd			add production-work-order-trans-ar.trn-batch-ref
+//							(an archived version of bom-work-order-trans)
+//							service-contract-income.sci-batch-ref
+//							service-engineer-trans.se-batch-ref
+//							stock-work-file-movements.swfm-batch-ref
+//	07jun11 rmd			add batch-entry-control-file.batch-code
+//	03jun11	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+// needs to address the following:
+/*
+As gl-batch-ref field
+gl-trans
+	gl-batch-ref
+	gl-trans-no
+
+gl-trans-archive
+	gl-batch-ref
+	gl-trans-no
+
+gl-trans-notes
+	gl-accountcode
+	gl-batch-ref
+	gl-reference
+	gl-note-seq-no
+
+??
+share-register-batch
+	share-batch-ref
+
+
+standing-rev-journal.gl-batch-ref //not on snooze
+	srj-type
+	srj-accountcode
+	gl-reference
+	srj-posting-date
+
+As an alias
+batch-entry-control-file.batch-code
+cre-trans.cr-tr-batch-ref
+cre-trans-archive.cr-tr-batch-ref
+deb-trans.batch-ref
+deb-trans-archive.batch-ref
+purchase-order.po-batch-ref
+purchase-order-archive.po-batch-ref
+sales-order.so-batch-ref
+sales-order-archive.so-batch-ref
+stock-movements.stk-batch-ref
+stock-movements-archive.stk-batch-ref
+stock-take-control.stc-update-batch-ref
+asset-trans.batch-ref
+bankrec-bank-statement.bbs-batch-ref
+bankrec-cash-trans.bct-batch-ref
+batch-creditor-invoices.bci-batch-ref
+batch-gl-otherside.bci-batch-ref
+batch-holding-rechargeable.bci-batch-ref
+bom-work-order-trans.trn-batch-ref #| - relies on precache so needs heavy testing
+branch-comms-debtor-trans.batch-ref - not in either snooze or gunnebo
+cash-draw.cd-batch-ref
+cash-draw-item-trans.cd-batch-ref
+cash-draw-money-trans.cd-batch-ref
+cash-draw-trans.cd-batch-ref
+cash-drawer-control.cdc-batch-ref
+cheque-master.chq-batch-ref
+cre-tax-reporting.ctr-batch-ref - not in either snooze or gunnebo
+deal-trans.dt-trans-gl-batch-ref - not in either snooze or gunnebo
+gl-cash-transactions-archive.bct-trans-ref - not in either snooze or gunnebo
+holding-rechargeable-debits.rdn-batch-ref - not in either snooze or gunnebo
+job-cost-trans-notes.jctn-batch-ref - not in either snooze or gunnebo
+job-cost-transactions.jc-batch-ref - not in either snooze or gunnebo
+job-cost-transactions-archive.jc-batch-ref - not in either snooze or gunnebo
+job-trans-charge-breakdown.jc-batch-ref - not in either snooze or gunnebo
+payroll-timesheet-archive.ptd-post-to-job-batch-ref - not in either snooze or gunnebo
+pos-coupon-sales-order.pcso-batch-ref - not in either snooze or gunnebo
+production-batch-exclusions.pbe-stock-batch-ref - not in either snooze or gunnebo
+retail-event-trans.ret-batch-ref //not in gunn
+sales-history-detail-trans.shd-batch-ref - not in either snooze or gunnebo
+share-register-batch.share-batch-ref - not in either snooze or gunnebo
+share-register-trans.share-batch-ref - not in either snooze or gunnebo
+share-register-trans-archive.share-batch-ref - not in either snooze or gunnebo
+stock-recost-work-file.srwf-batch-ref - not in either snooze or gunnebo
+stock-recost-work-file.srwf-stk-batch-ref - not in either snooze or gunnebo
+stock-work-file-lot.swfm-batch-ref - not in either snooze or gunnebo
+stock-work-file-serial.swfm-batch-ref - not in either snooze or gunnebo
+stock-work-file-tally.swfm-batch-ref - not in either snooze or gunnebo
+tax-1099-trans.t1t-batch-ref - not in either snooze or gunnebo
+trust-fund.tf-batch-ref - not in either snooze or gunnebo
+08jun11
+production-work-order-trans-ar.trn-batch-ref //not in snooze, have added precache for gunn
+service-contract-income.sci-batch-ref // not in snooze
+service-engineer-trans.se-batch-ref // not in snooze
+stock-work-file-movements.swfm-batch-ref // not in snooze, gunn may need precache, no it has a decent index
+swfm-batch-ref swfm-document-type swfm-document-number swfm-document-suffix swfm-document-seq
+
+To Do
+
+
+
+
+*/
+
+mode md-tag
+	prompt "Tag"
+	currency
+
+mode md-tag-all
+	prompt "Tag All"
+
+mode md-update-objects
+	prompt "Update Objects"
+
+mode md-review-tgs
+	prompt "Review TGS"
+
+mode md-review-tgp
+	prompt "Review TGP"
+
+object tmp-gl-batch
+	type memory
+	record
+		tmp-old-gl-batch-ref    like gl-batch-ref
+		tmp-new-gl-batch-ref	like gl-batch-ref
+		tmp-archive-flag		pic x
+		tmp-warning				pic x(30)
+		tmp-tag					pic x
+		tmp-exists-in			pic x(30)
+	endrecord
+	key is tmp-old-gl-batch-ref
+
+
+object tmp-gl-so
+	type isam
+	file "tmp-gl-so"
+	record
+		tgs-batch-ref			like gl-batch-ref
+		tgs-so-order-no         like so-order-no
+		tgs-so-bo-suffix		like so-bo-suffix
+		tgs-so-invoice-no		like so-invoice-no
+		tgs-arc-flag			pic x
+	endrecord
+	key is tgs-batch-ref
+
+object tmp-gl-po
+	type isam
+	file "tmp-gl-po"
+	record
+		tgp-batch-ref			like gl-batch-ref
+		tgp-po-order-no         like po-order-no
+		tgp-po-backorder-flag	like po-backorder-flag
+		tgp-arc-flag			pic x
+	endrecord
+	key is tgp-batch-ref
+
+object tmp-gl-wo
+	type isam
+	file "tmp-gl-wo"
+	record
+		tgw-batch-ref			like gl-batch-ref
+		tgw-work-order         	like work-order
+		tgw-trn-code			like trn-code
+		tgw-wo-seq-no			like wo-seq-no
+		tgw-arc-flag			pic x //08jun11
+	endrecord
+	key is tgw-batch-ref
+	//work-order trn-code wo-seq-no
+
+field
+	ws-sub-char		pic x //substitution character
+	ws-date-col		type numeric
+
+procedure main
+	set ws-date-col = 80
+	do get-user-input entry-once
+endprocedure // main ----------------------------------------------------------
+
+screen get-user-input
+local field
+	lf-rebuild-cache		pic x
+window @1,1 to @8,40 title "GL Batch Ref Conversion"
+box @1,1 to @7,40 title SPACES
+	accept ws-sub-char @2,25 title "Subsitition Character:"
+		uppercase
+		disallow "A" "E" "I" "O" "U" "~" "`" ";" ":" "'" "!" "@" "#" "$" "%" "^" "&" "*" "(" ")" "_" "+" "-" "=" "," "." "<" ">" "?" "/" "{" "}" "[" "]" "\" "|"
+	accept lf-rebuild-cache @3,25 title "Rebuild Cache?:"
+		uppercase
+		allowed "Y" "N"
+		default "N"
+confirm
+confirmed
+	open tmp-gl-batch truncate temporary
+	if lf-rebuild-cache = "Y"
+		do precache-tmp-tables
+	endif
+	if ws-sub-char != SPACES //do not want to build a set of changes, show datagrid for manual entry
+		do build-dataset
+	endif
+	do display-in-grid
+endconfirm
+endscreen // get-user-input ---------------------------------------------------
+
+procedure precache-tmp-tables
+local field
+	lf-count			type numeric
+	display "precache sales-order" @4,3 background
+	open tmp-gl-so truncate permanent
+	extract sales-order
+	detail
+		if so-batch-ref != SPACES
+			set tgs-batch-ref			= so-batch-ref
+			set tgs-so-order-no         = so-order-no
+			set tgs-so-bo-suffix		= so-bo-suffix
+			set tgs-so-invoice-no		= so-invoice-no
+			set tgs-arc-flag			= SPACES
+			insert tmp-gl-so
+			set lf-count 				+= 1
+			display lf-count @4,31 pic zzzzzzz9 background
+		endif
+	endextract
+	set lf-count = 0
+	display "precache sales-order-archive" @4,3 background
+	extract sales-order-archive
+	detail
+		//if lf-count > 100
+		//	break
+		//endif
+		if so-batch-ref != SPACES
+			set tgs-batch-ref			= so-batch-ref
+			set tgs-so-order-no         = so-order-no
+			set tgs-so-bo-suffix		= so-bo-suffix
+			set tgs-so-invoice-no		= so-invoice-no
+			set tgs-arc-flag			= "A"
+			insert tmp-gl-so
+			set lf-count 				+= 1
+			display lf-count @4,31 pic zzzzzzz9 background
+		endif
+	endextract
+	//
+	set lf-count = 0
+	open tmp-gl-po truncate permanent
+	display "precache purchase-order" @4,3 background
+	extract purchase-order
+	detail
+		//if lf-count > 100
+		//	break
+		//endif
+		if po-batch-ref != SPACES
+			set tgp-batch-ref			= po-batch-ref
+			set tgp-po-order-no         = po-order-no
+			set tgp-po-backorder-flag	= po-backorder-flag
+			set tgp-arc-flag			= SPACES
+			insert tmp-gl-po
+			set lf-count 				+= 1
+			display lf-count @4,31 pic zzzzzzz9 background
+		endif
+	endextract
+	display "precache purchase-order-archive" @4,3 background
+	set lf-count = 0
+	extract purchase-order-archive
+	detail
+		if po-batch-ref != SPACES
+			set tgp-batch-ref			= po-batch-ref
+			set tgp-po-order-no         = po-order-no
+			set tgp-po-backorder-flag	= po-backorder-flag
+			set tgp-arc-flag			= "A"
+			insert tmp-gl-po
+			set lf-count 				+= 1
+			display lf-count @4,31 pic zzzzzzz9 background
+		endif
+	endextract
+	set lf-count = 0
+	open tmp-gl-wo truncate permanent
+	display "precache bom-work-order-trans" @4,3 background
+	extract bom-work-order-trans
+	detail
+		if trn-batch-ref != SPACES
+			set tgw-batch-ref			= trn-batch-ref
+			set tgw-work-order         	= work-order
+			set tgw-trn-code			= trn-code
+			set tgw-wo-seq-no			= wo-seq-no
+			set tgw-arc-flag			= SPACES
+			insert tmp-gl-wo
+			set lf-count 				+= 1
+			display lf-count @4,31 pic zzzzzzz9 background
+		endif
+	endextract
+	//08jun11
+	display "precache bom-work-order-trans" @4,3 background
+	set lf-count = 0
+	get production-work-order-trans-ar first
+	on error
+	else
+		extract production-work-order-trans-ar
+		detail
+			if trn-batch-ref != SPACES
+				set tgw-batch-ref			= trn-batch-ref
+				set tgw-work-order         	= work-order
+				set tgw-trn-code			= trn-code
+				set tgw-wo-seq-no			= wo-seq-no
+				set tgw-arc-flag			= "A"
+				insert tmp-gl-wo
+				set lf-count 				+= 1
+				display lf-count @4,31 pic zzzzzzz9 background
+			endif
+		endextract
+	endon
+endprocedure // precache-tmp-tables -------------------------------------------
+
+procedure build-dataset
+local field
+	lf-count			type numeric
+	//
+	set lf-count = 0
+	display "batch-entry-control-file" @6,5 background
+	extract batch-entry-control-file
+		on index batch-code
+		get tmp-gl-batch
+			on index tmp-old-gl-batch-ref
+			key is batch-code
+		on error
+			set tmp-old-gl-batch-ref    = batch-code
+			if substring(batch-code,1,1) = "0"
+				set tmp-new-gl-batch-ref	= strconcat(ws-sub-char,substring(batch-code,2,strlen(batch-code)))
+				set tmp-warning				= SPACES
+			elseif strlen(batch-code) < 6
+				set tmp-new-gl-batch-ref	= strconcat(ws-sub-char,batch-code)
+				set tmp-warning				= SPACES
+			else
+				set tmp-new-gl-batch-ref	= batch-code
+				set tmp-warning				= "Max length, cannot append"
+			endif
+			set tmp-archive-flag		= SPACES
+			set lf-count				+= 1
+			if batch-code != SPACES
+				insert tmp-gl-batch
+			endif
+			display tmp-old-gl-batch-ref @4,25 background
+			display tmp-new-gl-batch-ref @5,25 background
+			display lf-count @6,25 pic zzzzzz9 background
+		endon
+	endextract
+endprocedure // build-dataset -------------------------------------------------
+
+procedure build-dataset-v3
+local field
+	lf-count			type numeric
+	//
+	set lf-count = 0
+	display "gl-trans" @6,5 background
+	extract gl-trans
+		on index gl-batch-ref gl-trans-no
+	after gl-batch-ref
+		//if lf-count > 5
+		//	break
+		//endif
+		get tmp-gl-batch
+			on index tmp-old-gl-batch-ref
+			key is gl-batch-ref
+		on error
+			set tmp-old-gl-batch-ref    = gl-batch-ref
+			if substring(gl-batch-ref,1,1) = "0"
+				set tmp-new-gl-batch-ref	= strconcat(ws-sub-char,substring(gl-batch-ref,2,strlen(gl-batch-ref)))
+				set tmp-warning				= SPACES
+			elseif strlen(gl-batch-ref) < 6
+				set tmp-new-gl-batch-ref	= strconcat(ws-sub-char,gl-batch-ref)
+				set tmp-warning				= SPACES
+			else
+				set tmp-new-gl-batch-ref	= gl-batch-ref
+				set tmp-warning				= "Max length, cannot append"
+			endif
+			set tmp-archive-flag		= SPACES
+			set lf-count				+= 1
+			if gl-batch-ref != SPACES
+				insert tmp-gl-batch
+			endif
+			display tmp-old-gl-batch-ref @4,25 background
+			display tmp-new-gl-batch-ref @5,25 background
+			display lf-count @6,25 pic zzzz9 background
+		endon
+	endextract
+    //
+    //set lf-count = 0
+    display "gl-trans-archive" @6,5 background
+	extract gl-trans-archive
+		on index gl-batch-ref gl-trans-no
+	after gl-batch-ref
+		get tmp-gl-batch
+			on index tmp-old-gl-batch-ref
+			key is gl-batch-ref
+		on error
+			set tmp-old-gl-batch-ref    = gl-batch-ref
+			if substring(gl-batch-ref,1,1) = "0"
+				set tmp-new-gl-batch-ref	= strconcat(ws-sub-char,substring(gl-batch-ref,2,strlen(gl-batch-ref)))
+				set tmp-warning				= SPACES
+			elseif strlen(gl-batch-ref) < 6
+				set tmp-new-gl-batch-ref	= strconcat(ws-sub-char,gl-batch-ref)
+				set tmp-warning				= SPACES
+			else
+				set tmp-new-gl-batch-ref	= gl-batch-ref
+				set tmp-warning				= "Max length, cannot append"
+			endif
+			set tmp-archive-flag		= "A"
+			set lf-count += 1
+			insert tmp-gl-batch
+			display tmp-old-gl-batch-ref @4,25 background
+			display tmp-new-gl-batch-ref @5,25 background
+			display lf-count @6,25 pic zzzz9 background
+		endon
+	endextract
+endprocedure // build-dataset -------------------------------------------------
+
+screen display-in-grid
+	window @1,1 to @24,90
+		title concat("GL Batch Conversion")
+		primary tmp-gl-batch
+		datagrid occurs 19
+	allowed entry correct remove md-tag md-tag-all search md-update-objects md-review-tgs md-review-tgp//md-mode
+	review-from-start
+detail
+	accept 	tmp-old-gl-batch-ref	@1,010 title "Old Ref"	pic x(15)
+	accept  tmp-new-gl-batch-ref    @1,020 title "New Ref"  pic x(15)
+	display tmp-archive-flag	    @1,030 title "Arc"  	pic x(12)
+	display tmp-warning			    @1,040 title "Warning"  pic x(20)
+	display tmp-tag					@1,050 title "Tag"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-tag
+			if tmp-tag = SPACES
+				set tmp-tag = "*"
+			else
+				set tmp-tag = SPACES
+			endif
+			update tmp-gl-batch
+			refresh review
+		case md-tag-all
+			extract tmp-gl-batch
+			detail
+				set tmp-tag = "*"
+				update tmp-gl-batch
+			endextract
+			refresh review
+		case md-update-objects
+			do update-objects
+		case md-review-tgs
+			do review-tgs
+		case md-review-tgp
+			do review-tgp
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+procedure update-objects
+	report "gl batch ref conv"
+		spool-only
+	extract tmp-gl-batch
+	detail
+		if tmp-tag = SPACES
+			continue
+		endif
+		display tmp-old-gl-batch-ref	background @20,50 title "Old Ref:"
+		display tmp-new-gl-batch-ref    background @21,50 title "New Ref:"
+		display "gl-trans"				background @22,50 title "Object:"
+		do cnv-gl-trans //07jun11 added batch-entry-control-file.batch-code
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "gl-trans-archive"		background @22,50 title "Object:"
+		do cnv-gl-trans-archive
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "stock-movements"		background @22,50 title "Object:"
+		do cnv-stock-movements
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "deb-trans"		background @22,50 title "Object:"
+		do cnv-deb-trans
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "cre-trans"		background @22,50 title "Object:"
+		do cnv-cre-trans
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "purchase-order" background @22,50 title "Object:"
+		do cnv-purchase-order
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "sales-order"		background @22,50 title "Object:"
+		do cnv-sales-order
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "stock-take-control" background @22,50 title "Object:"
+		do cnv-stock-take-control
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "asset-trans" background @22,50 title "Object:"
+		do cnv-asset-trans
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "bankrec-bank-statement" background @22,50 title "Object:"
+		do cnv-bankrec-bank-statement
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "bankrec-cash-trans" background @22,50 title "Object:"
+		do cnv-bankrec-cash-trans
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "batch-creditor-invoices" background @22,50 title "Object:"
+		do cnv-batch-creditor-invoices
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "batch-gl-otherside" background @22,50 title "Object:"
+		do cnv-batch-gl-otherside
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "batch-holding-rechargeable" background @22,50 title "Object:"
+		do cnv-batch-holding-rechargeable
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "bom-work-order-trans" background @22,50 title "Object:"
+		do cnv-bom-work-order-trans
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "cash-draw" background @22,50 title "Object:"
+		do cnv-cash-draw
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "cash-draw-item-trans" background @22,50 title "Object:"
+		do cnv-cash-draw-item-trans
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "cash-draw-money-trans" background @22,50 title "Object:"
+		do cnv-cash-draw-money-trans
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "cash-draw-trans" background @22,50 title "Object:"
+		do cnv-cash-draw-trans
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "cash-drawer-control" background @22,50 title "Object:"
+		do cnv-cash-drawer-control
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "cheque-master" background @22,50 title "Object:"
+		do cnv-cheque-master
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "retail-event-trans" background @22,50 title "Object:"
+		do cnv-retail-event-trans
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "service-contract-income" background @22,50 title "Object:"
+		do cnv-service-contract-income
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "service-engineer-trans" background @22,50 title "Object:"
+		do cnv-service-engineer-trans
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "stock-work-file-movements" background @22,50 title "Object:"
+		do cnv-stock-work-file-movements
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "standing-rev-journal" background @22,50 title "Object:" //18jun11
+		do cnv-standing-rev-journal
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+		display "gl-trans-notes" background @22,50 title "Object:" //18jun11
+		do cnv-gl-trans-notes
+			parameters
+				tmp-old-gl-batch-ref
+				tmp-new-gl-batch-ref
+	endextract
+	message "Report Finished: " spool-file-name()
+	report finished
+endprocedure // update-objects ------------------------------------------------
+
+
+procedure cnv-standing-rev-journal
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//
+	extract standing-rev-journal
+	detail
+		if stc-update-batch-ref = lp-old-gl-batch-ref
+			print
+				"standing-rev-journal ***"
+				gl-batch-ref
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			set gl-batch-ref = lp-new-gl-batch-ref
+			update standing-rev-journal
+		endif
+	endextract
+endprocedure // cnv-standing-rev-journal --------------------------------------
+
+procedure cnv-gl-trans-notes
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//
+	extract standing-rev-journal
+	detail
+		if stc-update-batch-ref = lp-old-gl-batch-ref
+			print
+				"gl-trans-notes *********"
+				gl-batch-ref
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			set gl-batch-ref = lp-new-gl-batch-ref
+			update gl-trans-notes
+		endif
+	endextract
+endprocedure // cnv-standing-rev-journal --------------------------------------
+
+procedure cnv-gl-trans //07jun11 added batch-entry-control-file.batch-code
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//gl-trans
+	get batch-entry-control-file //20jun11
+		on index batch-code
+		key is lp-old-gl-batch-ref
+	on error
+		print
+			"batch-entry-control-file "
+			"can't find"
+			lp-old-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+	else
+		print
+			"batch-entry-control-file "
+			batch-code
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		set batch-code = lp-new-gl-batch-ref
+		update batch-entry-control-file
+		on error //22jun11
+			print
+			"batch-entry-control-file "
+			lp-old-gl-batch-ref
+			">"
+			lp-new-gl-batch-ref
+			"upd error"
+			today()	in col ws-date-col
+			tod()
+		endon
+	endon
+	extract gl-trans
+		on index gl-batch-ref gl-trans-no
+		key is lp-old-gl-batch-ref 0
+		next same gl-batch-ref
+	detail
+		print
+			"gl-trans ****************"
+			gl-batch-ref
+			gl-trans-no
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		//save gl-trans
+		push gl-trans
+		set gl-batch-ref = lp-new-gl-batch-ref
+		update gl-trans
+		//restore gl-trans
+		pop gl-trans
+	endextract
+endprocedure // cnv-gl-trans --------------------------------------------------
+
+procedure cnv-gl-trans-archive
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	extract gl-trans-archive
+		on index gl-batch-ref gl-trans-no
+		key is lp-old-gl-batch-ref 0
+		next same gl-batch-ref
+	detail
+		print
+			"gl-trans-archive ********"
+			gl-batch-ref
+			gl-trans-no
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push gl-trans-archive
+		set gl-batch-ref = lp-new-gl-batch-ref
+		update gl-trans-archive
+		pop gl-trans-archive
+	endextract
+endprocedure // cnv-gl-trans-archive ------------------------------------------
+
+procedure cnv-stock-movements
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//gl-trans
+	extract stock-movements
+		on index stk-batch-ref stk-batch-trans-no
+		key is lp-old-gl-batch-ref 0
+		next same stk-batch-ref
+	detail
+		print
+			"stock-movements *********"
+			stk-batch-ref
+			stk-batch-trans-no
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push stock-movements
+		set stk-batch-ref = lp-new-gl-batch-ref
+		update stock-movements
+		pop stock-movements
+	endextract
+	extract stock-movements-archive
+		on index stk-batch-ref stk-batch-trans-no
+		key is lp-old-gl-batch-ref 0
+		next same stk-batch-ref
+	detail
+		print
+			"stock-movements *********"
+			stk-batch-ref
+			stk-batch-trans-no
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push stock-movements-archive
+		set stk-batch-ref = lp-new-gl-batch-ref
+		update stock-movements-archive
+		pop stock-movements-archive
+	endextract
+endprocedure // cnv-stock-movements -------------------------------------------
+
+procedure cnv-deb-trans
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//gl-trans
+	extract deb-trans
+		on index batch-ref dr-tr-trans-no
+		key is lp-old-gl-batch-ref 0
+		next same batch-ref
+	detail
+		print
+			"deb-trans ***************"
+			batch-ref
+			dr-tr-trans-no
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push deb-trans
+		set batch-ref = lp-new-gl-batch-ref
+		update deb-trans
+		pop deb-trans
+	endextract
+	extract deb-trans-archive
+		on index batch-ref dr-tr-trans-no
+		key is lp-old-gl-batch-ref 0
+		next same batch-ref
+	detail
+		print
+			"deb-trans-archive *******"
+			batch-ref
+			dr-tr-trans-no
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push deb-trans-archive
+		set batch-ref = lp-new-gl-batch-ref
+		update deb-trans-archive
+		pop deb-trans-archive
+	endextract
+endprocedure // cnv-deb-trans -------------------------------------------------
+
+procedure cnv-cre-trans
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//gl-trans
+	extract cre-trans
+		on index cr-tr-batch-ref cr-tr-trans-no
+		key is lp-old-gl-batch-ref 0
+		next same cr-tr-batch-ref
+	detail
+		print
+			"cre-trans ***************"
+			cr-tr-batch-ref
+			cr-tr-trans-no
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push cre-trans
+		set cr-tr-batch-ref = lp-new-gl-batch-ref
+		update cre-trans
+		pop cre-trans
+	endextract
+	extract cre-trans-archive
+		on index cr-tr-batch-ref cr-tr-trans-no
+		key is lp-old-gl-batch-ref 0
+		next same cr-tr-batch-ref
+	detail
+		print
+			"cre-trans-archive *******"
+			cr-tr-batch-ref
+			cr-tr-trans-no
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push cre-trans-archive
+		set cr-tr-batch-ref = lp-new-gl-batch-ref
+		update cre-trans-archive
+		pop cre-trans-archive
+	endextract
+endprocedure // cnv-cre-trans -------------------------------------------------
+
+procedure cnv-sales-order
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//gl-trans
+	extract tmp-gl-so
+		on index tgs-batch-ref
+		key is lp-old-gl-batch-ref
+		next same tgs-batch-ref
+	detail
+		print
+			"sales-order *************"
+			tgs-batch-ref
+			tgs-arc-flag
+			tgs-so-order-no
+			tgs-so-bo-suffix
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		if tgs-arc-flag = SPACES
+			get sales-order
+				on index so-order-no so-bo-suffix
+				key is tgs-so-order-no tgs-so-bo-suffix
+			on error
+				print
+					"ERROR: no sales-order"
+			else
+				if so-batch-ref = lp-old-gl-batch-ref
+					set so-batch-ref = lp-new-gl-batch-ref
+					update sales-order
+				else
+					print
+						"ERROR: so-batch-ref != lp-old-gl-batch-ref --- not updated"
+				endif
+			endon
+		elseif tgs-arc-flag = "A"
+			extract sales-order-archive
+				on index so-invoice-no
+				key is tgs-so-invoice-no
+				next same so-invoice-no
+			detail
+				if so-order-no = tgs-so-order-no
+				and so-bo-suffix = tgs-so-bo-suffix
+					if so-batch-ref = lp-old-gl-batch-ref
+						set so-batch-ref = lp-new-gl-batch-ref
+						update sales-order-archive
+					else
+						print
+							"ERROR: so-batch-ref != lp-old-gl-batch-ref --- not updated"
+					endif
+				endif
+			endextract
+		endif
+	endextract
+endprocedure // cnv-sales-order -----------------------------------------------
+
+procedure cnv-purchase-order
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//gl-trans
+	extract tmp-gl-po
+		on index tgp-batch-ref
+		key is lp-old-gl-batch-ref
+		next same tgp-batch-ref
+	detail
+		print
+			"purchase-order **********"
+			tgp-batch-ref
+			tgp-arc-flag
+			tgp-po-order-no
+			tgp-po-backorder-flag
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		if tgp-arc-flag = SPACES
+			get purchase-order
+				on index po-order-no po-backorder-flag
+				key is tgp-po-order-no tgp-po-backorder-flag
+			on error
+				print
+					"ERROR: no purchase-order"
+			else
+				if po-batch-ref = lp-old-gl-batch-ref
+					set po-batch-ref = lp-new-gl-batch-ref
+					update purchase-order
+				else
+					print
+						"ERROR: po-batch-ref != lp-old-gl-batch-ref --- not updated"
+				endif
+			endon
+		elseif tgs-arc-flag = "A"
+			get purchase-order-archive
+				on index po-order-no po-backorder-flag
+				key is tgp-po-order-no tgp-po-backorder-flag
+			on error
+				print
+					"ERROR: no purchase-order"
+			else
+				if po-batch-ref = lp-old-gl-batch-ref
+					set po-batch-ref = lp-new-gl-batch-ref
+					update purchase-order-archive
+				else
+					print
+						"ERROR: po-batch-ref != lp-old-gl-batch-ref --- not updated"
+				endif
+			endon
+		endif
+	endextract
+endprocedure // cnv-purchase-order --------------------------------------------
+
+
+procedure cnv-stock-take-control
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//
+	extract stock-take-control
+	detail
+		if stc-update-batch-ref = lp-old-gl-batch-ref
+			print
+				"stock-take-control ******"
+				stc-update-batch-ref
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			set stc-update-batch-ref = lp-new-gl-batch-ref
+			update stock-take-control
+		endif
+	endextract
+endprocedure // cnv-stock-take-control ----------------------------------------
+
+screen review-tgs
+	window @1,1 to @24,90
+		title concat("Review TGS")
+		primary tmp-gl-so
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+detail
+	display tgs-batch-ref			@1,010 title "Batch Ref"
+	display tgs-so-order-no         @1,020 title "SO"
+	display tgs-so-bo-suffix		@1,030 title "BO"
+	display tgs-so-invoice-no		@1,040 title "Inv"
+	display tgs-arc-flag            @1,050 title "Arc"
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // review-tgs -------------------------------------------------------
+
+screen review-tgp
+	window @1,1 to @24,90
+		title concat("Review TGP")
+		primary tmp-gl-po
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+detail
+	display tgp-batch-ref			@1,010 title "Batch Ref"
+	display tgp-po-order-no         @1,020 title "PO"
+	display tgp-po-backorder-flag	@1,030 title "BO"
+	display tgp-arc-flag            @1,050 title "Arc"
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // review-tgp -------------------------------------------------------
+
+
+//procedure cnv-stock-take-control
+//parameters
+//	lp-old-gl-batch-ref     like gl-batch-ref
+//	lp-new-gl-batch-ref		like gl-batch-ref
+//	//
+//	extract stock-take-control
+//	detail
+//		if stc-update-batch-ref = lp-old-gl-batch-ref
+//			print
+//				"stock-take-control ******"
+//				stc-update-batch-ref
+//				">"
+//				lp-new-gl-batch-ref
+//				today()	in col ws-date-col
+//				tod()
+//			set stc-update-batch-ref = lp-new-gl-batch-ref
+//			update stock-take-control
+//		endif
+//	endextract
+//endprocedure // cnv-stock-take-control ----------------------------------------
+
+
+//asset-trans.batch-ref
+procedure cnv-asset-trans
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//
+	get asset-trans first
+	on error
+		exit
+	endon
+	extract asset-trans
+	detail
+		if batch-ref = lp-old-gl-batch-ref
+			print
+				"asset-trans *************"
+				batch-ref
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			set batch-ref = lp-new-gl-batch-ref
+			update asset-trans
+		endif
+	endextract
+endprocedure // cnv-asset-trans -----------------------------------------------
+
+//bankrec-bank-statement.bbs-batch-ref
+procedure cnv-bankrec-bank-statement
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//
+	get bankrec-bank-statement first
+	on error
+		exit
+	endon
+	extract bankrec-bank-statement
+	detail
+		if bbs-batch-ref = lp-old-gl-batch-ref
+			print
+				"bankrec-bank-statement **"
+				bbs-batch-ref
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			set bbs-batch-ref = lp-new-gl-batch-ref
+			update bankrec-bank-statement
+		endif
+	endextract
+endprocedure // cnv-bankrec-bank-statement ------------------------------------
+
+
+//bankrec-cash-trans.bct-batch-ref
+procedure cnv-bankrec-cash-trans
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//
+	get bankrec-cash-trans first
+	on error
+		exit
+	endon
+	extract bankrec-cash-trans
+	detail
+		if bct-batch-ref = lp-old-gl-batch-ref
+			print
+				"bankrec-cash-trans ******"
+				bct-batch-ref
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			set bct-batch-ref = lp-new-gl-batch-ref
+			update bankrec-cash-trans
+		endif
+	endextract
+endprocedure // cnv-bankrec-cash-trans ----------------------------------------
+
+//batch-creditor-invoices.bci-batch-ref
+procedure cnv-batch-creditor-invoices
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	//
+	get batch-creditor-invoices first
+	on error
+		exit
+	endon
+	extract batch-creditor-invoices
+	detail
+		if bci-batch-ref = lp-old-gl-batch-ref
+			print
+				"bankrec-cash-trans ******"
+				bci-batch-ref
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			set bci-batch-ref = lp-new-gl-batch-ref
+			update batch-creditor-invoices
+		endif
+	endextract
+endprocedure // cnv-batch-creditor-invoices -----------------------------------
+
+
+//batch-gl-otherside.bci-batch-ref
+procedure cnv-batch-gl-otherside
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get batch-gl-otherside first
+	on error
+		exit
+	endon
+	extract batch-gl-otherside
+		on index bci-batch-ref bci-seq-no
+		key is lp-old-gl-batch-ref 0
+		next same bci-batch-ref
+	detail
+		print
+			"batch-gl-otherside ******"
+			bci-batch-ref
+			bci-seq-no
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push batch-gl-otherside
+		set bci-batch-ref = lp-new-gl-batch-ref
+		update batch-gl-otherside
+		pop batch-gl-otherside
+	endextract
+endprocedure // cnv-batch-gl-otherside ----------------------------------------
+
+//batch-holding-rechargeable.bci-batch-ref
+procedure cnv-batch-holding-rechargeable
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get batch-holding-rechargeable first
+	on error
+		exit
+	endon
+	extract batch-holding-rechargeable
+		on index bci-batch-ref bci-seq-no bhr-deb-accountcode
+		key is lp-old-gl-batch-ref 0 SPACES
+		next same bci-batch-ref
+	detail
+		print
+			"batch-holding-rechargeabl"
+			bci-batch-ref
+			bci-seq-no
+			bhr-deb-accountcode
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push batch-holding-rechargeable
+		set bci-batch-ref = lp-new-gl-batch-ref
+		update batch-holding-rechargeable
+		pop batch-holding-rechargeable
+	endextract
+endprocedure // cnv-batch-holding-rechargeable --------------------------------
+
+//bom-work-order-trans.trn-batch-ref - 250,000 rex for AU - no index for batch
+//unique work-order trn-code wo-seq-no
+procedure cnv-bom-work-order-trans
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	extract tmp-gl-wo
+		on index tgw-batch-ref
+		key is lp-old-gl-batch-ref
+		next same tgw-batch-ref
+	detail
+		if tgw-arc-flag = SPACES
+			print
+				"bom-work-order-trans ****"
+				tgw-batch-ref
+				tgw-work-order
+				tgw-trn-code
+				tgw-wo-seq-no
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			get bom-work-order-trans
+				on index work-order trn-code wo-seq-no
+				key is tgw-work-order tgw-trn-code tgw-wo-seq-no
+			on error
+				print
+					"ERROR: no work-order"
+			else
+				if trn-batch-ref = lp-old-gl-batch-ref
+					set trn-batch-ref = lp-new-gl-batch-ref
+					update bom-work-order-trans
+				else
+					print
+						"ERROR: trn-batch-ref != lp-old-gl-batch-ref --- not updated"
+				endif
+			endon
+		elseif tgw-arc-flag = "A"
+			print
+				"production-work-order-tran"
+				tgw-batch-ref
+				tgw-work-order
+				tgw-trn-code
+				tgw-wo-seq-no
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			get production-work-order-trans-ar
+				on index work-order trn-code wo-seq-no
+				key is tgw-work-order tgw-trn-code tgw-wo-seq-no
+			on error
+				print
+					"ERROR: no work-order (arc)"
+			else
+				if trn-batch-ref = lp-old-gl-batch-ref
+					set trn-batch-ref = lp-new-gl-batch-ref
+					update production-work-order-trans-ar
+				else
+					print
+						"ERROR: trn-batch-ref != lp-old-gl-batch-ref --- not updated"
+				endif
+			endon
+		endif
+	endextract
+endprocedure // cnv-bom-work-order-trans --------------------------------------
+
+//branch-comms-debtor-trans.batch-ref - not in either snooze or gunnebo
+
+//cash-draw.cd-batch-ref
+procedure cnv-cash-draw
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get cash-draw first
+	on error
+		exit
+	endon
+	extract cash-draw
+	detail
+		if cd-batch-ref = lp-old-gl-batch-ref
+			print
+				"cash-draw ***************"
+				cd-batch-ref
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			set cd-batch-ref = lp-new-gl-batch-ref
+			update cash-draw
+		endif
+	endextract
+endprocedure // cnv-cash-draw -------------------------------------------------
+
+//cash-draw-item-trans.cd-batch-ref
+//	cd-batch-ref cd-store-id cd-terminal cd-trans-seq-no cd-item-seq-no
+procedure cnv-cash-draw-item-trans
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get cash-draw-item-trans first
+	on error
+		exit
+	endon
+	extract cash-draw-item-trans
+		on index cd-batch-ref cd-store-id cd-terminal cd-trans-seq-no cd-item-seq-no
+		key is lp-old-gl-batch-ref SPACES 0 0 0
+		next same cd-batch-ref
+	detail
+		print
+			"cash-draw-item-trans ****"
+			cd-batch-ref
+			cd-store-id
+			cd-terminal
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push cash-draw-item-trans
+		set cd-batch-ref = lp-new-gl-batch-ref
+		update cash-draw-item-trans
+		pop cash-draw-item-trans
+	endextract
+endprocedure // conv-cash-draw-item-trans -------------------------------------
+//cnv-batch-holding-rechargeable --------------------------------
+
+//cash-draw-money-trans.cd-batch-ref
+// cd-batch-ref cd-store-id cd-terminal cd-trans-seq-no cd-money-seq-no
+procedure cnv-cash-draw-money-trans
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get cash-draw-money-trans first
+	on error
+		exit
+	endon
+	extract cash-draw-money-trans
+		on index cd-batch-ref cd-store-id cd-terminal cd-trans-seq-no cd-money-seq-no
+		key is lp-old-gl-batch-ref SPACES 0 0 0
+		next same cd-batch-ref
+	detail
+		print
+			"cash-draw-money-trans ***"
+			cd-batch-ref
+			cd-store-id
+			cd-terminal
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push cash-draw-money-trans
+		set cd-batch-ref = lp-new-gl-batch-ref
+		update cash-draw-money-trans
+		pop cash-draw-money-trans
+	endextract
+endprocedure // cnv-cash-draw-money-trans -------------------------------------
+
+//cash-draw-trans.cd-batch-ref
+//	cd-batch-ref
+//	cd-trans-seq-no
+procedure cnv-cash-draw-trans
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get cash-draw-trans first
+	on error
+		exit
+	endon
+	extract cash-draw-trans
+		on index cd-batch-ref cd-trans-seq-no
+		key is lp-old-gl-batch-ref 0
+		next same cd-batch-ref
+	detail
+		print
+			"cash-draw-trans *********"
+			cd-batch-ref
+			cd-trans-seq-no
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push cash-draw-trans
+		set cd-batch-ref = lp-new-gl-batch-ref
+		update cash-draw-trans
+		pop cash-draw-trans
+	endextract
+endprocedure // cnv-cash-draw-trans -------------------------------------------
+
+
+//cash-drawer-control.cdc-batch-ref
+procedure cnv-cash-drawer-control
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get cash-drawer-control first
+	on error
+		exit
+	endon
+	extract cash-drawer-control
+		on index cdc-batch-ref
+		key is lp-old-gl-batch-ref
+		next same cdc-batch-ref
+	detail
+		print
+			"cash-drawer-control *****"
+			cdc-batch-ref
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push cash-drawer-control
+		set cdc-batch-ref = lp-new-gl-batch-ref
+		update cash-drawer-control
+		pop cash-drawer-control
+	endextract
+endprocedure // cnv-cash-drawer-control ---------------------------------------
+
+//cheque-master.chq-batch-ref
+procedure cnv-cheque-master
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get cheque-master first
+	on error
+		exit
+	endon
+	extract cheque-master
+	detail
+		if chq-batch-ref = lp-old-gl-batch-ref
+			print
+				"cheque-master **********"
+				chq-batch-ref
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			set chq-batch-ref = lp-new-gl-batch-ref
+			update cheque-master
+		endif
+	endextract
+endprocedure // cnv-cheque-master ---------------------------------------------
+
+//retail-event-trans.ret-batch-ref
+procedure cnv-retail-event-trans
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get retail-event-trans first
+	on error
+		exit
+	endon
+	get retail-event-trans first
+	on error
+		exit
+	endon
+	extract retail-event-trans
+	detail
+		if ret-batch-ref = lp-old-gl-batch-ref
+			print
+				"retail-event-trans *****"
+				ret-batch-ref
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			set ret-batch-ref = lp-new-gl-batch-ref
+			update retail-event-trans
+		endif
+	endextract
+endprocedure // cnv-retail-event-trans ----------------------------------------
+
+
+//service-contract-income.sci-batch-ref
+procedure cnv-service-contract-income
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get service-contract-income first
+	on error
+		exit
+	endon
+	get service-contract-income first
+	on error
+		exit
+	endon
+	extract service-contract-income
+	detail
+		if sci-batch-ref = lp-old-gl-batch-ref
+			print
+				"service-contract-income*"
+				sci-batch-ref
+				">"
+				lp-new-gl-batch-ref
+				today()	in col ws-date-col
+				tod()
+			set sci-batch-ref = lp-new-gl-batch-ref
+			update service-contract-income
+		endif
+	endextract
+endprocedure // cnv-service-contract-income -----------------------------------
+
+//service-engineer-trans.se-batch-ref
+//se-batch-ref se-batch-trans-no se-engineer-no call-no
+procedure cnv-service-engineer-trans
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get service-engineer-trans first
+	on error
+		exit
+	endon
+	extract service-engineer-trans
+		on index se-batch-ref se-batch-trans-no se-engineer-no call-no
+		key is lp-old-gl-batch-ref 0 SPACES 0
+		next same se-batch-ref
+	detail
+		print
+			"service-engineer-trans **"
+			se-batch-ref
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push service-engineer-trans
+		set se-batch-ref = lp-new-gl-batch-ref
+		update service-engineer-trans
+		pop service-engineer-trans
+	endextract
+endprocedure // cnv-service-engineer-trans ------------------------------------
+
+
+//stock-work-file-movements.swfm-batch-ref // not in snooze, gunn may need precache, no it has a decent index
+//swfm-batch-ref swfm-document-type swfm-document-number swfm-document-suffix swfm-document-seq
+procedure cnv-stock-work-file-movements
+parameters
+	lp-old-gl-batch-ref     like gl-batch-ref
+	lp-new-gl-batch-ref		like gl-batch-ref
+	get stock-work-file-movements first
+	on error
+		exit
+	endon
+	extract stock-work-file-movements
+		on index swfm-batch-ref swfm-document-type swfm-document-number swfm-document-suffix swfm-document-seq
+		key is lp-old-gl-batch-ref SPACES SPACES SPACES 0
+		next same swfm-batch-ref
+	detail
+		print
+			"stock-work-file-movements"
+			swfm-batch-ref
+			">"
+			lp-new-gl-batch-ref
+			today()	in col ws-date-col
+			tod()
+		push stock-work-file-movements
+		set swfm-batch-ref = lp-new-gl-batch-ref
+		update stock-work-file-movements
+		pop stock-work-file-movements
+	endextract
+endprocedure // cnv-stock-work-file-movements ---------------------------------

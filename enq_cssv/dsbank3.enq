@@ -1,0 +1,5 @@
+update bankrec-deposit-summary
+set
+	bds-update-date-time = bds-date 
+where
+	( bds-update-date-time = 0  )

@@ -1,0 +1,221 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/origsolprc.spl
+//  Program Desc:	Back calculate the original line price of an item
+//	Program Note:	calc orig unit price ex and store in sol-user-only-num1
+//  Requested By:	Peter Denison
+//  Request Date:	22aug11
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	08may13	rmd			suppress popup messages
+//  10nov11	rmd			re-enable spool output
+//	28oct11	rmd			suppress spool output
+//	22aug11	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+mode md-order-enq
+	prompt "Order Enq."
+	help "Enquire on this order"
+    currency
+
+object tmp-price-override
+	type memory
+	record
+		tpo-so-order-no         like so-order-no
+		tpo-so-bo-suffix        like so-bo-suffix
+		tpo-sol-line-seq        like sol-line-seq
+		tpo-stock-code          like stock-code
+		tpo-order-log-date      like order-log-date
+		tpo-order-log-time		like order-log-time
+		tpo-old-ex              type numeric
+		tpo-new-ex              type numeric
+		tpo-count				type numeric
+	endrecord
+	key is tpo-so-order-no tpo-so-bo-suffix tpo-sol-line-seq tpo-order-log-date tpo-order-log-time
+
+field
+	ws-start-date	type date
+	ws-end-date     type date
+
+procedure main
+	set ws-start-date 	= date2julian(get-param(1)) - 365
+	set ws-end-date		= today()
+	open tmp-price-override truncate temporary
+	//message "Rebuild price before override, back to " ws-start-date	//08may13
+	do build-dataset
+	//do display-in-grid
+endprocedure // main ----------------------------------------------------------
+
+procedure build-dataset
+local field
+	lf-so-order-no      like so-order-no
+	lf-so-bo-suffix     like so-bo-suffix
+	lf-sol-line-seq     like sol-line-seq
+	lf-count			type numeric
+	lf-arc				type boolean
+	extract sales-audit-file
+		on index order-log-date order-log-time so-order-no so-bo-suffix sol-line-seq saf-dedup-seq
+		key is ws-start-date 0 0 SPACES 0 0
+		finish when order-log-date > ws-end-date
+	detail
+		if ordlog-type not = 1 //price override
+			continue
+		endif
+		set tpo-so-order-no     = so-order-no
+		set tpo-so-bo-suffix    = so-bo-suffix
+		set tpo-sol-line-seq    = sol-line-seq
+		set tpo-stock-code  	= ordlog-old-info //stock-code
+		set tpo-order-log-date	= order-log-date
+		set tpo-order-log-time  = order-log-time
+		//#| need to lookup debtor and obtain correct price region
+		get stock-price
+			on index stock-code prc-region-code
+			key is ordlog-old-info SPACES
+		on error
+			set prc-sales-tax-code = 1
+		endon
+		if ordlog-old-value > 0 and prc-sales-tax-code 	= 1
+			set tpo-old-ex		= ordlog-old-value / 1.1
+		else
+			set tpo-old-ex		= ordlog-old-value
+		endif
+		if ordlog-new-value > 0 and prc-sales-tax-code 	= 1
+			set tpo-new-ex		= ordlog-new-value / 1.1
+		else
+			set tpo-new-ex		= ordlog-new-value
+		endif
+		//reason = sol-price-rule
+		set tpo-count = 1
+		insert tmp-price-override
+	endextract
+	set lf-so-order-no  = 0
+	set lf-so-bo-suffix = SPACES
+	set lf-sol-line-seq = 0
+	set lf-count 		= 0
+	extract tmp-price-override
+	detail
+		if lf-so-order-no  = tpo-so-order-no
+		and lf-so-bo-suffix = tpo-so-bo-suffix
+		and lf-sol-line-seq = tpo-sol-line-seq
+			set lf-count 	+= 1
+	    	set tpo-count 	= lf-count
+	    	update tmp-price-override
+	    else
+	    	set lf-count = 1
+	   	endif
+		set lf-so-order-no  = tpo-so-order-no
+		set lf-so-bo-suffix = tpo-so-bo-suffix
+		set lf-sol-line-seq = tpo-sol-line-seq
+	endextract
+	//28oct11 ------------------- start
+	//10nov11
+	report "origprc2sol"
+		spool-only
+	print
+		"rmd/so/origsolprc"
+		today()
+		tod()
+		login-id()
+	skip
+	//28oct11 --------------------- end
+	extract tmp-price-override
+	detail
+		if tpo-count = 1
+			set lf-arc = TRUE
+			get sales-order-line-archive lock
+				on index so-order-no so-bo-suffix sol-line-seq
+				key is tpo-so-order-no tpo-so-bo-suffix tpo-sol-line-seq
+			on error
+				get sales-order-line lock
+					on index so-order-no so-bo-suffix sol-line-seq
+					key is tpo-so-order-no tpo-so-bo-suffix tpo-sol-line-seq
+				on error
+					continue
+				else
+					set lf-arc = FALSE
+				endon
+			endon
+			if stock-code = tpo-stock-code
+				set sol-user-only-num1 = tpo-old-ex
+				if lf-arc
+					update sales-order-line-archive
+					on error
+						//28oct11
+						//10nov11
+						print
+							so-order-no so-bo-suffix sol-line-seq stock-code sol-user-only-num1
+							"cannot update"
+					else
+						//28oct11
+						//10nov11
+						print
+							so-order-no so-bo-suffix sol-line-seq stock-code sol-user-only-num1
+							"updated"
+					endon
+				else
+					update sales-order-line
+					on error
+						//28oct11
+						//10nov11
+						print
+							so-order-no so-bo-suffix sol-line-seq stock-code sol-user-only-num1
+							"cannot update"
+					else
+						//28oct11
+						//10nov11
+						print
+							so-order-no so-bo-suffix sol-line-seq stock-code sol-user-only-num1
+							"updated"
+					endon
+				endif
+			endif
+		endif
+	endextract
+	//28oct11 ------------------- start
+	//10nov11
+	skip 2
+	print
+		"rmd/so/origsolprc"
+		today()
+		tod()
+		login-id()
+	report finished
+	//28oct11 --------------------- end
+endprocedure // build-dataset -------------------------------------------------
+
+screen display-in-grid
+	window @1,1 to @24,90
+		title concat("Results")
+		primary tmp-price-override
+		datagrid occurs 20
+	allowed md-order-enq search
+	review-from-start
+detail
+	display tpo-so-order-no     	@1,010 title "SO"
+	display tpo-so-bo-suffix        @1,020 title "BO"
+	display tpo-sol-line-seq        @1,030 title "Seq"
+	display tpo-stock-code          @1,040 title "SKU"
+	display tpo-order-log-date      @1,050 title "Date"
+	display tpo-order-log-time	    @1,060 title "Time"
+	display tpo-old-ex              @1,070 title "Old Ex"
+	display tpo-new-ex              @1,080 title "New Ex"
+	display tpo-count			    @1,090 title "Count"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-order-enq
+			spl "so/m5ordenq"
+				parameters
+					"-e"
+					tpo-so-order-no
+					tpo-so-bo-suffix
+					tpo-so-order-no
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------

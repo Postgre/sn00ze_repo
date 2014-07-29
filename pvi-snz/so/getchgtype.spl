@@ -1,0 +1,77 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/getchgtype.spl
+//  Program Desc:	Select Charge Type
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	28mar14	rmd			upgraded for 710
+///////////////////////////////////////////////////////////////////////////////
+
+#include "../../../bms/include/i85codes.spl"
+
+procedure main
+local field
+	lf-accept								pic x
+	lf-helped								type boolean
+returning
+	lr-sol-chg-type							pic x
+window @3,3 to @8,26 title is "Select Charge Type"
+	set lf-helped = FALSE
+	get system-control first
+	display box @3,4 to @8,25 title is "Select Charge Type"
+	accept lr-sol-chg-type @4,21 title is "Charge Type "
+		default "0"
+		allowed "0" "1" "2" "3" "4" "5" "6" "7" "8" "9"
+	on help-key
+		set sys-tbl-type = "CH"
+		set lf-helped = TRUE
+		do i85codes-table-help
+		if sys-tbl-code > SPACES
+			set lr-sol-chg-type = substring(sys-tbl-code,2,2)
+		endif
+		reenter lr-sol-chg-type optional
+	endon
+	get system-table
+	on index sys-tbl-type sys-tbl-code
+	key is "CH" concat("C" lr-sol-chg-type)
+	on error
+		initialise system-table
+	else
+	endon
+	set sys-description = right-justify(sys-description,sizeof(sys-description))
+	display sys-description	@5,4 background
+	display sys-money-value	@6,15.5 pic zzz9.99 background
+	// display "Accept Y/N?" @7,8 background
+	accept lf-accept @7,21 title is "Accept Y/N?"
+		// when lf-helped
+		uppercase
+		default "Y"
+		allowed "Y" "N"
+	if lf-accept = "N"
+		reenter lr-sol-chg-type optional
+	else
+		exit
+	endif
+	// message concat(get-param(1) get-param(2) get-param(3))
+/*
+	get sales-order-line lock
+	on index so-order-no so-bo-suffix sol-line-seq
+	key is num(get-param(1)) get-param(2) num(get-param(3))
+	on error
+		message "Line not found"
+	else
+		accept sol-chg-type @5,5 title is "Charge Type"
+			default "0"
+			allowed "0" "1" "2" "3" "4" "5" "6"
+		update sales-order-line
+	endon
+*/
+endprocedure // main ----------------------------------------------------------
+// getchgtype.spl

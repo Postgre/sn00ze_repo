@@ -1,0 +1,4 @@
+// fixing broken bankrec GL Codes missing from Statement
+update bankrec-bank-statement
+set
+	bank-gl-accountcode = input alpha "GL Code"

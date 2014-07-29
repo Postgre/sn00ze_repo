@@ -1,0 +1,92 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	whse-code
+	whse-qty-on-hand
+	whse-qty-on-order
+	whse-current-orders
+	whse-back-orders
+	whse-min-stock
+	stock-aged-sales-history.ash-type
+	stock-aged-sales-history.ash-years-ago
+	stock-aged-sales-history.ash-whse
+	stock-aged-sales-history.ash-qty
+	ws-ash-qty = sum-array (stock-aged-sales-history.ash-qty 1 12) 
+from
+	stock-master
+	outer stock-warehouse-detail
+	outer stock-aged-sales-history
+where
+	stock-group in { "B" "BC" "F" "FC" "IN" "IS" "TC" "TM" } 
+	and stock-aged-sales-history.ash-type = "O" 
+	and stock-aged-sales-history.ash-whse = whse-code 
+	and stock-aged-sales-history.ash-years-ago = 2002 
+order by stock-group stock-code 
+format is lst
+suppress stock-group
+suppress stk-description
+suppress stock-aged-sales-history.ash-type
+suppress stock-aged-sales-history.ash-years-ago
+suppress ash-qty[13]
+field order is stock-group stock-code stk-description whse-code whse-qty-on-hand whse-qty-on-order whse-current-orders whse-back-orders whse-min-stock ws-ash-qty
+field title of whse-qty-on-hand is "Qty" "On" "Hand"
+field title of whse-qty-on-order is "Qty" "On" "Ord"
+field title of whse-current-orders is "Com"
+field title of whse-back-orders is "B/O"
+field title of whse-min-stock is "Min"
+display pic of whse-code is xxx
+display pic of whse-qty-on-hand is zz9
+display pic of whse-qty-on-order is zz9
+display pic of whse-current-orders is zz9
+display pic of whse-back-orders is zz9
+display pic of whse-min-stock is zz9
+display pic of stock-aged-sales-history.ash-qty[1] is z9
+display pic of stock-aged-sales-history.ash-qty[2] is z9
+display pic of stock-aged-sales-history.ash-qty[3] is z9
+display pic of stock-aged-sales-history.ash-qty[4] is z9
+display pic of stock-aged-sales-history.ash-qty[5] is z9
+display pic of stock-aged-sales-history.ash-qty[6] is z9
+display pic of stock-aged-sales-history.ash-qty[7] is z9
+display pic of stock-aged-sales-history.ash-qty[8] is z9
+display pic of stock-aged-sales-history.ash-qty[9] is z9
+display pic of stock-aged-sales-history.ash-qty[10] is z9
+display pic of stock-aged-sales-history.ash-qty[11] is z9
+display pic of stock-aged-sales-history.ash-qty[12] is z9
+display pic of ws-ash-qty is zz9
+subtotal on whse-qty-on-hand
+	with breaks on stock-code
+subtotal on whse-qty-on-order
+	with breaks on stock-code
+subtotal on whse-current-orders
+	with breaks on stock-code
+subtotal on whse-back-orders
+	with breaks on stock-code
+subtotal on whse-min-stock
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[1]
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[2]
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[3]
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[4]
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[5]
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[6]
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[7]
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[8]
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[9]
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[10]
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[11]
+	with breaks on stock-code
+subtotal on stock-aged-sales-history.ash-qty[12]
+	with breaks on stock-code
+subtotal on ws-ash-qty
+	with breaks on stock-code

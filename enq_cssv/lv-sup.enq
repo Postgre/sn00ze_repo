@@ -1,0 +1,10 @@
+// update sup type
+select
+	cr-type
+	cre-accountcode
+	cr-shortname
+from
+	cre-master
+where
+	(cr-type like "DISC" ) 
+format is lst

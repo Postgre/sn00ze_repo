@@ -1,0 +1,6 @@
+select
+	cre-accountcode
+	cr-shortname
+from
+	cre-master
+format is lotus

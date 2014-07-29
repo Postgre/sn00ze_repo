@@ -1,0 +1,78 @@
+// miss-mth.enq
+// to print the stock aged sales history file totalling ytd
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	year-to-date = sum-array (ash-value 1 12) 
+from
+	stock-aged-sales-history
+where
+	ash-years-ago = 0 
+	and ash-type = "S" 
+order by ash-whse 
+format is lst
+report width is 166
+title line 1 is 'List of stk-aged-sales-history file'
+title line 2 is ' '
+title line 3 is 'miss-mth.enq                            run on ' today() ' at ' tod
+title line 4 is ' '
+suppress stock-code
+suppress ash-type
+suppress ash-years-ago
+unique record on ash-whse
+field order is ash-whse ash-years-ago year-to-date
+display pic of ash-value[1] is z(8)9
+display pic of ash-value[2] is z(8)9
+display pic of ash-value[3] is z(8)9
+display pic of ash-value[4] is z(8)9
+display pic of ash-value[5] is z(8)9
+display pic of ash-value[6] is z(8)9
+display pic of ash-value[7] is z(8)9
+display pic of ash-value[8] is z(8)9
+display pic of ash-value[9] is z(8)9
+display pic of ash-value[10] is z(8)9
+display pic of ash-value[11] is z(8)9
+display pic of ash-value[12] is z(8)9
+display pic of year-to-date is z(8)9
+total on ash-value[1]
+total on ash-value[2]
+total on ash-value[3]
+total on ash-value[4]
+total on ash-value[5]
+total on ash-value[6]
+total on ash-value[7]
+total on ash-value[8]
+total on ash-value[9]
+total on ash-value[10]
+total on ash-value[11]
+total on ash-value[12]
+total on year-to-date
+subtotal on ash-value[1]
+	with breaks on ash-whse
+subtotal on ash-value[2]
+	with breaks on ash-whse
+subtotal on ash-value[3]
+	with breaks on ash-whse
+subtotal on ash-value[4]
+	with breaks on ash-whse
+subtotal on ash-value[5]
+	with breaks on ash-whse
+subtotal on ash-value[6]
+	with breaks on ash-whse
+subtotal on ash-value[7]
+	with breaks on ash-whse
+subtotal on ash-value[8]
+	with breaks on ash-whse
+subtotal on ash-value[9]
+	with breaks on ash-whse
+subtotal on ash-value[10]
+	with breaks on ash-whse
+subtotal on ash-value[11]
+	with breaks on ash-whse
+subtotal on ash-value[12]
+	with breaks on ash-whse
+subtotal on year-to-date
+	with breaks on ash-whse

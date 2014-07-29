@@ -1,0 +1,12 @@
+select
+	sys-tbl-type
+	sys-tbl-code
+	sys-description
+from
+	system-table
+where
+	sys-tbl-type = 'TG' 
+	and
+	sys-tbl-code between '1' and '99'
+format is lst
+suppress sys-tbl-type

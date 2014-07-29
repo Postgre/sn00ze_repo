@@ -1,0 +1,151 @@
+select
+	cd-terminal
+	cd-trans-seq-no
+	cd-trans-date
+	cd-item-reference
+	cd-item-accountcode
+	cd-money-type
+	cd-money-amount
+	ws-store = input
+		numeric
+		prompt is "Enter cash drawer number:"
+	ws-start-date = input
+		date
+		prompt is "Enter Start Date:"
+	ws-end-date = input
+		date
+		prompt is "Enter   End Date;"
+	company-name
+from
+	cash-draw-trans
+	cash-draw-item-trans
+	cash-draw-money-trans
+	system-control
+where
+	cd-terminal = ws-store 
+	and cd-trans-date between ws-start-date and ws-end-date 
+	and cd-item-accountcode != "Banking Trans" 
+order by cd-terminal cd-trans-date cd-item-accountcode cd-trans-seq-no 
+format is rpt
+report header
+	page
+header
+	print 
+		company-name in col 1
+		today() in col 104
+		"Page No." in col 117
+		pageno() in col 125
+	print "REFUND REPORT FOR" in col 56 bold 
+		bold 
+		ws-store in col 74 pic 999
+	print "From" in col 52
+		ws-start-date in col 57
+		"to" in col 69
+		ws-end-date in col 72
+	skip
+	print
+		"Trans" in col 2
+		"Customer" in col 17
+		"Order" in col 37
+		"Trans" in col 50
+		"Amount" in col 79
+	print
+		"Date" in col 2
+		"Code" in col 17
+		"Number" in col 37
+		"Type" in col 50
+		"$" in col 81
+		"Refund?" in col 91
+	print "==================================================================================================================================" in col 1
+	skip 1
+before cd-trans-date
+
+detail
+// ***********************************
+// ** print bold if a refund 
+// ***********************************
+	if cd-money-amount > 0
+	print
+		cd-trans-date in col 1
+		cd-item-accountcode in col 17 bold
+		cd-item-reference in col 34 bold
+		cd-money-type in col 47 bold no newline
+		if cd-money-type = "T"
+				print "Transfer/Eftpos" in col 49 bold
+		no newline
+			elseif cd-money-type = "H"
+				print "Cash" in col 49 bold no newline
+			elseif cd-money-type = "X"
+				print "Amex" in col 49 bold no newline
+			elseif cd-money-type = "N"
+				print "Diners" in col 49 bold no newline
+			elseif cd-money-type = "C"
+				print "Finance" in col 49 bold no newline
+			elseif cd-money-type = "Q"
+				print "Cheque" in col 49 bold no newline
+		endif
+	print
+		cd-money-amount in col 70 bold no newline
+		if cd-money-amount > 0
+				print "*** REFUND ***" in col 88 bold no newline
+		endif
+	skip
+// ***********************************
+// ** print normal if not a refund 
+// ***********************************
+	else
+	print
+		cd-trans-date in col 1
+		cd-item-accountcode in col 17
+		cd-item-reference in col 34
+		cd-money-type in col 47 no newline
+		if cd-money-type = "T"
+				print "Transfer/Eftpos" in col 49 
+		no newline
+			elseif cd-money-type = "H"
+				print "Cash" in col 49 no newline
+			elseif cd-money-type = "X"
+				print "Amex" in col 49 no newline
+			elseif cd-money-type = "N"
+				print "Diners" in col 49 no newline
+			elseif cd-money-type = "C"
+				print "Finance" in col 49 no newline
+			elseif cd-money-type = "Q"
+				print "Cheque" in col 49 no newline
+		endif
+	print
+		cd-money-amount in col 70 no newline
+		if cd-money-amount > 0
+				print "*** REFUND ***" in col 88 no newline
+		endif
+	skip
+	endif
+after cd-trans-date
+	skip
+report footer
+	skip
+	skip
+	print 
+		"Checked by: ___________________     Signature: ______________________" in col 4 bold
+	skip
+	skip
+	print 
+		"Report Name: refunds.enq" in col 4
+		"NOTE:" in col 38 bold underline
+		"A normal cash receipt (customer paying money) shows as a credit amount (-)." in col 44
+	print 
+		"A refund show as a positive amount." in col 44
+	print 
+		"Store      : " in col 4
+		ws-store in col 17 pic 999
+		"If the store has reversed an amount out because it was processed as the wrong" in col 44
+	print 
+		"Start Date :" in col 4
+		ws-start-date in col 17
+		"trans type (eg: should be Transfer not cash), then this reversal would show as" in col 44
+	print 
+		"End   Date :" in col 4
+		ws-end-date in col 17
+		"a refund, but there should be 2 other trans for that customer on that day (3 in total)" in col 44
+	print 
+		"(original trans as 'H', reversal trans as 'H', then corrected trans as 'T')." in col 44

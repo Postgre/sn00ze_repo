@@ -1,0 +1,25 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ash-cost
+	stock-group
+	stk-description
+	stk-desc-line-2
+	ws-ytd-sales = sum-array (ash-value 1 12) 
+	ws-ytd-cost = sum-array (ash-cost 1 12) 
+	ash-qty
+	ws-ytd-gp = sum-array (ash-value 1 12) - sum-array (ash-cost 1 12) 
+	ws-start-whse = input alpha "Enter start warehouse:"
+	ws-end-whse = input alpha "Enter end warehouse:"
+	ws-ytd-gp-percent = sum-array (ash-value 1 12) - sum-array (ash-cost 1 12) 
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = 'S' 
+	and ash-years-ago = 0 
+	and stock-group = 'IS' 
+format is lotus

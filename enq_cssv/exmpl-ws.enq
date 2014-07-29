@@ -1,0 +1,27 @@
+select
+	stock-code
+	stk-sort-analysis-code
+	stk-condition-code
+	stk-user-group
+	stk-pack-desc
+	stk-sales-tax-paid-rate
+	sup-last-buy-price
+	ws-cost = sup-last-buy-price / (1 + (stk-sales-tax-paid-rate / 100 ) ) 
+	cre-accountcode
+	cr-type
+	cr-def-payment-terms
+	accountcode
+	na-type
+from
+	stock-master
+	stock-supplier
+	cre-master
+	name-and-address-master
+where
+	stk-condition-code != 'O' 
+	and stk-sort-analysis-code != spaces 
+	and accountcode = cre-accountcode
+	and na-type = 'C'
+order by cr-type stk-sort-analysis-code stock-code 
+format is lst
+suppress cre-accountcode

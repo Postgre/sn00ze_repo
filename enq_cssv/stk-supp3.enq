@@ -1,0 +1,5 @@
+update cre-master
+set
+	cr-account-status = 'N'
+where
+	substring(cre-accountcode,1,3) = 'OBR'

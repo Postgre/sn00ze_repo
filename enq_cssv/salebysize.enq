@@ -1,0 +1,77 @@
+select
+	so-order-no
+	so-order-date
+	so-territory-code
+	stock-code
+	sol-line-type
+	sol-ordered-qty
+	sol-line-amount
+	sol-tax-rate-code
+	sol-line-cost
+	stock-group
+	stk-pack-desc
+	stk-description
+	stk-desc-line-2
+	ws-start-date = input
+		date
+		prompt is "Enter Start Order Date:"
+	ws-end-date = input
+		date
+		prompt is "Enter End   Order Date:"
+	ws-terr-code = input
+		string
+		prompt is "Enter Store Number:"
+	ws-start-size = input
+		string
+		uppercase
+		prompt is "Enter Start Size Code:"
+	ws-end-size = input
+		string
+		uppercase
+		prompt is "Enter End   Size Code:"
+	ws-start-group = input
+		string
+		uppercase
+		prompt is "Enter Start Product Group:"
+	ws-end-group = input
+		string
+		uppercase
+		prompt is "Enter End   Product Group"
+	so-bo-suffix
+	ws-cost = sol-ordered-qty * sol-item-cost
+from
+	sales-order
+	sales-order-line
+	stock-master
+where
+	so-order-date between ws-start-date and ws-end-date 
+	and so-territory-code = ws-terr-code 
+	and stock-group between ws-start-group and ws-end-group 
+	and stk-pack-desc between ws-start-size and ws-end-size 
+order by stk-pack-desc stock-code 
+format is lst
+suppress so-order-no
+suppress so-order-date
+suppress so-territory-code
+suppress sol-line-type
+suppress sol-line-cost
+suppress stock-group
+suppress stk-desc-line-2
+suppress ws-start-date
+suppress ws-end-date
+suppress ws-terr-code
+suppress ws-start-size
+suppress ws-end-size
+suppress ws-start-group
+suppress ws-end-group
+suppress so-bo-suffix
+field order is stock-code stk-description stk-desc-line-2 stk-pack-desc sol-tax-rate-code sol-ordered-qty sol-line-cost sol-line-amount
+total on sol-ordered-qty
+total on sol-line-amount
+total on ws-cost
+subtotal on sol-ordered-qty
+	with breaks on stk-pack-desc
+subtotal on sol-line-amount
+	with breaks on stk-pack-desc
+subtotal on ws-cost
+	with breaks on stk-pack-desc

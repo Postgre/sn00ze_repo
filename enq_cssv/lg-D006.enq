@@ -1,0 +1,13 @@
+// debtors - Update Customer type from Blank to Whatever
+update deb-master
+set
+	dr-cust-type = input alpha "Change Customer type to"
+    dr-user-only-alpha4-1 = "y"
+where
+	( 
+    ( dr-cust-type NOT LIKE "P"  ) 
+AND
+	( dr-cust-type NOT LIKE "C"  )
+AND
+    ( dr-cust-type LIKE " "  ) 
+    )

@@ -1,0 +1,59 @@
+select
+	stock-code
+	ash-type
+	ash-years-ago
+	ash-whse
+	ash-value
+	ws-supp = substring (stock-code 1 3) 
+	stock-group
+	ws-total = sum-array (ash-value 1 12) 
+from
+	stock-aged-sales-history
+	stock-master
+where
+	ash-type = 'O' 
+	and ash-years-ago = 0 
+	and stock-group in { 'IN' 'IS' 'SS' 'WB' } 
+order by ash-whse ws-supp 
+format is rpt
+field new-ws-supp pic 9
+field total-ws-total like ws-total
+field sub-tot-ws-total like ws-total
+report header
+	page
+	set total-ws-total = 0
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"ash" in col 26
+		" ws" in col 38
+		"ws-total" in col 88
+	print
+		"whse" in col 26
+		"supp" in col 38
+	skip 1
+// before ws-supp
+//	set new-ws-supp = 1
+before ash-whse ws-supp
+	set sub-tot-ws-total = 0
+
+detail
+	print ash-whse in col 26 no newline
+//	set new-ws-supp = 0
+	set total-ws-total += ws-total
+	set sub-tot-ws-total += ws-total
+after ws-supp
+after ash-whse 
+//ws-supp
+	print
+		sub-tot-ws-total in col 88
+//	skip
+report footer
+//	print
+//		"-----------------" in col 88
+	print
+		total-ws-total in col 88

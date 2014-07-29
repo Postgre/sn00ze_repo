@@ -1,0 +1,10 @@
+select
+	stock-code
+	stock-group
+	stk-user-group
+	stk-description
+from
+	stock-master
+where
+	stk-description like "%SAME AS CODE%"
+format is lst

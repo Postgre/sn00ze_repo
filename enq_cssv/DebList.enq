@@ -1,0 +1,15 @@
+select
+	na-name
+	na-company
+	na-street
+	postcode
+	na-type
+	accountcode
+from
+	deb-master
+	name-and-address-master
+where
+	na-type = 'C' 
+	and
+	postcode <> spaces
+format is lotus

@@ -1,0 +1,8 @@
+select
+	sys-tbl-code
+	sys-description
+from
+	system-table
+where
+	sys-tbl-type = 'SX'
+format is external

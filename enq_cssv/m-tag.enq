@@ -1,0 +1,10 @@
+select
+	stock-code
+	stk-description
+	stk-user-group
+	stk-movement-code
+	cre-accountcode
+from
+	stock-master
+	cre-master
+format is external

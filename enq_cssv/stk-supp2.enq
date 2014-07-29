@@ -1,0 +1,6 @@
+update stock-supplier
+set
+	cre-accountcode = concat('TUF',substring(cre-accountcode,4,5))
+where
+	substring(stock-code,1,3) = 'OBR' and
+	substring(cre-accountcode,1,3) = 'OBR'

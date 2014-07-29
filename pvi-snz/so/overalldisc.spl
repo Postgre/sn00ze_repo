@@ -1,0 +1,112 @@
+// overalldisc.spl
+// 15may14	rmd	upgrade to 710.3
+// 11aug08	rmd	user can enter final amount or discount amount, returns the
+//				"discount" amount to the extra-discount-amount screen in m50disc
+// 13aug08	rmd show gp before and after discount
+
+procedure main
+window @4,5 to @10,60 title is "Overall Discount"
+parameters
+	lp-so-order-total-amount				like so-order-total-amount
+	lp-so-order-total-tax					like so-order-total-tax
+	lp-so-ordered-total-cost				like so-ordered-total-cost
+returning
+	lr-discount-amount					type numeric
+local field
+	lf-discount-amount                  type numeric
+	lf-new-total                        type numeric
+	lf-accept							pic x
+	lf-gp-dollars-old					type numeric
+	lf-gp-percent-old					type numeric
+   	lf-gp-dollars-new					type numeric
+	lf-gp-percent-new					type numeric
+	lf-tax-applicable					type boolean
+	set lf-gp-dollars-old = lp-so-order-total-amount - lp-so-order-total-tax - lp-so-ordered-total-cost
+	if lf-gp-dollars-old = 0
+		set lf-gp-percent-old = lf-gp-dollars-old
+	else
+		set lf-gp-percent-old = 100 * (lf-gp-dollars-old / (lp-so-order-total-amount - lp-so-order-total-tax))
+	endif
+	set lf-gp-dollars-new = lf-gp-dollars-old
+	set lf-gp-percent-new = lf-gp-percent-old
+	if lp-so-order-total-tax != 0
+		set lf-tax-applicable = TRUE
+	else
+		set lf-tax-applicable = FALSE
+	endif
+	display box @4,5 to @8,59
+	//display "Old GP:" @6,9 background
+	display "Order Total"				@5,22 background pic x(12)
+	display "GPD"						@5,36 background pic x(5)
+	display "GPP"						@5,48 background pic x(5)
+	display lp-so-order-total-amount	@6,22 title is "Old:" pic z,zzz,zz9.99
+	set lf-gp-dollars-new = lf-gp-dollars-old
+	set lf-gp-percent-new = lf-gp-percent-old
+	display lf-gp-dollars-old			@6,36 pic -(5)9.99 //pic $(5)9.99-
+	display lf-gp-percent-old			@6,48 pic ---9.99 // %
+	display lf-gp-dollars-new			@7,36 pic -(5)9.99
+	display lf-gp-percent-new			@7,48 pic ---9.99
+	set lf-discount-amount = 0
+	set lf-new-total = lp-so-order-total-amount
+	accept lf-new-total         @7,22   title is "New:"  pic z,zzz,zz9.99
+		default lf-new-total // lp-so-order-total-amount
+		//validations
+		set lf-discount-amount = lp-so-order-total-amount - lf-new-total
+		//endvalidations
+		if lf-discount-amount >= 0
+			//set lr-discount-amount = lf-discount-amount
+			//message concat("Return: " str(lr-discount-amount))
+			//exit
+		else
+			message "Discount cannot increase price"
+			reenter lf-new-total
+		endif
+	if lf-tax-applicable
+		set lf-gp-dollars-new = (lf-new-total / 1.1) - lp-so-ordered-total-cost
+		set lf-gp-percent-new = 100 * (lf-gp-dollars-new / (lf-new-total / 1.1))
+	else
+		set lf-gp-dollars-new = lf-new-total - lp-so-ordered-total-cost
+		set lf-gp-percent-new = 100 * (lf-gp-dollars-new / lf-new-total)
+	endif
+	//display lf-gp-dollars-new	@7,22  title is "New GP:" pic $(7)9.99-
+	//display lf-gp-percent-new	@7,36 pic ---9.99%
+	display lf-gp-dollars-new			@7,36 pic -(5)9.99
+	display lf-gp-percent-new			@7,48 pic ---9.99
+	accept lf-discount-amount	@9,22	title is "Discount Amount:"   pic z,zzz,zz9.99
+		default lf-discount-amount
+	set lf-new-total = lp-so-order-total-amount - lf-discount-amount
+	if lf-tax-applicable
+		set lf-gp-dollars-new = (lf-new-total / 1.1) - lp-so-ordered-total-cost
+		set lf-gp-percent-new = 100 * (lf-gp-dollars-new / (lf-new-total / 1.1))
+	else
+		set lf-gp-dollars-new = lf-new-total - lp-so-ordered-total-cost
+		set lf-gp-percent-new = 100 * (lf-gp-dollars-new / lf-new-total)
+	endif
+	//display lf-gp-dollars-new	@7,22  title is "New GP:" pic $(7)9.99-
+	//display lf-gp-percent-new	@7,36 pic ---9.99%
+	display lf-gp-dollars-new			@7,36 pic -(5)9.99
+	display lf-gp-percent-new			@7,48 pic ---9.99
+	//display lf-new-total        @8,22   title is "New Order Total:"  pic z,zzz,zz9.99
+	display lf-new-total         @7,22   title is "New:"  pic z,zzz,zz9.99
+	//if lf-discount-amount != 0
+		//accept lf-accept			@9,48	title is "Accept Y/N?:"
+		display "Accept Y/N?:"		@9,35 background
+		accept lf-accept			@9,48 //	title is
+			uppercase
+			allowed "Y" "N"
+			default "Y"
+		if lf-accept = "N"
+			reenter lf-new-total
+		else
+			if lf-discount-amount >= 0
+				set lr-discount-amount = lf-discount-amount
+				//message concat("Return: " str(lr-discount-amount))
+				exit
+			else
+				message "Discount cannot increase price"
+				reenter lf-new-total
+			endif
+		endif
+	//endif
+endprocedure // main ----------------------------------------------------------
+// overalldisc.spl

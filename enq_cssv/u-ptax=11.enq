@@ -1,0 +1,7 @@
+//u-ptax=11
+//Set the purchase tax to 11% where purchase tax = 0%
+update stock-master
+set
+	stk-sales-tax-paid-rate = 11.00
+where
+        stock-code = "SLE112" 

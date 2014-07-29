@@ -1,0 +1,7 @@
+select
+	stock-group
+from
+	stock-master
+group by stock-group
+format is lst
+unique record on stock-group

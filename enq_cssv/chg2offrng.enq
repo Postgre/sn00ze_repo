@@ -1,0 +1,3 @@
+update stock-supplier
+set
+	sup-shipping-method-code = 'C'

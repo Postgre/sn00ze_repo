@@ -1,0 +1,43 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/pcs/m50lines
+//  Program Desc:	Proscreen triggered programs for m50lines
+//  Requested By:
+//  Request Date:	02jun14
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	02jun14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+procedure main
+	switch on get-param(1)
+		case "-a300-get-order-lines"
+			if get-param(2) = "-screen_load"
+				do a300-get-order-lines-set-datagrid
+			endif
+	endswitch
+endprocedure // main ----------------------------------------------------------
+
+
+procedure a300-get-order-lines-set-datagrid
+local field
+	lf-value-set					type boolean
+	lf-hive							pic x(300)
+	//
+	set lf-value-set = TRUE
+	set lf-hive = "HKEY_CURRENT_USER\Software\PRONTO\ScreenSettings\so\m50lines\a300-get-order-lines\"
+	if set-registry-value(strconcat(lf-hive "DataGrid"),"1/48 3/148 5/80 9/73 11/104 15/56 17/64 21/93 39/0 43/0 47/0 51/0 23/81 ")
+	else
+		set lf-value-set = FALSE
+	endif
+	if lf-value-set
+		//message "Datagrid columns reset"
+	else
+		//message "Unable to reset columns"
+	endif
+endprocedure // a300-get-order-lines-set-datagrid -----------------------------

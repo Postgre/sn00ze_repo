@@ -1,0 +1,45 @@
+// select
+// cre-accountcode
+// cr-shortname
+// cr-def-payment-terms
+// cr-auto-rq-flag
+// cr-type
+// from
+// cre-master
+// format is lst
+select
+	cre-accountcode
+	cr-shortname
+	cr-def-payment-terms
+	cr-auto-rq-flag
+	cr-type
+	cr-settlement-disc-code
+from
+	cre-master
+format is rpt
+report header
+	page
+header
+	print today() in col 95
+		tod() in col 108
+		"Pageno." in col 118
+		pageno() in col 126
+	skip 1
+	print
+		"Creditor Code" in col 12
+		"Creditor Name" in col 36
+		"Def Pay" in col 79
+		" Auto Rq" in col 99
+		"Settle" in col 116
+		" Type" in col 122
+	skip 1
+
+detail
+	print
+		cre-accountcode in col 12
+		cr-shortname in col 36
+		cr-def-payment-terms in col 79
+		cr-auto-rq-flag in col 99
+		cr-settlement-disc-code in col 116
+		cr-type in col 122
+report footer

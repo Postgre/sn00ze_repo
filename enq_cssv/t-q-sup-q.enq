@@ -1,0 +1,12 @@
+select
+	cre-accountcode
+	cr-pay-to-code
+	cr-shortname
+from
+	cre-master
+where
+	substring (cre-accountcode 4 5) = "-Q" 
+	or substring (cre-accountcode 4 5) = spaces 
+order by cre-accountcode 
+format is lst
+title line 1 is "Qld and National Suppliers" 

@@ -1,0 +1,16 @@
+select
+	stock-code
+	stock-group
+	stk-description
+	stk-desc-line-2
+	stk-desc-line-3
+	sys-tbl-type
+	sys-tbl-code
+	sys-tbl-alpha-1
+from
+	stock-master
+	system-table
+where
+	sys-tbl-type = "PG" 
+	and stock-group = sys-tbl-code 
+format is external

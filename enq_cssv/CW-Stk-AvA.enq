@@ -1,0 +1,18 @@
+//Stock Available Against Stock Allocated Report.
+//Reports on the levels ansd values of stock that are available against //allocated.
+select
+	stock-code
+	stock-group
+	sys-description
+	whse-code
+	whse-qty-on-hand
+	whse-current-orders
+from
+	stock-master
+	stock-warehouse-detail
+	system-table
+where
+	sys-tbl-type = "PG" and
+	sys-tbl-code = stock-group and
+	(whse-qty-on-hand)> 0
+order by stock-group

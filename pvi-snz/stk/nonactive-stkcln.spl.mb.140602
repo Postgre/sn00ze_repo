@@ -1,0 +1,1068 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/stk/nonactive-stkcln
+//  Program Desc:	Routine to remove non active items from stock-master
+//  Requested By:
+//  Request Date:	22oct13
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	27feb14	rmd	{3}		add orphan count and keyword rebuild option
+//	20feb14	rmd	{2}		ensure orphaned stock-supplier, warehouse-stock-master,
+//						stock-price and stock-warehouse-detail are removed
+//	31jan14	rmd	{1}		rename ACT to LIV and OBS to DEL
+//						option to purge obsolete items
+//	07jan14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+//todo
+// need to mark simplify kit and component items as "CMP" if they are not marked as active
+//or ask Andrew to include them when he sends his 'Active' list
+//force full menu
+
+//ensure stock-code does not exist in
+	//stock-warehouse-detail
+	//stock-movements
+	//sales-order-line
+	//purchase-order-line
+object deleted-stock-master like stock-master	//{1}
+	type isam
+	file "deleted-stock-master"
+
+//common stock list
+	object active-stock-list type isam
+		file "/data/common/active-stock-list"
+	record
+		asl-stock-code          like stock-code
+		asl-mnm-kit          	pic 9	//0=NO,1=YES
+		asl-stk-description		like stk-description
+	endrecord
+	key is asl-stock-code unique
+
+	object tmp-common-stock type memory
+	record
+		tcs-stock-code          like stock-code
+		tcs-stk-description		like stk-description
+		tcs-can-be-deleted		pic x
+	endrecord
+	key is tcs-stock-code unique
+
+	object tmp-records-affected type memory
+	record
+		tra-object				pic x(30)
+		//tra-desc
+		tra-affected-records	type numeric
+		tra-deletable-records	type numeric
+	endrecord
+	key is tra-object
+
+		//stock-master
+		//stock-price
+		//stock-supplier
+		//stock-supplier-notes
+		//stock-notes
+		//stock-unit-conversion
+		//bill-of-materials-detail
+
+object bak-stock-master				like stock-master				type is external		file is 'bak-stock-master'
+object bak-stock-notes				like stock-notes				type is external		file is 'bak-stock-notes'
+object bak-stock-supplier			like stock-supplier				type is external		file is 'bak-stock-supplier'
+object bak-stock-supplier-notes		like stock-supplier-notes		type is external		file is 'bak-stock-supplier-notes'
+object bak-stock-price				like stock-price				type is external		file is 'bak-stock-price'
+object bak-stock-unit-conversion	like stock-unit-conversion		type is external		file is 'bak-stock-unit-conversion'
+object bak-bill-of-materials-detail	like bill-of-materials-detail	type is external		file is 'bak-bill-of-materials-detail'
+
+field
+	ws-act-count		pic 999999
+	ws-leg-count		pic 999999
+	ws-obs-count		pic 999999
+	ws-com-count		pic 999999
+	ws-orph-count		pic 999999	//{3}
+
+mode md-remove-all
+	prompt "Remove All"
+	help "Remove all items from the comparison list"
+
+mode md-delete-obs	//{1}
+	prompt "Purge deletable items"
+	help "Purge deletable items"
+
+mode md-restore-obs
+	prompt "Restore deleted items"
+	help "Not for normal use - just during testing"
+
+procedure main
+	open active-stock-list create permanent
+	//do load-and-test-for-deletion
+	do main-menu
+endprocedure // main ----------------------------------------------------------
+
+
+
+/*
+procedure load-and-test-for-deletion
+	open tmp-common-stock truncate temporary
+	extract p7stkcln-common-stock
+	detail
+		set tcs-stock-code		= pcs-stock-code
+		set tcs-stk-description	= pcs-stk-description
+		//set tcs-can-be-deleted 	= "*"
+		do deletable-test
+			parameters
+				tcs-stock-code
+			returning
+				tcs-can-be-deleted
+		insert tmp-common-stock
+	endextract
+endprocedure // load-and-test-for-deletion ------------------------------------
+*/
+
+procedure inclusion-test
+parameters
+	lp-stock-code			like stock-code
+returning
+	lr-include				pic x	//"*" if it is to be included
+	//message lp-stock-code
+	set lr-include = SPACES
+	extract stock-warehouse-detail
+		on index stock-code whse-code
+		key is lp-stock-code SPACES
+		next same stock-code
+	detail
+		//message "stock-warehouse-detail"
+		set lr-include 			= "*"
+		break
+	endextract
+	if lr-include = SPACES
+		extract stock-movements
+			on index stock-code stk-trans-date //stk-batch-ref stk-batch-trans-no
+			key is lp-stock-code 0 //SPACES 0
+			next same stock-code
+		detail
+			set lr-include 			= "*"
+			//message "stock-movements"
+			break
+		endextract
+	endif
+	if lr-include = SPACES
+		extract sales-order-line
+			on index sol-line-type stock-code so-order-no so-bo-suffix
+			key is "SN" lp-stock-code 0 SPACES
+			next same sol-line-type stock-code
+		detail
+			set lr-include 			= "*"
+			//message "sales-order-line SN"
+			break
+		endextract
+	endif
+	if lr-include = SPACES
+		extract sales-order-line
+			on index sol-line-type stock-code so-order-no so-bo-suffix
+			key is "KN" lp-stock-code 0 SPACES
+			next same sol-line-type stock-code
+		detail
+			set lr-include 			= "*"
+			//message "sales-order-line KN"
+			break
+		endextract
+	endif
+	if lr-include = SPACES
+		extract sales-order-line
+			on index sol-line-type stock-code so-order-no so-bo-suffix
+			key is "WN" lp-stock-code 0 SPACES
+			next same sol-line-type stock-code
+		detail
+			set lr-include 			= "*"
+			//message "sales-order-line WN"
+			break
+		endextract
+	endif
+	if lr-include = SPACES
+		extract purchase-order-line
+			on index stock-code po-order-no po-backorder-flag
+			key is lp-stock-code 0 SPACES
+			next same stock-code
+		detail
+			set lr-include 			= "*"
+			//message "purchase-order-line"
+			break
+		endextract
+	endif
+endprocedure // deletable-test ------------------------------------------------
+
+/*
+procedure deletable-test
+parameters
+	lp-stock-code			like stock-code
+returning
+	lr-can-be-deleted		pic x
+	//message lp-stock-code
+	set lr-can-be-deleted = "*"
+	extract stock-warehouse-detail
+		on index stock-code whse-code
+		key is lp-stock-code SPACES
+		next same stock-code
+	detail
+		//message "stock-warehouse-detail"
+		set lr-can-be-deleted 	= SPACES
+		break
+	endextract
+	if lr-can-be-deleted 	= "*"
+		extract stock-movements
+			on index stock-code stk-trans-date //stk-batch-ref stk-batch-trans-no
+			key is lp-stock-code 0 //SPACES 0
+			next same stock-code
+		detail
+			set lr-can-be-deleted 	= SPACES
+			//message "stock-movements"
+			break
+		endextract
+	endif
+	if lr-can-be-deleted 	= "*"
+		extract sales-order-line
+			on index sol-line-type stock-code so-order-no so-bo-suffix
+			key is "SN" lp-stock-code 0 SPACES
+			next same sol-line-type stock-code
+		detail
+			set lr-can-be-deleted 	= SPACES
+			//message "sales-order-line SN"
+			break
+		endextract
+	endif
+	if lr-can-be-deleted 	= "*"
+		extract sales-order-line
+			on index sol-line-type stock-code so-order-no so-bo-suffix
+			key is "KN" lp-stock-code 0 SPACES
+			next same sol-line-type stock-code
+		detail
+			set lr-can-be-deleted 	= SPACES
+			//message "sales-order-line KN"
+			break
+		endextract
+	endif
+	if lr-can-be-deleted 	= "*"
+		extract sales-order-line
+			on index sol-line-type stock-code so-order-no so-bo-suffix
+			key is "WN" lp-stock-code 0 SPACES
+			next same sol-line-type stock-code
+		detail
+			set lr-can-be-deleted 	= SPACES
+			//message "sales-order-line WN"
+			break
+		endextract
+	endif
+	if lr-can-be-deleted 	= "*"
+		extract purchase-order-line
+			on index stock-code po-order-no po-backorder-flag
+			key is lp-stock-code 0 SPACES
+			next same stock-code
+		detail
+			set lr-can-be-deleted 	= SPACES
+			//message "purchase-order-line"
+			break
+		endextract
+	endif
+endprocedure // inclusion-test ------------------------------------------------
+*/
+
+menu main-menu
+window @1,1 to @10,60
+	tree-menu	//force a side menu rather than popup when called from F11 ZUSR.M101
+	option "Load active stock items"			@1,12
+		//do load-active-stock
+	    do maint-stock-list
+	option "Update stock-master Active Flag"	@3,12
+		do reset-active-stock
+	option "Check non active for inclusion"		@5,12
+		do check-non-active-for-inclusion
+	option "View Stock Status Results"			@6,12
+		do dig-active-stock-status
+	option "Orphan Check"						@7,12
+		do clean-stock-orphans
+			parameters
+				"-report"
+	option "Orphan Clean"						@8,12
+		do clean-stock-orphans
+			parameters
+				"-update"
+	option "Rebuild Stock Keywords"				@9,12
+		spl "sys/m85major"
+			parameters
+				"-stkkey"
+	/*
+	option "View/Maintain Stock List"		@1,12
+		//open p7stkcln-common-stock create permanent
+		do load-and-test-for-deletion
+		do maint-stock-list
+	option "Report Only"					@2,12
+		do report-mode
+	option "Backup Tables"					@3,12
+		do backup-tables
+	option "!! Remove Offending Items !!"	@4,12
+		message "Warning, This process will delete delete records. File > Send Interrupt to abort"
+		do correct-mode
+	option "!! Remove Comparison Items !!"	@5,12	//01nov13
+		message "Warning, This process will clear the stock items in your master comparison list. File > Send Interrupt to abort"
+		do clear-comparison-items
+	*/
+endmenu // main-menu ----------------------------------------------------------
+
+//procedure load-active-stock
+//	active-stock-list
+//endprocedure // load-active-stock ---------------------------------------------
+
+/*
+procedure clear-comparison-items	//01nov13
+	extract p7stkcln-common-stock
+	detail
+		delete p7stkcln-common-stock
+	endextract
+endprocedure // clear-comparison-items ----------------------------------------
+*/
+
+procedure reset-active-stock
+	extract stock-master lock
+	detail
+		get active-stock-list
+			on index asl-stock-code
+			key is stock-code
+		on error
+			set stk-user-only-alpha4-4 = SPACES
+		else
+			if asl-mnm-kit = 0
+				//set stk-user-only-alpha4-4 = "ACT"	//{1}
+				set stk-user-only-alpha4-4 = "LIV"		//{1}
+			elseif asl-mnm-kit = 1
+				set stk-user-only-alpha4-4 = "COM"
+			endif
+		endon
+		update stock-master
+	endextract
+	message "Reset Complete"
+endprocedure // reset-active-stock	--------------------------------------------
+
+procedure check-non-active-for-inclusion
+local field
+	lf-include				pic x	//"*" if it is to be included
+	set ws-act-count	= 0
+	set ws-leg-count    = 0
+	set ws-obs-count    = 0
+	set ws-com-count	= 0
+	extract stock-master lock
+	detail
+		if stk-user-only-alpha4-4 = SPACES
+			do inclusion-test
+				parameters
+					stock-code
+				returning
+					lf-include
+			if lf-include = "*"
+				set stk-user-only-alpha4-4 	= "LEG"
+				set ws-leg-count    		+= 1
+			else
+				//set stk-user-only-alpha4-4 	= "OBS"	//{1}
+				set stk-user-only-alpha4-4 	= "DEL"     //{1}
+				set ws-obs-count    		+= 1
+			endif
+			update stock-master
+		//elseif stk-user-only-alpha4-4 = "ACT"	//{1}
+		elseif stk-user-only-alpha4-4 = "LIV"   //{1}
+			set ws-act-count	+= 1
+		elseif stk-user-only-alpha4-4 = "COM"
+			set ws-com-count	+= 1
+		endif
+	endextract
+	message "Inclusion Check Complete"
+endprocedure // check-non-active-for-inclusion --------------------------------
+
+screen maint-stock-list
+	window @1,1 to @24,56
+		title concat("Maintain Stock List")
+		primary active-stock-list
+		datagrid occurs 20
+	allowed search entry correct remove md-remove-all//md-mode
+	review-from-start
+detail
+	//get tmp-common-stock
+	//	on index tcs-stock-code
+	//	key is pcs-stock-code
+	//on error
+	//	set tcs-can-be-deleted = "-"
+	//endon
+	accept asl-stock-code       @1,010 title "Item"
+		uppercase
+		default asl-stock-code
+		validation
+			get stock-master
+				on index stock-code
+				key is asl-stock-code
+			on error
+				set asl-stk-description = "UNKNOWN"
+			else
+				set asl-stk-description = stk-description
+			endon
+			//do deletable-test
+			//	parameters
+			//		pcs-stock-code
+			//	returning
+			//		tcs-can-be-deleted
+		endvalidation
+	accept asl-mnm-kit			@1,014 title "Kit"
+		default asl-mnm-kit
+	accept asl-stk-description	@1,020 title "Desc"
+		default asl-stk-description
+		read-only
+	//display tcs-can-be-deleted	@1,024 title "Can be deleted"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-remove-all
+			message "About to truncate Active Stock List"
+			open active-stock-list truncate permanent
+	endswitch
+endconfirm
+endscreen // maint-stock-list -------------------------------------------------
+
+screen dig-active-stock-status
+	window @1,1 to @24,90
+		title concat("Review Stock Status")
+		primary stock-master
+		datagrid occurs 19
+	allowed search md-delete-obs md-restore-obs
+	review-from-start
+before
+	//display "ACT: Active Item"		@20,20 background
+	display "LIV: Live Items"		@20,20 background
+		display ws-act-count		@20,42 background
+	display "LEG: Legacy Item"		@21,20 background
+		display ws-leg-count		@21,42 background
+	//display "OBS: Obsolete Item"	@22,20 background
+	display "DEL: Item to Delete"	@22,20 background
+		display ws-obs-count		@22,42 background
+	display "COM: Kit and Comp"		@23,20 background
+		display ws-com-count		@23,42 background
+detail
+	display stock-code															@1,010 title "Item"
+	display concat(strconcat(stk-description) " " strconcat(stk-desc-line-2))	@1,014 title "Description"
+	display stk-user-only-alpha4-4  											@1,022 title "Status"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-delete-obs
+			do backup-tables	//{2}
+			do delete-obs
+			do clean-stock-orphans
+				parameters
+					"-update"
+		case md-restore-obs
+			do restore-obs
+	endswitch
+endconfirm
+endscreen // dig-active-stock-status ------------------------------------------
+
+procedure delete-obs	//{1}
+	open deleted-stock-master create permanent
+	extract stock-master
+	detail
+		if stk-user-only-alpha4-4  = "DEL"
+			insert deleted-stock-master
+			on error
+			endon
+			delete stock-master
+		endif
+	endextract
+endprocedure // delete-obs ----------------------------------------------------
+
+procedure restore-obs	//{1}
+	open deleted-stock-master create permanent
+	extract deleted-stock-master
+	detail
+		get stock-master
+			on index stock-code
+		on error
+			insert stock-master
+			on error
+			endon
+		endon
+	endextract
+endprocedure // restore-obs ---------------------------------------------------
+
+/*
+screen report-mode
+	window @1,1 to @24,60 title "Report Only"
+		primary tmp-records-affected
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+before
+	do load-and-test-for-deletion
+	do build-report-data
+detail
+	display tra-object				@1,2 title "Table" 				pic x(22)
+	display tra-affected-records	@1,4 title "Affected Rcords"	pic zzzzzzzzzzzzzzzz9
+	display tra-deletable-records	@1,6 title "Deletable Records"	pic zzzzzzzzzzzzzzzzz9
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // report-mode ------------------------------------------------------
+*/
+
+/*
+procedure build-report-data
+	open tmp-records-affected truncate temporary
+	set tra-affected-records = 0
+	set tra-deletable-records = 0
+	report "p7stkcln exception"
+		spool-only
+	extract p7stkcln-common-stock
+	detail
+		//stock-master
+		//stock-notes
+		//stock-supplier
+		//stock-supplier-notes
+		//stock-price
+		//stock-unit-conversion
+		//bill-of-materials-detail
+		//
+		//
+		//stock-master
+		get tmp-common-stock
+			on index tcs-stock-code
+			key is pcs-stock-code
+		on error
+			set tcs-can-be-deleted = SPACES
+		endon
+		set tra-object = "stock-master"
+		get tmp-records-affected
+		on error
+			set tra-affected-records = 0
+			set tra-deletable-records = 0
+			insert tmp-records-affected
+		endon
+		get stock-master
+			on index stock-code
+			key is pcs-stock-code
+		on error
+		else
+			set tra-affected-records += 1
+			if tcs-can-be-deleted = "*"
+				set tra-deletable-records += 1
+			else
+				print
+					"stock-master"
+					pcs-stock-code
+					"cannot be deleted"
+			endif
+		endon
+		update tmp-records-affected
+		//stock-notes
+		set tra-object = "stock-notes"
+		//set tra-affected-records = 0
+		get tmp-records-affected
+		on error
+			set tra-affected-records = 0
+			set tra-deletable-records = 0
+			insert tmp-records-affected
+		endon
+		extract stock-notes
+			on index stock-code stock-note-type stock-note-sequence
+			key is pcs-stock-code SPACES 0
+			next same stock-code
+		detail
+			set tra-affected-records += 1
+			if tcs-can-be-deleted = "*"
+				set tra-deletable-records += 1
+			else
+				print
+					"stock-notes"
+					stock-code stock-note-type stock-note-sequence
+					"cannot be deleted"
+			endif
+		endextract
+		update tmp-records-affected
+		//stock-supplier
+		set tra-object = "stock-supplier"
+		//set tra-affected-records = 0
+		get tmp-records-affected
+		on error
+			set tra-affected-records = 0
+			set tra-deletable-records = 0
+			insert tmp-records-affected
+		endon
+		extract stock-supplier
+			on index stock-code cre-accountcode
+			key is pcs-stock-code SPACES
+			next same stock-code
+		detail
+			set tra-affected-records += 1
+			if tcs-can-be-deleted = "*"
+				set tra-deletable-records += 1
+			else
+				print
+					"stock-supplier"
+					stock-code cre-accountcode
+					"cannot be deleted"
+			endif
+		endextract
+		update tmp-records-affected
+		//stock-supplier-notes
+		set tra-object = "stock-supplier-notes"
+		//set tra-affected-records = 0
+		get tmp-records-affected
+		on error
+			set tra-affected-records = 0
+			set tra-deletable-records = 0
+			insert tmp-records-affected
+		endon
+		extract stock-supplier-notes
+			on index stock-note-key cre-accountcode stock-note-sequence stock-supplier-note-indicator stock-supplier-note-type
+			key is pcs-stock-code SPACES 0 SPACES SPACES
+			next same stock-note-key
+		detail
+			set tra-affected-records += 1
+			if tcs-can-be-deleted = "*"
+				set tra-deletable-records += 1
+			else
+				print
+					"stock-supplier-notes"
+					stock-note-key cre-accountcode stock-note-sequence stock-supplier-note-indicator stock-supplier-note-type
+					"cannot be deleted"
+			endif
+		endextract
+		update tmp-records-affected
+		//stock-price
+		set tra-object = "stock-price"
+		//set tra-affected-records = 0
+		get tmp-records-affected
+		on error
+			set tra-affected-records = 0
+			set tra-deletable-records = 0
+			insert tmp-records-affected
+		endon
+		extract stock-price
+			on index stock-code prc-region-code
+			key is pcs-stock-code SPACES
+			next same stock-code
+		detail
+			set tra-affected-records += 1
+			if tcs-can-be-deleted = "*"
+				set tra-deletable-records += 1
+			else
+				print
+					"stock-price"
+					stock-code prc-region-code
+					"cannot be deleted"
+			endif
+		endextract
+		update tmp-records-affected
+		//stock-unit-conversion
+		set tra-object = "stock-unit-conversion"
+		//set tra-affected-records = 0
+		get tmp-records-affected
+		on error
+			set tra-affected-records = 0
+			set tra-deletable-records = 0
+			insert tmp-records-affected
+		endon
+		extract stock-unit-conversion
+			on index stock-code suc-unit-desc suc-trade-unit-no
+			key is pcs-stock-code SPACES
+			next same stock-code
+		detail
+			set tra-affected-records += 1
+			if tcs-can-be-deleted = "*"
+				set tra-deletable-records += 1
+			else
+				print
+					"stock-unit-conversion"
+					stock-code suc-unit-desc suc-trade-unit-no
+					"cannot be deleted"
+			endif
+		endextract
+		update tmp-records-affected
+		//bill-of-materials-detail
+		set tra-object = "bill-of-materials-detail"
+		//set tra-affected-records = 0
+		get tmp-records-affected
+		on error
+			set tra-affected-records = 0
+			set tra-deletable-records = 0
+			insert tmp-records-affected
+		endon
+		extract bill-of-materials-detail
+			on index bom-parent-code bom-seq-no comp-code
+			key is pcs-stock-code 0 SPACES
+			next same bom-parent-code
+		detail
+			set tra-affected-records += 1
+			if tcs-can-be-deleted = "*"
+				set tra-deletable-records += 1
+			else
+				print
+					"bill-of-materials-detail"
+					bom-parent-code bom-seq-no comp-code
+					"cannot be deleted"
+			endif
+		endextract
+		update tmp-records-affected
+	endextract
+	report finished
+endprocedure // build-report-data ---------------------------------------------
+*/
+
+procedure correct-mode
+local field
+	lf-count				pic 9(5)
+	report "p7 stock cleanup"
+		spool-only
+	extract tmp-common-stock
+	detail
+		if tcs-can-be-deleted != "*"
+			continue
+		endif
+		set lf-count = 0
+		get stock-master
+			on index stock-code
+			key is tcs-stock-code
+		on error
+		else
+			print
+				"    "
+				stock-code
+			delete stock-master
+			set lf-count += 1
+		endon
+		print
+			"stock-master"
+			"deleted"		in col 40
+			lf-count
+		set lf-count = 0
+		extract stock-notes
+			on index stock-code stock-note-type stock-note-sequence
+			key is tcs-stock-code SPACES 0
+			next same stock-code
+		detail
+			print
+				"    "
+				stock-code
+			delete stock-notes
+			set lf-count += 1
+		endextract
+		print
+			"stock-notes"
+			"deleted"		in col 40
+			lf-count
+		set lf-count = 0
+		extract stock-supplier
+			on index stock-code cre-accountcode
+			key is tcs-stock-code SPACES
+			next same stock-code
+		detail
+			print
+				"    "
+				stock-code
+			delete stock-supplier
+			set lf-count += 1
+		endextract
+		print
+			"stock-supplier"
+			"deleted"		in col 40
+			lf-count
+		set lf-count = 0
+		extract stock-supplier-notes
+			on index stock-note-key cre-accountcode stock-note-sequence stock-supplier-note-indicator stock-supplier-note-type
+			key is tcs-stock-code SPACES 0 SPACES SPACES
+			next same stock-note-key
+		detail
+			print
+				"    "
+				stock-note-key
+			delete stock-supplier-notes
+			set lf-count += 1
+		endextract
+		print
+			"stock-supplier-notes"
+			"deleted"		in col 40
+			lf-count
+		set lf-count = 0
+		extract stock-price
+			on index stock-code prc-region-code
+			key is tcs-stock-code SPACES
+			next same stock-code
+		detail
+			print
+				"    "
+				stock-code
+			delete stock-price
+			set lf-count += 1
+		endextract
+		print
+			"stock-price"
+			"deleted"		in col 40
+			lf-count
+		set lf-count = 0
+		extract stock-unit-conversion
+			on index stock-code suc-unit-desc suc-trade-unit-no
+			key is tcs-stock-code SPACES
+			next same stock-code
+		detail
+			print
+				"    "
+				stock-code
+			delete stock-unit-conversion
+			set lf-count += 1
+		endextract
+		print
+			"stock-unit-conversion"
+			"deleted"		in col 40
+			lf-count
+		set lf-count = 0
+		extract bill-of-materials-detail
+			on index bom-parent-code bom-seq-no comp-code
+			key is tcs-stock-code 0 SPACES
+			next same bom-parent-code
+		detail
+			print
+				"    "
+				bom-parent-code
+			delete bill-of-materials-detail
+			set lf-count += 1
+		endextract
+		print
+			"bill-of-materials-detail"
+			"deleted"		in col 40
+			lf-count
+		set lf-count = 0
+	endextract
+	message "Delete complete"
+	report finished
+endprocedure // correct-mode --------------------------------------------------
+
+procedure backup-tables-old
+local field
+	lf-timestamp			pic x(10) //yymmddhhmm
+	set lf-timestamp = concat(format-picture(today(),"yymmdd") format-picture(tod(),"hhmm"))
+	open bak-stock-master				file strconcat("bak-" lf-timestamp "-stock-master") 			create permanent
+	open bak-stock-notes				file strconcat("bak-" lf-timestamp "-stock-notes") 				create permanent
+	open bak-stock-supplier				file strconcat("bak-" lf-timestamp "-stock-supplier") 			create permanent
+	open bak-stock-supplier-notes		file strconcat("bak-" lf-timestamp "-stock-supplier-notes") 	create permanent
+	open bak-stock-price				file strconcat("bak-" lf-timestamp "-stock-price") 				create permanent
+	open bak-stock-unit-conversion		file strconcat("bak-" lf-timestamp "-stock-unit-conversion") 	create permanent
+	open bak-bill-of-materials-detail	file strconcat("bak-" lf-timestamp "-bill-of-materials-detail") create permanent
+	extract stock-master
+	detail
+		insert bak-stock-master
+	endextract
+	extract stock-notes
+	detail
+		insert bak-stock-notes
+	endextract
+	extract stock-supplier
+	detail
+		insert bak-stock-supplier
+	endextract
+	extract stock-supplier-notes
+	detail
+		insert bak-stock-supplier-notes
+	endextract
+	extract stock-price
+	detail
+		insert bak-stock-price
+	endextract
+	extract stock-unit-conversion
+	detail
+		insert bak-stock-unit-conversion
+	endextract
+	extract bill-of-materials-detail
+	detail
+		insert bak-bill-of-materials-detail
+	endextract
+	message "Table Backup Complete"
+endprocedure // backup-tables -------------------------------------------------
+
+procedure clean-stock-orphans	//{2}
+local field
+	lf-del				type boolean	//delete?
+parameters
+	lp-mode				pic x(20)
+	set ws-orph-count = 0
+	if lp-mode = "-update"
+		do backup-tables
+		set lf-del = TRUE
+	else
+		set lf-del = FALSE
+	endif
+	report "Clean Stock Orphans"
+		spool-only
+	if lp-mode = "-update"
+		print
+			"Records will be deleted"
+	else
+		print
+			"Records will not be deleted"
+	endif
+	extract stock-price
+		on index stock-code prc-region-code
+	detail
+		push stock-price
+		get stock-master
+			on index stock-code
+		on error
+			print
+				stock-code
+				prc-region-code
+				"stock-price"
+			set ws-orph-count += 1
+			if lf-del
+				pop stock-price
+				delete stock-price
+			endif
+		endon
+	endextract
+	extract stock-supplier
+		on index stock-code cre-accountcode
+	detail
+		push stock-supplier
+		get stock-master
+			on index stock-code
+		on error
+			print
+				stock-code
+				cre-accountcode
+				"stock-supplier"
+			set ws-orph-count += 1
+			if lf-del
+				pop stock-supplier
+				delete stock-supplier
+			endif
+		endon
+	endextract
+	//extract stock-warehouse-detail
+	//	on index stock-code whse-code
+	//detail
+	//	get stock-master
+	//		on index stock-code
+	//	on error
+	//		print
+	//			stock-code
+	//			whse-code
+	//			"stock-warehouse-detail"
+	//	endon
+	//endextract
+	print
+		"Total Orphans:"
+		str(ws-orph-count)
+	report finished
+endprocedure // clean-stock-orphans -------------------------------------------
+
+procedure backup-tables
+local field
+	lf-date-serial			pic x(12)	//ccyymmddhhmm
+	lf-command				pic x(60)
+	i						type numeric
+	set lf-date-serial 		= strconcat(format-picture(today(),"yyyymmdd") format-picture(tod(),"hhmm"))
+	report "Table Backup"
+		spool-only
+	//stock-master
+	set lf-command 			= concat("procopy stock-master - " strconcat(lf-date-serial "-stock-master"))
+	print
+		today()
+		tod()
+		lf-command
+	command "sh"
+		parameters
+			"-c"
+			lf-command
+	print
+		today()
+		tod()
+		"stock-master backed up to"
+		strconcat(lf-date-serial "-stock-master")
+	//stock-supplier
+	set lf-command 			= concat("procopy stock-supplier - " strconcat(lf-date-serial "-stock-supplier"))
+	print
+		today()
+		tod()
+		lf-command
+	command "sh"
+		parameters
+			"-c"
+			lf-command
+	print
+		today()
+		tod()
+		"stock-supplier backed up to"
+		strconcat(lf-date-serial "-stock-supplier")
+	//stock-price
+	set lf-command 			= concat("procopy stock-price - " strconcat(lf-date-serial "-stock-price"))
+	print
+		today()
+		tod()
+		lf-command
+	command "sh"
+		parameters
+			"-c"
+			lf-command
+	print
+		today()
+		tod()
+		"stock-price backed up to"
+		strconcat(lf-date-serial "-stock-price")
+	message "Table backup complete"
+	report finished
+endprocedure // backup-tables -------------------------------------------------
+
+///*
+//procedure backup-tables
+//local field
+//	lf-timestamp			pic x(10) //yymmddhhmm
+//	set lf-timestamp = concat(format-picture(today(),"yymmdd") format-picture(tod(),"hhmm"))
+//	open bak-stock-master				file strconcat("bak-" lf-timestamp "-stock-master") 			create permanent
+//	open bak-stock-notes				file strconcat("bak-" lf-timestamp "-stock-notes") 				create permanent
+//	open bak-stock-supplier				file strconcat("bak-" lf-timestamp "-stock-supplier") 			create permanent
+//	open bak-stock-supplier-notes		file strconcat("bak-" lf-timestamp "-stock-supplier-notes") 	create permanent
+//	open bak-stock-price				file strconcat("bak-" lf-timestamp "-stock-price") 				create permanent
+//	open bak-stock-unit-conversion		file strconcat("bak-" lf-timestamp "-stock-unit-conversion") 	create permanent
+//	open bak-bill-of-materials-detail	file strconcat("bak-" lf-timestamp "-bill-of-materials-detail") create permanent
+//	extract stock-master
+//	detail
+//		insert bak-stock-master
+//	endextract
+//	extract stock-notes
+//	detail
+//		insert bak-stock-notes
+//	endextract
+//	extract stock-supplier
+//	detail
+//		insert bak-stock-supplier
+//	endextract
+//	extract stock-supplier-notes
+//	detail
+//		insert bak-stock-supplier-notes
+//	endextract
+//	extract stock-price
+//	detail
+//		insert bak-stock-price
+//	endextract
+//	extract stock-unit-conversion
+//	detail
+//		insert bak-stock-unit-conversion
+//	endextract
+//	extract bill-of-materials-detail
+//	detail
+//		insert bak-bill-of-materials-detail
+//	endextract
+//	message "Table Backup Complete"
+//endprocedure // backup-tables -------------------------------------------------
+///*

@@ -1,0 +1,7 @@
+// Update Changed field for Debtors
+update deb-master
+set
+	
+	dr-user-only-alpha4-1 = dr-user-only-alpha4-2
+where
+	dr-user-only-alpha4-2 = input alpha prompt "dr User Alpha to copy"

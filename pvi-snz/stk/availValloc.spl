@@ -1,0 +1,1007 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/stk/availValloc
+//  Program Desc:	Avail vs Allocated stock by PG (summary) or SKU (detail)
+//  Requested By:	Chris Ward
+//  Request Date:	04sep12
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	14may14	rmd	{4}		upgrade to 710.3
+//	28jan13	rmd	{3}		shrink datagrid screens for lower resolution
+//	15jan13	rmd	{2}		add stk-pack-desc
+//	19sep12	rmd	{1}		3 detail modes:
+//						3. non 0 Avail, 2. non 0 Alloc, 1. non 0 Either
+//	11sep12	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+//#include '../../../../bms/include/i85codes.spl'	//{4}
+#include '/pro/pronto/bms/include/i85codes.spl'     //{4}
+
+//// Stock Available Report SQL ZUSR.E108
+//// Reports on Stock Available to Sell not Stock on Hand
+//select
+//	stock-code
+//	stock-group
+//	stk-description
+//	stk-desc-line-2
+//	stk-apn-number
+//	whse-code
+//	whse-qty-on-hand - whse-current-orders
+//from
+//	stock-master
+//	stock-warehouse-detail
+//where
+//	((whse-qty-on-hand - whse-current-orders)> 0)and(stock-group = input alpha prompt is "Enter Product Group (F-FC-IN-IS-L-MP-P-PP-Q-S-SA-SF-SL-U") and ((whse-code >= input alpha prompt is "Start Territory " ) and (whse-code <= input alpha prompt is "End Territory " ))
+//order by stk-apn-number
+
+object tmp-stock
+	type memory
+	record
+		tmp-whse-code                   like whse-code
+		tmp-stock-group                 like stock-group
+		tmp-pg-description				like sys-description
+		tmp-stock-code                 	like stock-code
+		tmp-stk-description				like stk-description
+		tmp-stk-desc-line-2             like stk-desc-line-2
+		tmp-stk-pack-desc				like stk-pack-desc	//{2}
+		tmp-stk-apn-number              like stk-apn-number
+		tmp-whse-qty-on-hand            like whse-qty-on-hand
+		tmp-whse-current-orders         like whse-current-orders
+		tmp-whse-back-orders			like whse-back-orders
+		tmp-whse-avg-cost       		like whse-avg-cost
+		tmp-alloc-qty                   type numeric
+		tmp-alloc-cst					type numeric
+		tmp-alloc-cst-str				pic x(16)		//-$345,789,123.56
+		tmp-avail-qty                   type numeric
+		tmp-avail-cst                   type numeric
+		tmp-avail-cst-str				pic x(16)		//-$345,789,123.56
+		tmp-detail-level				type numeric	//{1}
+	endrecord
+    key is tmp-whse-code tmp-stock-group tmp-stock-code
+
+object tmp-stock-group
+	type memory
+	record
+		tsg-whse-code                   like whse-code
+		tsg-stock-group                 like stock-group
+		tsg-pg-description				like sys-description
+		tsg-whse-qty-on-hand            like whse-qty-on-hand
+		tsg-whse-current-orders         like whse-current-orders
+		tsg-whse-back-orders			like whse-back-orders
+		tsg-whse-avg-cost       		like whse-avg-cost
+		tsg-alloc-qty                   type numeric
+		tsg-alloc-cst					type numeric
+		tsg-alloc-cst-str				pic x(16) 		//-$345,789,123.56
+		tsg-avail-qty                   type numeric
+		tsg-avail-cst                   type numeric
+		tsg-avail-cst-str				pic x(16)		//-$345,789,123.56
+	endrecord
+    key is tsg-whse-code tsg-stock-group
+
+
+object tmp-allocated-lines
+	type memory
+	record
+		tal-stock-code          like stock-code
+		tal-so-order-date       like so-order-date
+		tal-so-cust-code        like so-cust-code
+		tal-shortname           like shortname
+		tal-so-order-no         like so-order-no
+		tal-so-bo-suffix        like so-bo-suffix
+		tal-sol-line-seq        like sol-line-seq
+		tal-sol-ordered-qty     like sol-ordered-qty
+		tal-sol-shipped-qty		like sol-shipped-qty
+	endrecord
+	key is tal-stock-code tal-so-order-date
+
+mode md-dig-detail
+	prompt "&Detail"
+	help "Show detailed allocations"
+
+//{1} --------------------------- start
+mode md-dig-detail-1
+	prompt "&1 Detail All"
+	help "Show detailed allocations where Either Avail or Alloc are non 0"
+
+mode md-dig-detail-2
+	prompt "&2 Detail Avail"
+	help "Show detailed allocations where Avail is non 0" //, Alloc is 0"
+
+mode md-dig-detail-3
+	prompt "&3 Detail Alloc"
+	help "Show detailed allocations where Alloc is non 0" //, Avail is 0"
+//{1} ----------------------------- end
+
+mode md-stk-enq
+	prompt "&Stk Enq"
+	help "Enquire on this item"
+
+mode md-view-so
+	prompt "View &Orders"
+    help "View orders for this product"
+
+mode md-so-enq
+	prompt "SO Enq"
+	help "Enquire on this order"
+
+mode md-print
+	prompt "&Print"
+	help "Print"
+
+
+field
+	ws-mode						pic x
+	ws-whse-code-start			like whse-code
+	ws-whse-code-end			like whse-code
+	ws-stock-group-start 		like stock-group
+	ws-stock-group-end          like stock-group
+	ws-stock-code-start 		like stock-code
+	ws-stock-code-end          	like stock-code
+
+procedure main
+local field
+	lf-confirm					type boolean
+	set ws-mode = "S"
+	get system-control first
+	do get-user-input entry-once
+		returning
+			lf-confirm
+	if lf-confirm
+		do build-dataset
+		do dig-summary
+		//do display-in-grid
+	endif
+endprocedure // main ----------------------------------------------------------
+
+screen get-user-input
+returning
+	lr-confirm					type boolean
+	window @2,1 to @10,38 title "Allocated/Available Stock"
+	box @2,1 to @9,38 title "Selection Options"
+	//accept ws-mode 						@2,18 title "Summary/Detail:"
+	//	default ws-mode
+	//	uppercase
+	//	allowed "S" "D"
+	//	help "(S)ummary [Product Group] or (D)etail [Stock Code] mode"
+  	accept ws-whse-code-start			@03,18 title "Start Whse:"
+  		default ws-whse-code-start
+  		on help-key
+			set sys-tbl-type = "WH"
+			set sys-tbl-code = ws-whse-code-start
+			get system-table
+			on error
+			endon
+			do i85codes-table-help
+			if sys-tbl-code > SPACES
+				set ws-whse-code-start = sys-tbl-code
+			endif
+			reenter ws-whse-code-start
+		endon
+		validation
+			if ws-whse-code-start not in {SPACES}
+				get system-table
+					on index sys-tbl-type sys-tbl-code
+					key is "WH" ws-whse-code-start
+				on error
+					message "Unknown Whse " ws-whse-code-start
+					reenter ws-whse-code-start
+				endon
+				set ws-whse-code-end =  ws-whse-code-start
+			endif
+		endvalidation
+  	accept ws-whse-code-end	  			@04,18 title "End Whse:"
+		default ws-whse-code-end
+		on help-key
+			set sys-tbl-type = "WH"
+			set sys-tbl-code = ws-whse-code-end
+			do i85codes-table-help
+			if sys-tbl-code > SPACES
+				set ws-whse-code-end = sys-tbl-code
+			endif
+			reenter ws-whse-code-end
+		endon
+		fill with trailing "~"
+	accept ws-stock-group-start			@05,18 title "Start Group:"
+		default ws-stock-group-start
+		uppercase
+		on help-key
+			set sys-tbl-type = "PG"
+			do i85codes-table-help
+			if sys-tbl-code > SPACES
+				set ws-stock-group-start = sys-tbl-code
+			endif
+			reenter ws-stock-group-start
+		endon
+		validation
+			if ws-stock-group-start not in {SPACES}
+				get system-table
+					on index sys-tbl-type sys-tbl-code
+					key is "PG" ws-stock-group-start
+				on error
+					message "Unknown Group " ws-stock-group-start
+					reenter ws-stock-group-start
+				endon
+				set ws-stock-group-end =  ws-stock-group-start
+			endif
+		endvalidation
+	accept ws-stock-group-end			@06,18 title "End Group:"
+		default ws-stock-group-end
+		fill with trailing "~"
+		uppercase
+		on help-key
+			set sys-tbl-type = "PG"
+			do i85codes-table-help
+			if sys-tbl-code > SPACES
+				set ws-stock-group-end = sys-tbl-code
+			endif
+			reenter ws-stock-group-end
+		endon
+//
+	accept ws-stock-code-start			@07,18 title "Start Item:"
+		default ws-stock-code-start
+		uppercase
+		on help-key
+			spl "lib/h4enqstk"
+				parameters
+					ws-stock-code-start
+					SPACES
+					SPACES
+				returning
+					ws-stock-code-start
+				reenter
+		endon
+		validation
+			if ws-stock-code-start != SPACES
+				get stock-master
+					on index stock-code
+					key is ws-stock-code-start
+				on error
+					message "Unknown item " ws-stock-code-start
+					reenter ws-stock-code-start
+				endon
+				set ws-stock-code-end = ws-stock-code-start
+			endif
+		endvalidation
+	accept ws-stock-code-end			@08,18 title "End Item:"
+		default ws-stock-code-end
+		fill with trailing "~"
+		uppercase
+		on help-key
+			spl "lib/h4enqstk"
+				parameters
+					ws-stock-code-end
+					SPACES
+					SPACES
+				returning
+					ws-stock-code-end
+				reenter
+		endon
+confirm
+confirmed
+	set lr-confirm = TRUE
+endconfirm
+endscreen // get-user-input ---------------------------------------------------
+
+procedure build-dataset
+local field
+	i				type numeric
+	lf-tmp-str		pic x(20)
+	window @19,44 to @22,94
+		title "Scanning Records"
+		colour white
+		no-hide
+    display bitmap concat(getenv("BMS") "/images/repedge.gif") @19,44
+	display "Building Dataset" @20,60 background
+	display "WH/Item:" @21,60 background prompt left
+	//message "build"
+	open tmp-stock truncate temporary
+	extract stock-warehouse-detail
+		on index whse-code stock-code
+		key is ws-whse-code-start SPACES
+		finish when whse-code > ws-whse-code-end
+	detail
+		get stock-master
+		on error
+			continue
+		endon
+		get system-table
+			on index sys-tbl-type sys-tbl-code
+			key is "PG" stock-group
+		on error
+			set sys-description = "UNKNOWN"
+		endon
+		if stock-code not between ws-stock-code-start and ws-stock-code-end
+			continue
+		endif
+		if stock-group not between ws-stock-group-start and ws-stock-group-end
+			continue
+		endif
+		display strconcat(whse-code "/" stock-code) @21,66 background left
+		set tmp-stock-code                 	= stock-code
+		set tmp-stock-group                 = stock-group
+		set tmp-pg-description				= sys-description
+		set tmp-stk-description             = stk-description
+		set tmp-stk-desc-line-2             = stk-desc-line-2
+		set tmp-stk-pack-desc				= stk-pack-desc	//{2}
+		set tmp-stk-apn-number              = stk-apn-number
+		set tmp-whse-code                   = whse-code
+		set tmp-whse-qty-on-hand            = whse-qty-on-hand
+		set tmp-whse-current-orders         = whse-current-orders
+		set tmp-whse-back-orders			= whse-back-orders
+		set tmp-whse-avg-cost       		= num(zstr(whse-avg-cost,9,2)) //whse-avg-cost
+		set tmp-alloc-qty                   = tmp-whse-current-orders //+ tmp-whse-back-orders
+		set tmp-alloc-cst                   = tmp-alloc-qty * tmp-whse-avg-cost
+		set tmp-avail-qty					= tmp-whse-qty-on-hand - tmp-alloc-qty
+		set tmp-avail-cst                   = tmp-avail-qty * tmp-whse-avg-cost
+		do format-currency
+			parameters
+				tmp-alloc-cst
+				16
+			returning
+				tmp-alloc-cst-str
+		do format-currency
+			parameters
+				tmp-avail-cst
+				16
+			returning
+				tmp-avail-cst-str
+		//if tmp-avail-cst < 0
+		//	message tmp-avail-cst
+		//	set tmp-avail-cst-str = SPACES
+		//	set lf-tmp-str = strconcat(format-picture(abs(tmp-avail-cst),"$,$$$,$$9.99"))
+		//	for i = 1 to strlen(lf-tmp-str)
+		//		set tmp-avail-cst-str = strconcat(tmp-avail-cst-str substring(lf-tmp-str,i,i))
+		//	endfor
+		//	message lf-tmp-str
+		//	set tmp-avail-cst-str = strconcat("-" lf-tmp-str)
+		//	message tmp-avail-cst-str
+		//else
+		//	set tmp-avail-cst-str = strconcat(format-picture(tmp-avail-cst,"$,$$$,$$9.99"))
+		//endif
+		//{1} ------------------------------ start
+		//if tmp-alloc-qty <> 0 or tmp-avail-qty <> 0
+		//	insert tmp-stock
+		//endif
+		if tmp-alloc-qty <> 0 or tmp-avail-qty <> 0
+			set tmp-detail-level = 1
+			if tmp-alloc-qty = 0 //must be only avail with non 0
+				set tmp-detail-level = 2
+			elseif tmp-avail-qty = 0 //must be only alloc with non 0
+				set tmp-detail-level = 3
+			endif
+			insert tmp-stock
+		endif
+		//{1} -------------------------------- end
+	endextract
+	open tmp-stock-group truncate temporary
+	extract tmp-stock
+	before tmp-whse-code tmp-stock-group
+		initialise tmp-stock-group
+		set tsg-whse-code 		= tmp-whse-code
+		set tsg-stock-group 	= tmp-stock-group
+		set tsg-pg-description  = tmp-pg-description
+	detail
+		set tsg-alloc-qty += tmp-alloc-qty
+	    set tsg-alloc-cst += tmp-alloc-cst
+	    set tsg-avail-qty += tmp-avail-qty
+	    set tsg-avail-cst += tmp-avail-cst
+	after tmp-whse-code tmp-stock-group
+		do format-currency
+			parameters
+				tsg-alloc-cst
+				16
+			returning
+				tsg-alloc-cst-str
+		do format-currency
+			parameters
+				tsg-avail-cst
+				16
+			returning
+				tsg-avail-cst-str
+		insert tmp-stock-group
+	endextract
+endprocedure // build-dataset -------------------------------------------------
+
+screen dig-summary
+local field
+	lf-whse-code            like whse-code
+	lf-stock-group          like stock-group
+	window @1,1 to @24,90
+		title concat("Avail/Alloc Stock Summary")
+		primary tmp-stock-group
+		datagrid occurs 20
+	//allowed md-dig-detail search md-print//md-mode
+	allowed md-dig-detail-1 md-dig-detail-2 md-dig-detail-3 search md-print //{1}
+	review-from-start
+detail
+	display concat(tsg-whse-code "  ")          	@1,010 title "WH"
+	display concat(tsg-stock-group "  ")         @1,020 title "Group"
+	display tsg-pg-description     	@1,030 title "Description"
+	display tsg-avail-qty           @1,036 title "Avail Qty"    pic --------9
+	//display tsg-avail-cst           @1,038 title "Avail Cost"   pic -,---,--9.99 //-----9.99
+	display tsg-avail-cst-str       @1,038 title "Avail Cost"   pic x(14) right
+	display tsg-alloc-qty			@1,062 title "Alloc Qty"	pic --------9
+	//display tsg-alloc-cst           @1,064 title "Alloc Cost"   pic -,---,--9.99 //-----9.99
+	display tsg-alloc-cst-str       @1,068 title "Alloc Cost"   pic x(14) right
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		//{1} ------------------------ start
+		//case md-dig-detail
+		//	do dig-detail
+		//		parameters
+		//			tsg-whse-code
+		//			tsg-stock-group
+		case md-dig-detail-1
+			do dig-detail-1
+				parameters
+					tsg-whse-code
+					tsg-stock-group
+					1
+		case md-dig-detail-2
+			do dig-detail-2
+				parameters
+					tsg-whse-code
+					tsg-stock-group
+					2
+		case md-dig-detail-3
+			do dig-detail-3
+				parameters
+					tsg-whse-code
+					tsg-stock-group
+					3
+		//{1} -------------------------- end
+		case md-print
+			set lf-whse-code            = tsg-whse-code
+			set lf-stock-group          = tsg-stock-group
+			do print-summary-report
+			set tsg-whse-code           = lf-whse-code
+			set tsg-stock-group         = lf-stock-group
+			get tmp-stock-group
+	endswitch
+endconfirm
+endscreen // dig-summary ------------------------------------------------------
+
+screen dig-detail-1
+local field
+	lf-whse-code            like whse-code
+	lf-stock-group          like stock-group
+	lf-stock-code			like stock-code
+parameters
+	lp-whse-code        like whse-code
+	lp-stock-group		like stock-group
+	lp-detail-level		type numeric	//{1}
+	//window @1,1 to @24,126	//{2}
+	//window @1,1 to @24,132      //{2} //{3}
+	window @1,1 to @24,120     			//{3}
+		title concat("Avail/Alloc Stock Detail")
+		primary tmp-stock
+			when tmp-whse-code = lp-whse-code
+			and tmp-stock-group = lp-stock-group
+			//and lp-detail-level in {1 tmp-detail-level} //{1}
+			and (tmp-alloc-qty <> 0 or tmp-avail-qty <> 0)
+		datagrid occurs 20
+	allowed md-view-so md-stk-enq md-print search //md-mode
+	review-from-start
+detail
+	display tmp-whse-code           @1,010 title "WH"
+	display tmp-stock-group         @1,020 title "Group"
+	display tmp-stock-code          @1,030 title "Item"
+	display tmp-stk-description     @1,040 title "Description"  pic x(27)////pic x(22)  //{3}
+	display tmp-stk-desc-line-2     @1,044 title "Desc 2"       pic x(22)//pic x(28)    //{3}
+	display tmp-stk-pack-desc		@1,048 title "Pack"	 		pic x(6)//{2}           //{3}
+	//display tmp-stk-apn-number      @1,050 title "APN"
+	display tmp-avail-qty           @1,050 title "Avail Qty"    pic -------9
+	//display tmp-avail-cst           @1,056 title "Avail Cost"   pic -,---,--9.99 //  pic -,---,--9.99 //-----9.99
+	display tmp-avail-cst-str       @1,060 title "Avail Cost"   pic x(10) right    //pic x(12) right                    //{3}
+	display tmp-alloc-qty			@1,070 title "Alloc Qty"    pic -------9
+	//display tmp-alloc-cst           @1,064 title "Alloc Cost"   pic -,---,--9.99 //  pic -,---,--9.99 //-----9.99
+	display tmp-alloc-cst-str       @1,080 title "Alloc Cost"   pic x(10) right    //pic x(12) right                   	//{3}
+	//display tmp-whse-qty-on-hand    @1,070 title "QOH"
+	//display tmp-whse-current-orders @1,080 title "Orders"
+	//display tmp-whse-back-orders	@1,090 title "BO"
+	//display tmp-whse-avg-cost     	@1,100 title "WAC"
+	//display tmp-detail-level		@21,90 background pic 9
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-view-so
+			do build-tmp-allocated-lines
+				parameters
+					tmp-stock-code
+			do dig-allocated-lines
+			//spl "stk/m4stkq2enq.op6"
+			//	parameters
+			//		"O"
+			//		tmp-stock-code
+		case md-stk-enq
+			spl "stk/m4stkmaint"
+				parameters
+					"-drill"
+					tmp-stock-code
+		case md-print
+			set lf-whse-code            = tmp-whse-code
+			set lf-stock-group          = tmp-stock-group
+			set lf-stock-code 			= tmp-stock-code
+			do print-detail-report-1
+				parameters
+					lp-whse-code
+					lp-stock-group
+			set tmp-whse-code           = lf-whse-code
+			set tmp-stock-group         = lf-stock-group
+			set tmp-stock-code 			= lf-stock-code
+			get tmp-stock
+	endswitch
+endconfirm
+endscreen // dig-detail-1 -----------------------------------------------------
+
+screen dig-detail-2
+local field
+	lf-whse-code            like whse-code
+	lf-stock-group          like stock-group
+	lf-stock-code			like stock-code
+parameters
+	lp-whse-code        like whse-code
+	lp-stock-group		like stock-group
+	lp-detail-level		type numeric	//{1}
+	window @1,1 to @24,132 //126 {2}
+		title concat("Avail/Alloc Stock Detail")
+		primary tmp-stock
+			when tmp-whse-code = lp-whse-code
+			and tmp-stock-group = lp-stock-group
+			//and lp-detail-level in {1 tmp-detail-level} //{1}
+			and (tmp-avail-qty <> 0)
+		datagrid occurs 20
+	allowed md-view-so md-stk-enq md-print search //md-mode
+	review-from-start
+detail
+	display tmp-whse-code           @1,010 title "WH"
+	display tmp-stock-group         @1,020 title "Group"
+	display tmp-stock-code          @1,030 title "Item"
+	display tmp-stk-description     @1,040 title "Description"  //pic x(22)
+	display tmp-stk-desc-line-2     @1,044 title "Desc 2"       pic x(28)
+	display tmp-stk-pack-desc		@1,048 title "Pack"	 		pic x(6)//{2}
+	//display tmp-stk-apn-number      @1,050 title "APN"
+	display tmp-avail-qty           @1,050 title "Avail Qty"    pic -------9
+	//display tmp-avail-cst           @1,056 title "Avail Cost"   pic -,---,--9.99 //-----9.99
+	display tmp-avail-cst-str       @1,060 title "Avail Cost"   pic x(12) right
+	display tmp-alloc-qty			@1,070 title "Alloc Qty"    pic -------9
+	//display tmp-alloc-cst           @1,064 title "Alloc Cost"   pic -,---,--9.99 //-----9.99
+	display tmp-alloc-cst-str       @1,080 title "Alloc Cost"   pic x(12) right
+	//display tmp-whse-qty-on-hand    @1,070 title "QOH"
+	//display tmp-whse-current-orders @1,080 title "Orders"
+	//display tmp-whse-back-orders	@1,090 title "BO"
+	//display tmp-whse-avg-cost     	@1,100 title "WAC"
+	//display tmp-detail-level		@21,90 background pic 9
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-view-so
+			do build-tmp-allocated-lines
+				parameters
+					tmp-stock-code
+			do dig-allocated-lines
+			//spl "stk/m4stkq2enq.op6"
+			//	parameters
+			//		"O"
+			//		tmp-stock-code
+		case md-stk-enq
+			spl "stk/m4stkmaint"
+				parameters
+					"-drill"
+					tmp-stock-code
+		case md-print
+			set lf-whse-code            = tmp-whse-code
+			set lf-stock-group          = tmp-stock-group
+			set lf-stock-code 			= tmp-stock-code
+			do print-detail-report-2
+				parameters
+					lp-whse-code
+					lp-stock-group
+			set tmp-whse-code           = lf-whse-code
+			set tmp-stock-group         = lf-stock-group
+			set tmp-stock-code 			= lf-stock-code
+			get tmp-stock
+	endswitch
+endconfirm
+endscreen // dig-detail-2 -----------------------------------------------------
+
+screen dig-detail-3
+local field
+	lf-whse-code            like whse-code
+	lf-stock-group          like stock-group
+	lf-stock-code			like stock-code
+parameters
+	lp-whse-code        like whse-code
+	lp-stock-group		like stock-group
+	lp-detail-level		type numeric	//{1}
+	window @1,1 to @24,132 //126 {2}
+		title concat("Avail/Alloc Stock Detail")
+		primary tmp-stock
+			when tmp-whse-code = lp-whse-code
+			and tmp-stock-group = lp-stock-group
+			//and lp-detail-level in {1 tmp-detail-level} //{1}
+			and (tmp-alloc-qty <> 0)
+		datagrid occurs 20
+	allowed md-view-so md-stk-enq md-print search //md-mode
+	review-from-start
+detail
+	display tmp-whse-code           @1,010 title "WH"
+	display tmp-stock-group         @1,020 title "Group"
+	display tmp-stock-code          @1,030 title "Item"
+	display tmp-stk-description     @1,040 title "Description"  //pic x(22)
+	display tmp-stk-desc-line-2     @1,044 title "Desc 2"       pic x(28)
+	display tmp-stk-pack-desc		@1,048 title "Pack"	 		pic x(6)//{2}
+	//display tmp-stk-apn-number      @1,050 title "APN"
+	display tmp-avail-qty           @1,050 title "Avail Qty"    pic -------9
+	//display tmp-avail-cst           @1,056 title "Avail Cost"   pic -,---,--9.99 //-----9.99
+	display tmp-avail-cst-str       @1,060 title "Avail Cost"   pic x(12) right
+	display tmp-alloc-qty			@1,070 title "Alloc Qty"    pic -------9
+	//display tmp-alloc-cst           @1,064 title "Alloc Cost"   pic -,---,--9.99 //-----9.99
+	display tmp-alloc-cst-str       @1,080 title "Alloc Cost"   pic x(12) right
+	//display tmp-whse-qty-on-hand    @1,070 title "QOH"
+	//display tmp-whse-current-orders @1,080 title "Orders"
+	//display tmp-whse-back-orders	@1,090 title "BO"
+	//display tmp-whse-avg-cost     	@1,100 title "WAC"
+	//display tmp-detail-level		@21,90 background pic 9
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-view-so
+			do build-tmp-allocated-lines
+				parameters
+					tmp-stock-code
+			do dig-allocated-lines
+			//spl "stk/m4stkq2enq.op6"
+			//	parameters
+			//		"O"
+			//		tmp-stock-code
+		case md-stk-enq
+			spl "stk/m4stkmaint"
+				parameters
+					"-drill"
+					tmp-stock-code
+		case md-print
+			set lf-whse-code            = tmp-whse-code
+			set lf-stock-group          = tmp-stock-group
+			set lf-stock-code 			= tmp-stock-code
+			do print-detail-report-3
+				parameters
+					lp-whse-code
+					lp-stock-group
+			set tmp-whse-code           = lf-whse-code
+			set tmp-stock-group         = lf-stock-group
+			set tmp-stock-code 			= lf-stock-code
+			get tmp-stock
+	endswitch
+endconfirm
+endscreen // dig-detail-3 -----------------------------------------------------
+
+procedure build-tmp-allocated-lines
+parameters
+	lp-stock-code			like stock-code
+	open tmp-allocated-lines truncate temporary
+	extract sales-order-line
+		on index sol-line-type stock-code so-order-no so-bo-suffix
+		key is "SN" lp-stock-code 0 SPACES
+		next same sol-line-type stock-code
+	detail
+		get sales-order
+			on index so-order-no so-bo-suffix
+		on error
+			continue
+		else
+			if so-order-type-code in {"Q"}
+				continue
+			endif
+		endon
+		get deb-master
+			on index accountcode
+			key is so-cust-code
+		on error
+			set shortname = "UNKNOWN"
+		endon
+		if sol-shipped-qty > 0
+			set tal-stock-code          = stock-code
+			set tal-so-order-date       = so-order-date
+			set tal-so-cust-code        = so-cust-code
+			set tal-shortname           = shortname
+			set tal-so-order-no         = so-order-no
+			set tal-so-bo-suffix        = so-bo-suffix
+			set tal-sol-line-seq        = sol-line-seq
+			set tal-sol-ordered-qty     = sol-ordered-qty
+			set tal-sol-shipped-qty		= sol-shipped-qty
+			insert tmp-allocated-lines
+		endif
+	endextract
+endprocedure // build-tmp-allocated-lines -------------------------------------
+
+screen dig-allocated-lines
+	window @1,1 to @24,80
+		title concat("Allocated Lines")
+		primary tmp-allocated-lines
+		datagrid occurs 20
+	allowed md-so-enq search //md-mode
+	review-from-start
+detail
+	display tal-so-order-date								@1,010 title "Date"
+	display concat(str(tal-so-order-no) tal-so-bo-suffix)	@1,020 title "Order #"
+	display tal-so-cust-code        						@1,030 title "Acct"
+	display tal-shortname           						@1,040 title "Name"
+	display tal-sol-ordered-qty     						@1,050 title "Ordered" pic ---------9
+	display tal-sol-shipped-qty     						@1,060 title "Shipped" pic ---------9
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-so-enq
+			spl "so/m5ordenq"
+				parameters
+					"-e"
+					tal-so-order-no
+					tal-so-bo-suffix
+	endswitch
+endconfirm
+endscreen // dig-allocated-lines ----------------------------------------------
+
+procedure print-detail-report-1
+local field //sub-totals
+	st-whse-qty-on-hand         like whse-qty-on-hand
+	st-whse-current-orders      like whse-current-orders
+	st-whse-back-orders         like whse-back-orders
+	st-whse-avg-cost       		like whse-avg-cost
+parameters
+	lp-whse-code        like whse-code
+	lp-stock-group		like stock-group
+	report "Avail Stock Detail"
+		header is top-of-page-detail
+	page
+	extract tmp-stock
+		when tmp-whse-code = lp-whse-code
+		and tmp-stock-group = lp-stock-group
+		and (tmp-alloc-qty <> 0 or tmp-avail-qty <> 0)
+	detail
+		do print-detail-line
+		//print
+		//	tmp-whse-code
+		//	tmp-stock-group
+		//	tmp-stock-code 			in col 12
+		//	concat(strconcat(tmp-stk-description) " " strconcat(tmp-stk-desc-line-2))		in col 30
+		//	tmp-avail-qty			in col 91 pic ------9
+		//	substring(tmp-avail-cst-str,5,16) 		in col 99 right //pic x(12)
+		//	tmp-alloc-qty			in col 112 pic ------9
+		//	substring(tmp-alloc-cst-str,5,16) 		in col 120 right //pic x(12)
+	endextract
+	report finished
+endprocedure // print-detail-report-1 -----------------------------------------
+
+procedure print-detail-report-2
+local field //sub-totals
+	st-whse-qty-on-hand         like whse-qty-on-hand
+	st-whse-current-orders      like whse-current-orders
+	st-whse-back-orders         like whse-back-orders
+	st-whse-avg-cost       		like whse-avg-cost
+parameters
+	lp-whse-code        like whse-code
+	lp-stock-group		like stock-group
+	report "Avail Stock Detail"
+		header is top-of-page-detail
+	page
+	extract tmp-stock
+		when tmp-whse-code = lp-whse-code
+		and tmp-stock-group = lp-stock-group
+		and (tmp-avail-qty <> 0)
+	detail
+		do print-detail-line
+		//print
+		//	tmp-whse-code
+		//	tmp-stock-group
+		//	tmp-stock-code 			in col 12
+		//	tmp-stk-description		in col 30
+		//	tmp-avail-qty			in col 62 pic ------9
+		//	tmp-avail-cst-str 		in col 70 right
+		//	tmp-alloc-qty			in col 94 pic ------9
+		//	tmp-alloc-cst-str 		in col 102 right
+	endextract
+	report finished
+endprocedure // print-detail-report-2 -----------------------------------------
+
+procedure print-detail-report-3
+local field //sub-totals
+	st-whse-qty-on-hand         like whse-qty-on-hand
+	st-whse-current-orders      like whse-current-orders
+	st-whse-back-orders         like whse-back-orders
+	st-whse-avg-cost       		like whse-avg-cost
+parameters
+	lp-whse-code        like whse-code
+	lp-stock-group		like stock-group
+	report "Avail Stock Detail"
+		header is top-of-page-detail
+	page
+	extract tmp-stock
+		when tmp-whse-code = lp-whse-code
+		and tmp-stock-group = lp-stock-group
+		and (tmp-alloc-qty <> 0)
+	detail
+		do print-detail-line
+		//print
+		//	tmp-whse-code
+		//	tmp-stock-group
+		//	tmp-stock-code 			in col 12
+		//	tmp-stk-description		in col 30
+		//	tmp-avail-qty			in col 62 pic ------9
+		//	tmp-avail-cst-str 		in col 70 right
+		//	tmp-alloc-qty			in col 94 pic ------9
+		//	tmp-alloc-cst-str 		in col 102 right
+	endextract
+	report finished
+endprocedure // print-detail-report-3 -----------------------------------------
+
+procedure print-detail-line
+	print
+		tmp-whse-code
+		tmp-stock-group
+		tmp-stock-code 			in col 12
+		//concat(strconcat(tmp-stk-description) " " strconcat(tmp-stk-desc-line-2))		in col 30	//{2}
+		concat(strconcat(tmp-stk-description) " " strconcat(tmp-stk-desc-line-2))		in col 26   //{2}
+		tmp-stk-pack-desc		in col 84															//{2}
+		tmp-avail-qty			in col 91 pic ------9
+		substring(tmp-avail-cst-str,5,16) 		in col 99 right //pic x(12)
+		tmp-alloc-qty			in col 112 pic ------9
+		substring(tmp-alloc-cst-str,5,16) 		in col 120 right //pic x(12)
+endprocedure // print-detail-line ---------------------------------------------
+
+procedure print-detail-report
+local field //sub-totals
+	st-whse-qty-on-hand         like whse-qty-on-hand
+	st-whse-current-orders      like whse-current-orders
+	st-whse-back-orders         like whse-back-orders
+	st-whse-avg-cost       		like whse-avg-cost
+parameters
+	lp-whse-code        like whse-code
+	lp-stock-group		like stock-group
+	report "Avail Stock Detail"
+		header is top-of-page-detail
+	page
+	extract tmp-stock
+		when tmp-whse-code = lp-whse-code
+		and tmp-stock-group = lp-stock-group
+	detail
+		print
+			tmp-whse-code
+			tmp-stock-group
+			tmp-stock-code 			in col 12
+			//concat(tmp-stk-description, tmp-stk-desc-line-2)		in col 30   						//{2}
+			concat(strconcat(tmp-stk-description) " " strconcat(tmp-stk-desc-line-2))		in col 26   //{2}
+			tmp-stk-pack-desc		in col 84															//{2}
+			tmp-avail-qty			in col 62 + 16 pic ------9
+			tmp-avail-cst-str 		in col 70 + 16 right
+			tmp-alloc-qty			in col 94 + 16 pic ------9
+			tmp-alloc-cst-str 		in col 102 + 16  right
+	endextract
+	report finished
+endprocedure // print-detail-report -------------------------------------------
+
+procedure top-of-page-detail
+	print
+		company-name
+		"--------- Stock Available Vs Allocated (Detailed) ---------"
+	print
+		today()
+		tod()
+		login-id()
+		"Page:" 			in col 123
+		fstr(page-no(),3,0)
+	skip
+	print
+		"Whse"
+		"Group"
+		"Item"
+		//"Description"	in col 30	//{2}
+		"Description"	in col 26   //{2}
+		"Pack"			in col 84   //{2}
+		"Avail"			in col 93 //76  //60
+		"Avail Cost"	in col 101 //92  //76
+		"Alloc"			in col 114//108 //92
+		"Alloc Cost"	in col 122//124 //108
+endprocedure // top-of-page-detail --------------------------------------------
+
+procedure top-of-page-detail-old
+	print
+		company-name
+		"--------- Stock Available Vs Allocated (Detailed) ---------"
+	print
+		today()
+		tod()
+		login-id()
+		"Page:" 			in col 109
+		fstr(page-no(),3,0)
+	skip
+	print
+		"Whse"
+		"Group"
+		"Item"
+		"Description"	in col 30
+		"Avail Qty"		in col 60
+		"Avail Cost"	in col 76
+		"Alloc Qty"		in col 92
+		"Alloc Cost"	in col 108
+endprocedure // top-of-page-detail-old ----------------------------------------
+
+procedure print-summary-report
+local field //sub-totals
+	st-whse-qty-on-hand         like whse-qty-on-hand
+	st-whse-current-orders      like whse-current-orders
+	st-whse-back-orders         like whse-back-orders
+	st-whse-avg-cost       		like whse-avg-cost
+	report "Avail Stock Summary"
+		header is top-of-page-summary
+	page
+	extract tmp-stock-group
+		//when tmp-whse-code = lp-whse-code
+		//and tmp-stock-group = lp-stock-group
+	detail
+		print
+			tsg-whse-code
+			tsg-stock-group
+			//tmp-stock-code 			in col 12
+			tsg-pg-description		in col 20
+			tsg-avail-qty			in col 62 pic ------9
+			tsg-avail-cst-str 		in col 70 right
+			tsg-alloc-qty			in col 94 pic ------9
+			tsg-alloc-cst-str 		in col 102 right
+	endextract
+	report finished
+endprocedure // print-summary-report ------------------------------------------
+
+procedure top-of-page-summary
+	print
+		company-name
+		"--------- Stock Available Vs Allocated (Summary) ---------"
+	print
+		today()
+		tod()
+		login-id()
+		"Page:" 			in col 109
+		fstr(page-no(),3,0)
+	skip
+	print
+		"Whse"
+		"Group"
+		//"Item"
+		"Description"	in col 20
+		"Avail Qty"		in col 60
+		"Avail Cost"	in col 76
+		"Alloc Qty"		in col 92
+		"Alloc Cost"	in col 108
+endprocedure // top-of-page-summary -------------------------------------------
+
+procedure format-currency
+local field
+	lf-tmp				pic x(20)
+	i					type numeric
+parameters
+	lp-input			type numeric
+	lp-output-len		type numeric
+returning
+	lr-output			pic x(21)
+	set lf-tmp = format-picture(abs(lp-input),"$$$,$$$,$$9.99")
+	if lp-input < 0
+		set lr-output = SPACES
+		for i = 1 to strlen(lf-tmp)
+			set lr-output = strconcat(lr-output substring(lf-tmp,i,i))
+		endfor
+		set lr-output = right-justify(strconcat("-" lr-output),lp-output-len)
+	else
+		set lr-output = right-justify(lf-tmp,lp-output-len)
+	endif
+endprocedure // format-currency -----------------------------------------------
