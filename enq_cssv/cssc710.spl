@@ -1,6 +1,7 @@
 // Capt'n Snooze Sales Cube extraction
 // Program : cssc1.54
 // usage prospl $CUS/cssc710 W 070513 130513
+// 30jul14	mb		{5}		redo : add "BC" to existing "BE" "CC" "DC" (etc) list.
 // 22jul14	mb		{4}		undo : add "BC" to existing "BE" "CC" "DC" (etc) list.
 // 21jul14	mb		{3}		add add "BC" to existing "BE" "CC" "DC" (etc) list.
 //									(as per changes to m12cashcolxi.spl on 14jul14 )
@@ -109,6 +110,7 @@
 /* //{4}
 #define FIN_COY_CODES "BC" //{3}
 */ //{4}
+#define FIN_COY_CODES "BC" //{5}
 
 field
 	ws-start-date				type date
@@ -1945,16 +1947,17 @@ local field
 				// this should be shown, don't want the CC test in the next section to drop it out.
 			//elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}		//13oct10
 
-			/* //{3}
-			*/ //{3}
-			// < {4}
-			// > {4}
+			/* //{5}
 			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}  //13oct10
+			*/ //{5}
 			/* //{4}
 			// < {3}
 			elseif substring(tr-details,1,2) in {FIN_COY_CODES "CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}  //13oct10
 			// > {3}
 			*/ //{4}
+			// < {5}
+			elseif substring(tr-details,1,2) in {FIN_COY_CODES "CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}
+			// > {5}
 				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
 				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
 				get deb-master
@@ -2113,16 +2116,18 @@ local field
 			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
 				// this should be shown, don't want the CC test in the next section to drop it out.
 			//elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}   	//13oct10
-			/* //{3}
-			*/ //{3}
-			// < {4}
-			// > {4}
+
+			/* //{5}
 			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}  //13oct10
+			*/ //{5}
 			/* //{4}
 			// < {3}
 			elseif substring(tr-details,1,2) in {FIN_COY_CODES "CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}  //13oct10
 			// > {3}
 			*/ //{4}
+			// < {5}
+			elseif substring(tr-details,1,2) in {FIN_COY_CODES "CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX" "VP"}
+			// > {5}
 				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
 				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
 				get deb-master
