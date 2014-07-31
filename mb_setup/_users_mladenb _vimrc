@@ -1,0 +1,156 @@
+"set nocompatible
+"source $VIMRUNTIME/vimrc_example.vim
+"source $VIMRUNTIME/mswin.vim
+"behave mswin
+
+"set diffexpr=MyDiff()
+"function MyDiff()
+"  let opt = '-a --binary '
+"  if &diffopt =~ 'icase' | let opt = opt . '-i ' | endif
+"  if &diffopt =~ 'iwhite' | let opt = opt . '-b ' | endif
+"  let arg1 = v:fname_in
+"  if arg1 =~ ' ' | let arg1 = '"' . arg1 . '"' | endif
+"  let arg2 = v:fname_new
+"  if arg2 =~ ' ' | let arg2 = '"' . arg2 . '"' | endif
+"  let arg3 = v:fname_out
+"  if arg3 =~ ' ' | let arg3 = '"' . arg3 . '"' | endif
+"  let eq = ''
+"  if $VIMRUNTIME =~ ' '
+"    if &sh =~ '\<cmd'
+"      let cmd = '""' . $VIMRUNTIME . '\diff"'
+"      let eq = '"'
+"    else
+"      let cmd = substitute($VIMRUNTIME, ' ', '" ', '') . '\diff"'
+"    endif
+"  else
+"    let cmd = $VIMRUNTIME . '\diff'
+"  endif
+"  silent execute '!' . cmd . ' ' . opt . arg1 . ' ' . arg2 . ' > ' . arg3 . eq
+"endfunction
+
+set nocompatible
+let $TMP="c:/tmp"
+" =========================================================
+set foldmethod=indent
+" Toggle fold state between closed and opened.
+" =========================================================
+" If there is no fold at current line, just moves forward.
+" If it is present, reverse it's state.
+fun! ToggleFold()
+if foldlevel('.') == 0
+normal! l
+else
+if foldclosed('.') < 0
+. foldclose
+else
+. foldopen
+endif
+endif
+" Clear status line
+echo
+endfun
+" Map this function to Space key.
+noremap <space> :call ToggleFold()<CR>
+" =========================================================
+"
+" set lines=40 columns=120
+set lines=50 columns=160
+" === ======================================
+" === add line numbers to print outs :
+" === ======================================
+set printoptions=number:y
+" === ======================================
+" f5 : search for keyword under cursor :
+:nnoremap <F5> :/<C-R><C-W><CR>
+
+" map <F11> :set syntax=clipper<CR>
+" map <F11> :set filetype=clipper<CR>
+map <F11> :set syntax=clipper
+nnoremap <F11> :set syntax=clipper
+map <F11> :syntax enable<CR>
+map <F12> :syntax enable<CR>
+map  :set wrap!
+set so=4
+map { <'a
+map } >'a
+source $VIMRUNTIME/mswin.vim
+behave mswin
+set hlsearch
+" source $VIMRUNTIME/vimrc_example.vim
+" source $VIMRUNTIME/mswin.vim
+" behave mswin
+" set diffexpr=MyDiff()
+" function MyDiff()
+"   let opt = ''
+"   if &diffopt =~ 'icase' | let opt = opt . '-i ' | endif
+"   if &diffopt =~ 'iwhite' | let opt = opt . '-b ' | endif
+"   silent execute '!C:\Vim\vim70\diff -a ' . opt . '"' . v:fname_in . '" "' . v:fname_new . '" > "' . v:fname_out . '"'
+" endfunction
+colorscheme murphy
+colorscheme darkblue
+"let Tmenu_ctags_cmd = 'C:\_apps\_apps\apps\ctags552\ctags.exe'
+"let Tlist_Ctags_Cmd = 'C:\_apps\_apps\apps\ctags552\ctags.exe'
+set ts=3
+set sw=3
+set filetype=clipper
+set syntax=clipper
+syntax enable
+set autoindent
+set ignorecase
+set showmode
+set number
+"typing 'ifx' sets up a complete _if_else_endif_ statement
+iab xif if <CR>else<CR>endif<ESC>kk0ea
+iab xmb //mladen
+iab xjc job-cost
+iab xjcm job-cost-master
+iab xpo purchase-order
+iab xxi IXIREPORT_
+" automatic bracket closing when opening brackets...
+:inoremap ( ()<ESC>i
+:inoremap [ []<ESC>i
+:inoremap ' ''<ESC>i
+:inoremap " ""<ESC>i
+
+" use the ; key to ESCAPE the auto-closing...
+" :inoremap ; <ESC>$A
+
+" Vim has the "ctrl-^" command to change between 2 files. However, the cursor always jumps to the first line then. This can be avoided using this mapping:
+":noremap <C-^> <C-^>`"
+" No ignorecase if Uppercase chars in search
+set scs
+" The best is the bold font, try all of these and pick one....
+" - note this is only for UNIX gui...
+"set guifont=8x13bold
+"set guifont=9x15bold
+"set guifont=7x14bold
+"set guifont=7x13bold
+set guifont=Courier_New:h9
+
+if has("gui_running")
+  if has("gui_gtk2")
+    set guifont=Inconsolata\ 12
+  elseif has("gui_macvim")
+    set guifont=Menlo\ Regular:h14
+  elseif has("gui_win32")
+    set guifont=Consolas:h11:cANSI
+  endif
+endif
+ 
+ 
+ 
+ 
+"-- alternating line background colors .. colours ..
+"sy spell toplevel
+"sy sync fromstart
+"sy match textOddLine  /^.*\n/ nextgroup=textEvenLine
+"sy match textEvenLine /^.*\n/ nextgroup=textOddLine
+"if &bg == "light"
+"hi def textOddLine  guibg=#FFFFCC ctermbg=darkmagenta
+"hi def textEvenLine guibg=#FFCCFF ctermbg=darkblue
+"else
+"hi def textOddLine  guibg=#666600 ctermbg=darkmagenta
+"hi def textEvenLine guibg=#660066 ctermbg=darkblue
+"endif
+"let b:current_syntax = "text"
+
