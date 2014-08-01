@@ -905,6 +905,19 @@ field ws-is-duplicate		type boolean
 		or pattern(ifs-x-string, PROWHO_TAG_HEAD2)
 //end-#define IF_LOG_TAG_HEADER
 
+//if TO_TIME(lf-n-hrs, lf-n-mins) ... 
+#define TO_TIME(AHRS,BMINS) (AHRS * 3600 + BMINS)
+
+//set lf-n-hrs = TO_HOUR(ifs-x-time)
+//TO_HOUR(ifs-x-time,lf-n-hrs,lf-n-mins) //-- return hour and mins from time in text field format eg. "06:00"
+#define TO_HOUR(ASTR,BHRS,CMINS) \
+	set BHRS			= num( substring(ASTR,1,2) ) \
+	set CMINS		= num( substring(ASTR,4,5) ) \
+	if BHRS > zero and BHRS < 7 /* make it : pm */ \
+		set BHRS += 12 \
+	endif
+//end-#define TO_HOUR(ASTR)
+
 screen grid-by-history
 	local field	lf-str-date type string
 					lf-str-time type string
@@ -1409,29 +1422,44 @@ message "zaz: b. SET : z-date = " lf-z-date
 		//-- --------------------------------------------
 		//-- earliest log time :
 		if date2julian(ifs-x-date) = lf-a-date //-- make sure only check times when on earliest date stamp...
+			TO_HOUR(ifs-x-time,lf-n-hrs,lf-n-mins) //-- return hour and mins from time in text field format eg. "06:00"
+			/*
 			set lf-n-hrs	= num( substring(ifs-x-time,1,2) )
 			set lf-n-mins	= num( substring(ifs-x-time,4,5) )
 			if lf-n-hrs > zero and lf-n-hrs < 7 //pm
 				set lf-n-hrs += 12
 			endif
+			*/
+			/*
 			if (lf-n-hrs * 3600 + lf-n-mins) < lf-a-time
-				set lf-a-time	= (lf-n-hrs * 3600 + lf-n-mins)
+			*/
+			//#define TO_TIME(AHRS,BMINS) (AHRS * 3600 + BMINS)
+			if TO_TIME(lf-n-hrs, lf-n-mins) < lf-a-time
+				set lf-a-time	= TO_TIME(lf-n-hrs, lf-n-mins)	//-- set lf-x = (lf-n-hrs * 3600 + lf-n-mins)
 			endif
 //message "zaz: time = " strconcat(ifs-x-time) " - hrs / mins = " str(lf-n-hrs) " / " str(lf-n-mins)
 		endif
 
 		//-- latest log time :
 		if date2julian(ifs-x-date) = lf-z-date //-- make sure only check latest times when on latest date stamp...
+			TO_HOUR(ifs-x-time,lf-n-hrs,lf-n-mins) //-- return hour and mins from time in text field format eg. "06:00"
+			/*
 			set lf-n-hrs	= num( substring(ifs-x-time,1,2) )
 			set lf-n-mins	= num( substring(ifs-x-time,4,5) )
 			if lf-n-hrs > zero and lf-n-hrs < 7 //pm
 				set lf-n-hrs += 12
 			endif
+			*/
 			/*
 			if lf-z-time < (lf-n-hrs * 3600 + lf-n-mins)
-			*/
 			if (lf-n-hrs * 3600 + lf-n-mins) > lf-z-time
+			*/
+			//#define TO_TIME(AHRS,BMINS) (AHRS * 3600 + BMINS)
+			if TO_TIME(lf-n-hrs, lf-n-mins) > lf-z-time
+				/*
 				set lf-z-time	= (lf-n-hrs * 3600 + lf-n-mins)
+				*/
+				set lf-z-time	= TO_TIME(lf-n-hrs, lf-n-mins)	//-- set lf-x = (lf-n-hrs * 3600 + lf-n-mins)
 			endif
 //message "zaz: time = " strconcat(ifs-x-time) " - hrs / mins = " str(lf-n-hrs) " / " str(lf-n-mins)
 		endif
