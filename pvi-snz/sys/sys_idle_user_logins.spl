@@ -912,6 +912,8 @@ screen grid-by-history
 					lf-logins-per-store like ifs-n-stores	//type numeric
 					lf-z-date	type date //date2julian("01.jan.2014")
 					lf-z-time	type time
+					lf-a-time	type time
+					lf-a-date	type date //date2julian("01.jan.2014")
 					lf-n-hrs		type numeric
 					lf-n-mins	type numeric
 					lf-ifs-x-date		like ifs-x-date
@@ -1371,26 +1373,64 @@ endif
 	//-- empty session logins are not counted as pronto licenses in use, remove these records from list :
 	//--
 	set lf-z-date = today()
+	set lf-a-date = today()
 	set lf-z-date = date2julian("01.jan.2014")
 	set lf-z-time = 00:01:00 //tod()
+	set lf-a-time = 23:01:00 //tod()
 	extract tmp-ff-history all
 	detail
-		//-- get latest date in log file :
+		//-- get earliest & latest date in log file :
 		//-- --------------------------------------------
+		//-- earliest log date :
+		if date2julian(ifs-x-date) < lf-a-date
+/*
+message "zaz: a. YES: x-date < a-date ? " ifs-x-date " < " lf-a-date
+*/
+			set lf-a-date	= date2julian(ifs-x-date)
+/*
+message "zaz: a. SET : a-date = " lf-a-date
+*/
+			set lf-a-time = 23:01:00 //tod()
+		endif
+		//-- latest log date :
 		if date2julian(ifs-x-date) > lf-z-date
+/*
+message "zaz: b. YES: x-date > z-date ? " ifs-x-date " > " lf-z-date
+*/
 			set lf-z-date	= date2julian(ifs-x-date)
+/*
+message "zaz: b. SET : z-date = " lf-z-date
+*/
+			set lf-z-time = 00:01:00 //tod()
 		endif
 		//-- --------------------------------------------
 		//-- get latest time stamp in log file :
 		//set lf-z-time	= time-from-date-time( date-time(lf-z-date), true)
 		//-- --------------------------------------------
+		//-- earliest log time :
+		if date2julian(ifs-x-date) = lf-a-date //-- make sure only check times when on earliest date stamp...
+			set lf-n-hrs	= num( substring(ifs-x-time,1,2) )
+			set lf-n-mins	= num( substring(ifs-x-time,4,5) )
+			if lf-n-hrs > zero and lf-n-hrs < 7 //pm
+				set lf-n-hrs += 12
+			endif
+			if (lf-n-hrs * 3600 + lf-n-mins) < lf-a-time
+				set lf-a-time	= (lf-n-hrs * 3600 + lf-n-mins)
+			endif
+//message "zaz: time = " strconcat(ifs-x-time) " - hrs / mins = " str(lf-n-hrs) " / " str(lf-n-mins)
+		endif
+
+		//-- latest log time :
 		if date2julian(ifs-x-date) = lf-z-date //-- make sure only check latest times when on latest date stamp...
 			set lf-n-hrs	= num( substring(ifs-x-time,1,2) )
 			set lf-n-mins	= num( substring(ifs-x-time,4,5) )
 			if lf-n-hrs > zero and lf-n-hrs < 7 //pm
 				set lf-n-hrs += 12
 			endif
+			/*
 			if lf-z-time < (lf-n-hrs * 3600 + lf-n-mins)
+			*/
+			if (lf-n-hrs * 3600 + lf-n-mins) > lf-z-time
 				set lf-z-time	= (lf-n-hrs * 3600 + lf-n-mins)
 			endif
 //message "zaz: time = " strconcat(ifs-x-time) " - hrs / mins = " str(lf-n-hrs) " / " str(lf-n-mins)
@@ -1418,6 +1458,7 @@ endif
 	/*
 	message "Most recent log entries are as at : " lf-z-date	" " lf-z-time
 	*/
+	message "Earliest & Last entries in Logs, from : " lf-a-date	" " lf-a-time " to : " lf-z-date " " lf-z-time
 
 
 	//--
@@ -2046,6 +2087,7 @@ confirmed
 		//-- history analysis of prowho sessions per store.
 		//accept ws-start-date    @20, 5 title "From date (earliest logs are from 22.7.2014)"
 		//	default ws-start-date
+		message "Please note: this will take a few minutes to build from log file history ..."
 		display concat("            Building history from log files ... " ) @ 22, 5 //foreground prompts
 		push PRIMARY_TABLE
 		do grid-by-history
