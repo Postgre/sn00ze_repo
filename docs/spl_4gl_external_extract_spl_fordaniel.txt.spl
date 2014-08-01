@@ -1,0 +1,68 @@
+bject interfacefile
+	type external
+    file "test.txt"
+	separator "|"
+    record
+        dr-user-only-alpha20-1
+        shortname 
+	accountcode             
+        ws-address              pic x(250)
+        postcode             	
+        ws-industry-desc        pic x(30)
+        na-company-id
+        bill-to
+        ws-territory-desc       pic x(30)
+    end-record
+procedure main  
+open interfacefile truncate permanent
+
+
+ 
+select 	dr-user-only-alpha20-1 
+ 	shortname 
+	accountcode 
+	na-company
+        na-street
+        na-suburb
+        na-country
+        postcode
+        dr-industry-code
+        na-company-id
+        bill-to
+        territory
+ 
+from 
+	deb-master 
+	outer name-and-address-master
+where 
+ 	(na-type = "C" ) and
+        dr-industry-code != space
+order by accountcode 
+detail
+set ws-address = concat(strconcat(na-company), " ", strconcat(na-street), " ", strconcat(na-suburb), " ", strconcat(na-country)) 
+
+get system-table on index 1
+     key is 'CI' dr-industry-code
+  	 on error
+           set sys-description = "Unknown"
+   	 end-on
+set ws-industry-desc = sys-description
+
+
+ 
+get system-table on index 1
+     key is 'TC' territory
+   	on error
+           set sys-description = "Unknown"
+   	end-on
+set ws-territory-desc = sys-description
+
+
+insert interfacefile
+
+end-select
+
+endprocedure //main ------------------------------------------------------------
+
+
+
