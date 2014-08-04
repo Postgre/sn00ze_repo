@@ -1,0 +1,4266 @@
+// delsched.spl
+version-number "20080107.007"
+// 17dec13	rmd	{7}	use so-order-no to look up payments in deb-trans instead of inv# lookup
+// 30aug13	rmd	{6} dedicated phone lookup (if DA exists C record being ignored)
+// 19mar13	rmd cloned rmd/so/delsched to pvi-snz/so/delsched
+//				{1} *HD19035 allow long sol notes up to full length of 57 char
+//				{2} *HD19474 overcome issue with Z in contact name
+//				{3} *HD19028 suppress quotes
+//				{4}	*HD18755 Allow Sales Order DA, current, only Cust DA works
+//				{5}	*HD18755 mode to call setdeldate to allow update of s/o del date and address
+// 01May12	lg	Add option for Receipt of Mondy from Delsched.  Doesn't parse Invoice number, but SO visible behind.
+// 01May12      lg      Change Wording for Mobile/Phone/Phone to match Customer Entry screen.
+// 29jul10	rmd add po maint button - don't forget to add email button
+// 26jul10	rmd	set so-user-only-date1 = tsd-so-delivery-date to prevent being asked for delivery
+//				date during invoice/receipt prints, only asked if so-user-only-date1 = 0
+// 20may10	rmd	only test stock lines when testing for inclusion
+// 09sep09	rmd	Order Maint always shows regardless of DC flag
+// 21jul09	rc	fixed the currency issue when clicking on Lines mode
+// 07jul09	rc	added the truck description in the heading
+// 16jun09	rc	fixed the lookup & added the contact nos in correct
+// 09jun09	rc	reformat the report with the new contact numbers
+// 04jun09  rc 	fixed multiple display of screens on selection of menu items
+// 03jun09	rnd	if customer has more than one order in grid set record to bold and green
+// 29may09	rc 	text to bold
+// 25may09	rmd	HD10868 if 'ZT Truck Codes' does not exist in ZZ table, insert it.
+// 14apr09	rmd fix for HD10337 defaults to 2018 if date is empty when 2 digit date is entered, disable for now
+//				(disable appears to have given correct behaviour, if empty current month is used, if not existing month is used)
+// 03apr09	rmd	HD10181:34 make confirm prompt larger, show s/o# and outstanding balance
+// 03apr09	rmd	HD10337 set delivery date to current month if entering 'day' only
+// 01apr09	rmd HD10315 originating store# and name next to customer
+// 22jan08	rmd use DA address before C if one exists
+// 09dec08	rmd base view on warehouse masking
+// 29oct08	rmd switch main tmp object to isam
+//				allow "Overdue Deliveries" view
+//				change Notes to a menu, with the options
+//				Cust Order Notes, Delivery Instructions
+// 16oct08	rmd show 1st, 2nd and 3rd line of stock description
+// 26sep08	rmd include "service orders"; so-order-type-code = "S", so-order-status = "60"
+// 21aug08	rmd	delivery window display, change view menu closes screen if no option selected
+// 21aug08	rmd ws-view-all-stores option
+// 14aug08	rmd	find function to position on nearest so/bo
+// 13aug08	rmd no-lock if del date being edited while opening, display read-only view initally
+//				call correct popup to edit record
+// 06aug08	rmd	prompt user to confirm when confirming delivery
+// 06aug08	rmd show suburb column
+// 06aug08	rmd take bo out of find selection, hide Schedule button
+// 16jul08	rmd	if order still appears as financed when attempting to confirm delivery instruct user
+//				to finalise the deal before proceding.
+// 15jul08	rmd switch sms provider to use an env var "SMSPROV" which will contain "@provider.com.au"
+// 08jul08	rmd	report layout changes, print-delivery-sheet-4 (was -3)
+//				split page by truck, ph# hidden if desc too long, sol notes don't show.
+// 01jul08	rmd	test sopo allocation during confirm del
+//				if all lines allocated, force shipped to tkn set ord status = 70
+//				if no lines allocated, warn and exit
+//				if mix of alloc/unalloc, call bo split
+// 18jun08	rmd ballarat want line view not maint, setup ws-so-line-mode "M" or "V"
+//				from first param -solmaint (default) or -solview
+// 18jun08	rmd if so has a lock, warn and exit confirm delivery
+// 17jun08	rmd	handle missing whse na record more eloquently
+// 22apr08	rmd	rjb wants Lines to jump toSO Line maintenance - not view
+// 09apr08	rmd if so lines not shipped do not display on manifest
+// 08apr08	rmd add item count to manifest
+// 02apr08	rmd	prior to force ship, test if any unallocated po's exist, if so, warn and exit
+// 25mar08	rmd	if confirm-delivery called on order with unshipped lines, force shipped
+//				create spool of changes, allow so-order-status = 34
+// 16mar08	rmd	add truck column - lookup ZT table
+//				store in sales-order-delivery.so-dl-user-only-alpha30-2 (char 1,10)
+// 13mar08	rmd	balance should reflect consolidated balance
+// 12mar08	rmd force line to "T" taken if shipped when confirming delivery
+// 12mar08	rmd if user-position = "DC", warehouse user needs to see all warehouses + disable DC/STORE mode
+//				and sort is reversed (for all users at moment), and add a mode to edit orders.
+// 11mar08	rmd want default view = stor, terms = "Received in Good Order and Condition"
+// 08mar08	rmd	allowing for empty so-delivery-date, when delivery date TBA
+// 07mar08	rmd	filter so-whse-code/so-territory-code = user-whse/user-store-id
+//				add mode to toggle so-whse-code between user-whse and user-store-id
+//				i.e. initial view = DC shipping orders, toggled state = store shipping
+//				also initial view not to filter by date range (was C for current month)
+
+// 07mar08	rmd	printout mods: (print-delivery-sheet-3 contains these changes)
+//				remove dashes above and below notes
+//				print stock items
+//				balance to be last column on page
+//				customer signature line under each order, rjb to supply terms and cond
+// 07feb08	rmd	option to filter delivery date by user entered value
+//				screen title to reflect current view
+// 06feb08	rmd add "Tomorrow" view per rjb, move mode order, add s/order lines edit
+// 29jan08	rmd	add transfer statii 35 and 45 to collection of viewable orders
+// 16jan08	rmd change sol-print-line in {"2" SPACES} to sol-print-line not in {"1" "T"}
+//		   SPACES = ?
+//				1 = Pickup
+//				2 = Delivery
+//				T = Taken
+//				Y = ?
+//				re-hide CASH account sales - should not appear here anyway.
+// 10jan08	rmd want to trigger po/m6update -p SPACES if goods on a PO are receipted
+// 07jan08	rmd	DO want to see cash sales and want to filter by user's store code
+
+
+#include "../../../../bms/include/i85codes.spl"
+#include "../../../../bms/include/m1enqrep.spl"
+
+//start -----------------------------------------  //rc 04jun09
+#define TEXT_COLOUR(multi-cust-code)\
+        colour is ifthenelse(multi-cust-code = TRUE,green,black)
+//end -------------------------------------------- //rc 04jun09
+
+
+//mode correct
+//	prompt "Set Date/&Time"
+//	help "Set scheduled date and time for this Delivery"
+
+mode md-entry
+	prompt "Entry"
+	// help "Set scheduled date and time for this Delivery"
+
+mode md-select
+	prompt "Select"
+	currency
+
+mode md-review-so
+	//prompt "Review &SO"
+	prompt "S&O Maint"
+	help "Maintain Sales Order for this Delivery"
+	currency
+
+mode md-review-sol
+	prompt "&Lines"
+	help "Maintain Sales Order Lines for this Delivery"
+	currency
+
+
+mode md-review-cust
+	//prompt "Review &Cust"
+	prompt "C&ust"
+	help "Review Customer Details"
+	currency
+
+mode md-review-notes
+	//prompt "Review &Notes"
+	prompt "&Notes"
+	//help "Review Notes for this delivery"
+	help "Review Customer Notes or Delivery Instructions" //29oct08
+	currency
+
+mode md-review-po
+	//prompt "Review &PO"
+	//prompt "&PO"
+	prompt "&Linked PO"
+	help "Review Purchase Order for this Delivery"
+	currency
+mode md-rcpt-cust
+        prompt "&Rcpt Money"
+        help "Receipt Money for this customer"
+        currency
+mode md-confirm-delivery
+	//prompt "Con&firm/Edit Order"
+	prompt "Conf &Delivery"
+	currency
+	help "Confirm Delivery"// or edit this order"
+
+mode md-order-schedule
+	prompt "Order &Sched"
+	currency
+	help "Order Schedule"
+
+mode md-view-prev
+	prompt "View Prev"
+
+mode md-view-curr
+	prompt "View Curr"
+
+mode md-view-next
+	prompt "View Next"
+
+mode md-view-all
+	prompt "[ All ]"
+
+mode md-send-sms
+	prompt "Send SMS"
+	currency
+
+mode md-print-report
+	prompt "Print"
+	help "Print delivery list"
+
+mode md-filter-view
+	prompt "Change &View"
+	help "Change view to Today, This Week, This Month, Next Month or ALL"
+
+mode md-filter-truck
+	prompt "Truck"
+	help "Filter Truck to view"
+
+mode md-toggle-whse
+	prompt "DC&/Store"
+	help "Switch between DC and Store deliveries"
+	//when not ws-dc-user
+
+mode md-correct
+	prompt "Correct"
+	help "Correct values for this record"
+	currency
+
+mode md-find
+	prompt "Lookup S/O"
+	help "Lookup Sales Order using Order # and Suffix"
+
+mode md-po-maint //rmd29jul10
+	prompt "PO Maint"
+	help "Maintain Purchase Orders"
+
+mode md-delivery-details	//{5}
+	prompt "Deli&very Details"
+	help "Set Delivery Date and Address"
+
+field
+//	ws-select-time-mode						pic x(10)
+//	ws-so-dl-text-1							pic x(40)
+	ws-so-order-no							like so-order-no
+	ws-so-bo-suffix							like so-bo-suffix
+	ws-delivery-window						pic x(30)
+	ws-period-to-view						pic xxx // (P)revious (C)urrent (N)ext (A)ll (TBA)
+	ws-counter-1							type numeric
+	ws-found-taken							pic x
+	ws-kit-found							type boolean
+	ws-kit-taken							type boolean
+	ws-kit-line-seq							like sol-line-seq
+	ws-report-title							pic x(40)
+	ws-review-po-called						type boolean
+	ws-col-1								type numeric
+	ws-col-2								type numeric
+	ws-col-3								type numeric
+	ws-col-4								type numeric
+	ws-col-5								type numeric
+	ws-col-6								type numeric
+	ws-col-7								type numeric
+	ws-col-8								type numeric
+	ws-col-9								type numeric
+	ws-col-10								type numeric
+	ws-col-11								type numeric
+	ws-user-delivery-date					type date
+	ws-whse-to-view							like so-whse-code
+	ws-dc-user								type boolean
+	ws-so-line-mode							pic x // "M" or "V"
+	ws-allocation							pic x // "U" "M" "A" unallocated, mixed, allocated
+	ws-truck-filter							pic x(10)
+	ws-sms-provider							pic x(50) // "@provider.com"
+	ws-confirmed							type boolean
+	ws-find-so-order-no						like so-order-no
+	ws-find-so-bo-suffix                    like so-bo-suffix
+	ws-filter-view							type boolean			// 21aug08
+	ws-whse-masked							type boolean				// 09dec08
+	ws-whse-mask-code						like whse-code occurs 10	// 09dec08
+	ws-balance-owing						type numeric				// 03apr09
+
+
+object tmp-order-count
+	type is memory
+	record
+		toc-accountcode						like accountcode
+		toc-order-count						type numeric
+	endrecord
+	key is toc-accountcode unique
+
+object tmp-scheduled-delivery
+	//type is memory
+	type is isam // 29oct08
+	record
+		tsd-so-order-no                    	like so-order-no
+		tsd-so-bo-suffix                   	like so-bo-suffix
+		tsd-display-so						pic x(10)
+		tsd-pickup-or-deliver				pic x
+		tsd-so-delivery-date               	like so-delivery-date
+		tsd-so-delivery-time               	like so-delivery-time
+		tsd-so-actual-delivery-time        	like so-actual-delivery-time
+		tsd-delivery-window					pic x(15)
+		tsd-so-cust-code                   	like so-cust-code
+		tsd-shortname                      	like shortname
+		tsd-so-dl-text                   	pic x(40) // like so-dl-text
+		tsd-po-order-no                    	like po-order-no
+		tsd-po-backorder-flag				like po-backorder-flag
+		tsd-mobile-no						like na-phone
+		tsd-contact-1						like na-user-only-alpha30-1 //rc 16jun09
+		tsd-phone-no						like na-phone				//rc 16jun09
+		tsd-contact-2						like na-user-only-alpha30-1 //rc 16jun09
+		tsd-phone-no2						like na-phone				//rc 16jun09
+		tsd-contact-3						like na-user-only-alpha30-1 //rc 16jun09
+		tsd-sms-sent						pic x
+		tsd-balance-owing					type numeric
+		tsd-ready-to-confirm				pic x
+		tsd-record-changed					type boolean
+		tsd-so-order-status					like so-order-status
+		tsd-so-territory-code				like so-territory-code
+		tsd-so-whse-code                    like so-whse-code
+		tsd-truck							pic x(10)
+		tsd-financed						pic x
+		tsd-suburb							like na-suburb				// 06aug08
+		//tsd-item-count						type numeric			// 08apr08
+
+	endrecord
+	key is tsd-so-order-no tsd-so-bo-suffix
+	key is tsd-so-delivery-date tsd-so-delivery-time tsd-so-actual-delivery-time
+	key is tsd-so-delivery-time tsd-so-actual-delivery-time
+	key is tsd-truck tsd-so-delivery-date tsd-so-delivery-time tsd-so-actual-delivery-time // 08jul08 for truck per page split
+
+
+object copy-sales-order
+	like sales-order
+
+object tmp-sales-order
+	type is isam
+	record is
+		so-order-no
+		so-bo-suffix
+		so-whse-code
+	endrecord
+	key is so-order-no desc so-bo-suffix desc unique
+	key is so-whse-code	desc so-order-no desc so-bo-suffix desc unique
+
+
+
+procedure main
+local field
+	i						type numeric
+
+	get system-control first
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+	if user-position = "DC"
+		set ws-dc-user = TRUE
+		// message "DC user"
+	endif
+
+	set ws-sms-provider = strconcat(get-env("SMSPROV"))
+
+	if ws-sms-provider = SPACES
+		set ws-sms-provider = "@messagenet.com.au"
+	endif
+	if ws-dc-user
+		set ws-whse-to-view = "*"
+	else
+		set ws-whse-to-view = "STR"
+	endif
+
+	// 09dec08
+	// test for warehouse masking
+	get system-user-masking
+	on index user-id sys-comp-code sum-mask-type
+	key is login-id() sys-consolidation-division "W"
+	on error
+		//message "DB no whse masking"
+	else
+		for i = 1 to 10
+			if sum-mask-code[i] not in {SPACES "????"}
+				set ws-whse-masked = TRUE
+			endif
+			set ws-whse-mask-code[i] = sum-mask-code[i]
+		endfor
+		if ws-whse-masked = TRUE
+			//message "DB whse masking: records found"
+		else
+			//message "DB whse masking: no records found, reverting"
+		endif
+	endon
+	// 07mar08
+	set ws-period-to-view = "A"
+	set ws-report-title	= "All Pending Deliveries"
+
+	set ws-counter-1 = 0
+	set ws-so-order-no	 = 1
+	set ws-so-bo-suffix	 = SPACES
+
+	if get-param(1) = "-solview"
+		set ws-so-line-mode = "V"
+	else
+		// -solmaint
+		set ws-so-line-mode = "M"
+	endif
+
+	if get-param(2) in {"N"}
+		set ws-period-to-view = get-param(2)
+	endif
+	//do build-dataset											//rc 04jun09
+	do display-in-grid
+	if ws-review-po-called
+		//spl
+		//	"po/m6update"
+		//parameters
+		//	"-p"
+		//	SPACES
+	endif
+endprocedure // main ----------------------------------------------------------
+
+
+procedure build-dataset
+local field
+	lf-payments-taken					type numeric
+	lf-order-within-period				type boolean
+	lf-include-order					type boolean
+	i									type numeric
+	open tmp-scheduled-delivery truncate temporary
+	open tmp-order-count truncate temporary
+	extract sales-order-line
+	detail
+		//if sol-backorder-qty > 0
+		//set tsd-ready-to-confirm = YES
+		//if sol-print-line in {"2" SPACES}
+		//if sol-print-line not in {"1" "T"}                                        //rmd20may10
+		if sol-line-type in {"SN" "WN" "KN"} and sol-print-line not in {"1" "T"}	//rmd20may10
+			// have we already included the attached header?
+			get tmp-scheduled-delivery
+			on index tsd-so-order-no tsd-so-bo-suffix
+			key is so-order-no so-bo-suffix
+			on error
+				get copy-sales-order // sales-order lock
+				on error
+					//message "continuing"
+					continue
+				endon
+				//if so-order-status not in {"11""70"}
+				//	set tsd-ready-to-confirm = NO
+				//endif
+				//if (so-order-status in {"11" "30" "31" "40" "44" "70"}) and (so-cust-code != user-store-id) // and (so-territory-code = user-store-id)		// 080107
+				//if (so-order-status in {"11" "30" "31" "40" "44" "70"}) // and (so-cust-code != user-store-id) // and (so-territory-code = user-store-id)
+				//if (so-order-status in {"11" "18" "30" "31" "40" "44" "70"}) and (so-territory-code = user-store-id)
+				set lf-include-order = FALSE
+
+
+
+				if (so-order-status in {"11" "18" "30" "31" "34" "40" "44" "70"}) and (so-cust-code != user-store-id) and (so-territory-code = user-store-id)		// 16Jan08
+					set lf-include-order = TRUE
+				endif
+				if (so-order-status in {"35" "45"}) and (so-cust-code != user-store-id)
+					set lf-include-order = TRUE
+				endif
+				// 12mar08
+				if (so-order-status in {"11" "18" "30" "31" "34" "35" "40" "44" "45" "70"} and ws-dc-user)
+					set lf-include-order = TRUE
+				endif
+				// 26sep08
+				if so-order-status = "60" and so-order-type-code = "S"
+					set lf-include-order = TRUE
+				endif
+				// 09dec08
+				//switch on ws-whse-to-view
+				//	case "*"
+				//	case "DC"
+				//		if so-whse-code != user-whse
+				//			set lf-include-order = FALSE
+				//		endif
+				//	case "STR"
+				//		if so-whse-code != user-store-id
+				//			set lf-include-order = FALSE
+				//		endif
+				//endswitch
+				//if ws-whse-masked                     //{3} don't run this test if order already marked to not include
+				if ws-whse-masked and lf-include-order	//{3} if the whse mask finds a match it may be re-included
+					set lf-include-order = FALSE
+					for i = 1 to 10
+						if so-whse-code = ws-whse-mask-code[i]
+							set lf-include-order = TRUE
+						endif
+					endfor
+				else
+					switch on ws-whse-to-view
+						case "*"
+						case "DC"
+							if so-whse-code != user-whse
+								set lf-include-order = FALSE
+							endif
+						case "STR"
+							if so-whse-code != user-store-id
+								set lf-include-order = FALSE
+							endif
+					endswitch
+				endif
+				// 09dec08
+
+				// 26sep08
+				if lf-include-order
+					set lf-order-within-period = FALSE
+					switch on ws-period-to-view
+						case "OD" // 28oct08
+							if so-delivery-date > 0 and so-delivery-date < today()
+								set lf-order-within-period = TRUE
+							endif
+						case "T"
+							if so-delivery-date = today()
+								set lf-order-within-period = TRUE
+							endif
+						case "TM"
+							if so-delivery-date = today() + 1
+								set lf-order-within-period = TRUE
+							endif
+						case "TW"
+							if so-delivery-date between today() - (dow(today()) - 2 ) and (today() - (dow(today()) - 2 ) + 6 )
+								set lf-order-within-period = TRUE
+							endif
+						case "NW"
+							if (so-delivery-date - 7) between today() - (dow(today()) - 2 ) and (today() - (dow(today()) - 2 ) + 6 )
+								set lf-order-within-period = TRUE
+							endif
+						case "P"
+							if month(so-delivery-date) = month(add-month(today(),-1,1))// month(today()) - 1
+								set lf-order-within-period = TRUE
+							endif
+						case "C"
+							//message concat(str(month(so-delivery-date)) str(month(today())))
+							if month(so-delivery-date) = month(today())
+								set lf-order-within-period = TRUE
+							endif
+						case "N"
+							//message "N"
+							if month(so-delivery-date) = month(add-month(today(),1,1))// month(today()) + 1
+							//if month(so-delivery-date) = month(today())
+								set lf-order-within-period = TRUE
+							endif
+						case "U"
+							if so-delivery-date = ws-user-delivery-date
+								set lf-order-within-period = TRUE
+							endif
+						case "A"
+							set lf-order-within-period = TRUE
+						case "TBA"
+							if so-delivery-date = 0
+								set lf-order-within-period = TRUE
+							endif
+					endswitch
+					if lf-order-within-period = FALSE
+						// break
+					else
+						initialise tmp-scheduled-delivery
+
+						set tsd-so-order-no  					= so-order-no
+						set tsd-so-bo-suffix 					= so-bo-suffix
+						set tsd-display-so						= concat(str(so-order-no) so-bo-suffix)
+						set tsd-so-cust-code 					= so-cust-code
+						set tsd-so-delivery-date               	= so-delivery-date
+						set tsd-so-delivery-time               	= so-delivery-time
+						set tsd-so-actual-delivery-time        	= so-actual-delivery-time
+						if tsd-so-delivery-time != 0 or tsd-so-actual-delivery-time != 0
+							set tsd-delivery-window = concat ("  " zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) " - " zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0)) //@1,6 title is "Delivery Window" pic x(13)
+						else
+							set tsd-delivery-window = SPACES
+						endif
+						set tsd-so-order-status					= so-order-status
+						set tsd-pickup-or-deliver				= so-spare-flag1
+						set tsd-so-territory-code				= so-territory-code
+						set tsd-so-whse-code                    = so-whse-code
+
+
+
+						get deb-master
+						on index accountcode
+						key is so-cust-code
+						on error
+						else
+							set tsd-shortname = shortname
+						endon
+
+						get sales-order-delivery
+						on index so-order-no so-bo-suffix so-text-type
+						key is tsd-so-order-no tsd-so-bo-suffix "DI"
+						on error
+						else
+							set tsd-so-dl-text = so-dl-text[1]
+							set tsd-sms-sent = substring(strconcat(so-dl-text[7]),1,1)
+							set tsd-truck = substring(so-dl-user-only-alpha30-2,1,10)
+							// set tsd-so-dl-text = so-dl-text
+						endon
+
+						// get mobile ph number
+						// and suburb 06aug08
+						get name-and-address-master
+						on index accountcode na-type
+						key is accountcode "C"
+						on error
+						else
+							set tsd-mobile-no 	= na-fax-no
+							set tsd-suburb		= na-suburb
+							//start --------------------------------------------- //rc 16jun09
+							set tsd-phone-no	= na-phone
+							set tsd-phone-no2	= na-mobile-phone
+							set tsd-contact-1	= na-user-only-alpha30-1
+							set tsd-contact-2	= na-user-only-alpha30-2
+							set tsd-contact-3	= na-spare-alpha20-1
+							//end ----------------------------------------------- //rc 16jun09
+						endon
+						//22jan09 if DA record exists update the suburb
+						get name-and-address-master
+						on index accountcode na-type
+						key is accountcode "DA"
+						on error
+						else
+							set tsd-suburb		= na-suburb
+						endon
+
+
+						// get balance owing
+						set lf-payments-taken = 0
+						extract sales-order
+						on index so-order-no so-bo-suffix
+						key is tsd-so-order-no SPACES
+						next same so-order-no
+						detail
+							set tsd-balance-owing += so-order-total-amount
+						endextract
+
+						// 13mar08 search through archive to consolidate balance
+						extract sales-order-archive
+						on index so-order-no so-bo-suffix
+						key is tsd-so-order-no SPACES
+						next same so-order-no
+						detail
+							set tsd-balance-owing += so-order-total-amount
+						endextract
+
+
+						set tsd-financed = "N"
+						//<{7}
+						//extract deb-trans
+						//on index accountcode tr-sort-key
+						//key is tsd-so-cust-code fstr(tsd-so-order-no,8,0) // right-justify(str(tsd-so-order-no),8)
+						//next same accountcode tr-sort-key
+						//detail
+						//	//if trans-type in {"CR "PD" } // != "IN"
+						//	if trans-type in {"CR" "PD", "JE"}
+						//		set lf-payments-taken += tr-amount * -1
+						//	endif
+						//	if trans-type = "PD"
+						//		set tsd-financed = "Y"
+						//	endif
+						//endextract
+						extract deb-trans
+						on index accountcode tr-sort-key
+						key is tsd-so-cust-code SPACES
+						next same accountcode
+						detail
+							if trans-type in {"CR" "PD", "JE"} AND dr-tr-order-no = tsd-so-order-no
+								set lf-payments-taken += tr-amount * -1
+							endif
+							if trans-type = "PD" AND dr-tr-order-no = tsd-so-order-no
+								set tsd-financed = "Y"
+							endif
+						endextract
+						//>{7}
+						set tsd-balance-owing = tsd-balance-owing - lf-payments-taken
+						set ws-counter-1 += 1
+						// 08jul08
+						if ws-truck-filter != SPACES
+							if tsd-truck != ws-truck-filter
+								set lf-include-order = FALSE
+							endif
+						endif
+
+						// 08jul08
+						if lf-include-order
+							insert tmp-scheduled-delivery
+							get tmp-order-count
+								on index toc-accountcode
+								key is tsd-so-cust-code
+							on error
+								set toc-accountcode		= tsd-so-cust-code
+								set toc-order-count		= 1
+								insert tmp-order-count
+							else
+								set toc-order-count		+= 1
+								update tmp-order-count
+							endon
+						endif
+					endif
+				endif
+			else
+			endon
+		endif
+	endextract
+
+	//message "Dataset Built"
+
+	// without this we end up at the bottom of the grid, want the top
+	if ws-find-so-order-no = ZERO					//rc 16jun09
+		get tmp-scheduled-delivery
+		on index tsd-so-order-no tsd-so-bo-suffix
+		key is ws-so-order-no ws-so-bo-suffix
+		on error
+		else
+		endon
+	//start --------------------------------------------- //rc 16jun09
+	else
+		get tmp-scheduled-delivery
+			on index tsd-so-order-no tsd-so-bo-suffix
+			key is ws-find-so-order-no ws-find-so-bo-suffix
+		on error
+		endon
+	endif
+	//end ----------------------------------------------- //rc 16jun09
+endprocedure // build-dataset -------------------------------------------------
+
+/*
+screen select-time-string
+//	parameters
+//		lp-sys-tbl-code					like sys-tbl-code
+	returning
+		lr-seconds-since-midnight		like sys-money-value
+
+
+	//window @20,36 to @28,48 title is concat("Select " ws-select-time-mode " Time")
+	window @20,36 to @28,48 title is concat(strconcat(ws-select-time-mode) " Time")
+	primary system-table
+	where sys-tbl-type = "ZT"
+	datagrid occurs 8
+	allow md-select search
+
+detail
+	display sys-tbl-code @20,38 title is "Time"
+
+confirm
+	auto
+confirmed
+	if screen-mode() = md-select
+		set lr-seconds-since-midnight = sys-money-value
+		// message concat("Ret:" str(lr-seconds-since-midnight))
+		exit
+	endif
+endconfirm
+
+endscreen // select-time-string -----------------------------------------------
+*/
+
+
+screen view-in-grid
+	window @1,1 to @23,125 title is ws-report-title //"Scheduled Deliveries"
+local field
+	lf-store-details		pic x(50)
+	lf-delivery-date-str	pic x(8)
+	lf-mobile-valid			type boolean
+	lf-all-lines-alloc		type boolean
+	lf-alloc-message		pic x(40)
+	lr-proceed				type boolean
+//	lf-delivery-window		pic x(15)
+	lf-multi-orders			type boolean
+	lf-before-del-date		like tsd-so-delivery-date
+	//
+	primary tmp-scheduled-delivery
+		on index tsd-so-order-no tsd-so-bo-suffix //descending
+	datagrid occurs 18
+	review-from-start
+	//review-from-current
+	//REVIEW-BOTTOM-TO-TOP
+	//review-from-start
+	// allowed correct search md-review-so md-review-notes md-review-cust md-review-po md-confirm-delivery md-view-pre md-view-curr md-send-sms
+	//allowed search correct md-review-so md-review-notes md-review-cust md-review-po md-confirm-delivery md-view-prev md-view-curr md-view-next md-view-all md-send-sms md-print-report
+	//allowed search correct
+	//06feb08 allowed search correct md-review-so md-review-notes md-review-cust md-review-po md-confirm-delivery md-order-schedule md-filter-view md-send-sms md-print-report
+	// 08jul08 allowed search correct md-review-so md-review-sol md-confirm-delivery md-order-schedule md-filter-view md-review-notes md-review-cust md-review-po md-send-sms md-print-report md-toggle-whse
+	//allowed search correct md-review-so md-review-sol md-confirm-delivery md-order-schedule md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-send-sms md-print-report md-toggle-whse
+	//allowed search md-correct md-review-so md-review-sol md-confirm-delivery md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-send-sms md-print-report md-toggle-whse // 06aug08
+
+	//allowed md-find md-correct md-review-so md-review-sol md-confirm-delivery md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-send-sms md-print-report md-toggle-whse // 06aug08
+	//allowed search md-find md-correct md-review-so md-rcpt-cust md-review-sol md-confirm-delivery md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-send-sms md-print-report md-toggle-whse md-po-maint// 1may12						//{5}
+	allowed search md-find md-correct md-review-so md-rcpt-cust md-review-sol md-confirm-delivery md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-print-report md-toggle-whse md-po-maint md-delivery-details// 1may12    //{5}
+	//no-prompt-for-search
+	mode md-view-prev
+		prompt concat("[ " substring(month-name(add-month(today(),-1,1)),1,3) " ]")
+	mode md-view-curr
+		prompt concat("[ " substring(month-name(today()),1,3) " ]")
+	mode md-view-next
+		prompt concat("[ " substring(month-name(add-month(today(),1,1)),1,3) " ]")
+	// 12mar08
+	mode md-toggle-whse
+		when not ws-dc-user
+	//mode md-review-so				//rmd09sep09
+	//	when ws-dc-user	            //rmd09sep09
+	// 08jul08
+	mode md-filter-truck
+		when ws-dc-user
+	before
+		// get store details from cash account
+		get system-control first
+		get system-user
+			on index user-id sys-comp-code
+			key is login-id() sys-consolidation-division
+		get name-and-address-master
+			on index accountcode na-type
+			key is user-store-id "WH"
+		// 17jun08
+		on error
+			message concat("No Address for Whse:" user-store-id)
+		else
+		endon
+		set lf-store-details = strconcat(concat("Snooze " strconcat(na-name) " PH: " na-phone))
+		do build-dataset								//rc 04jun09
+		// message lf-store-details
+		box @19,2 to @22,125
+			title "Contacts"
+	detail
+		set lf-multi-orders	 = FALSE
+		get tmp-order-count
+			on index toc-accountcode
+			key is tsd-so-cust-code
+		on error
+			set lf-multi-orders	 = FALSE
+		else
+			if toc-order-count > 1
+				set lf-multi-orders	 = TRUE
+			endif
+		endon
+		if tsd-pickup-or-deliver = SPACES
+			set tsd-pickup-or-deliver = "D"
+		endif
+		//set tsd-delivery-window = SPACES
+		//if tsd-so-delivery-time != 0 or tsd-so-actual-delivery-time != 0
+		//	set tsd-delivery-window = concat ("  " zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) " - " zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0)) //@1,6 title is "Delivery Window" pic x(13)
+		//endif
+//if lf-multi-orders	 = TRUE
+//	message "tsd-so-cust-code" tsd-so-cust-code
+//endif
+		display tsd-so-whse-code									@1,1
+			title is "Whse"
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+	        display tsd-so-territory-code                                                           @1,2 title is "Terr"
+                        TEXT_COLOUR(lf-multi-orders)                                            //rc 04jun09 -Moved here by LG May 30 2012
+		display concat(str(tsd-so-order-no) tsd-so-bo-suffix)		@1,3 title is "Order"     pic x(10)
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		//display tsd-display-so										@1,2 title is "Order"     pic x(10)
+		// lookup s/o does not work properly if sorted on this column? better to leave an unsortable version?
+		//display tsd-so-order-no										@1,2 title is "Order"
+		//display tsd-so-bo-suffix									@1,3 title is "Suffix"
+		//display concat(str(tsd-so-order-no))						@1,2 title is "Order"
+		//display concat(tsd-so-bo-suffix)							@1,3 title is "Suffix"
+		display tsd-pickup-or-deliver								@1,4 title is "Pickup/Deliver" pic x(12)
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		display tsd-so-delivery-date             					@1,5 title is "Delivery Date"
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		//
+		//display tsd-so-delivery-time             					@1,6 title is "Earliest"     pic HH:MM
+		//display tsd-so-actual-delivery-time      					@1,8 title is "Latest"     pic HH:MM
+		//display concat (julian2date(tsd-so-delivery-time)	" - " julian2date(tsd-so-actual-delivery-time)) @1,6 title is "Delivery Window" pic x(16)
+		//display concat (zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) " - " zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0)) @1,6 title is "Delivery Window" pic x(13)
+		display tsd-delivery-window									@1,6 title is "Delivery Window" pic x(13)
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		display tsd-so-cust-code                 					@1,10
+			title is "Account"
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		display tsd-shortname                    					@1,12 title is "Customer"
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		display tsd-suburb											@1,14 title is "Suburb" pic x(30)
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		display tsd-balance-owing									@1,15 title is "Balance" pic is -----9.99
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		display tsd-financed										@1,18 title is "Financed?" pic is x(10)
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		display tsd-mobile-no									@1,20 title is "Mobile" pic is x(10)
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		display tsd-truck											@1,22 title is "Truck" pic x(10)
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		display tsd-sms-sent										@1,24 title is "SMS Sent" pic x(5)
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		display tsd-so-dl-text                   					@1,26 title is "Note"
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		display tsd-so-order-status									@1,28 title is "Status"
+			TEXT_COLOUR(lf-multi-orders)						//rc 04jun09
+		//start --------------------------------------------- //rc 16jun09
+		clear @20,2 to @20,124
+		display "Name:" @20,5 bold background
+		display tsd-contact-1 @20,13 bold background
+		display tsd-contact-2 @20,39 bold background
+		display tsd-contact-3 @20,79 bold background
+		//
+		display tsd-mobile-no @21,13
+			title "Mobile :"
+		display	tsd-phone-no @21,39
+			title "Phone 1:"
+		display	tsd-phone-no2 @21,79
+			title "Phone 2:"
+		//end ----------------------------------------------- //rc 16jun09
+confirm
+	auto
+confirmed
+	// message screen-mode()
+	switch on screen-mode()
+	//md-review-so md-review-notes md-review-cust md-review-po
+		case md-correct
+			set ws-so-order-no	 =  tsd-so-order-no
+			set ws-so-bo-suffix	 =  tsd-so-bo-suffix
+			set lf-before-del-date = tsd-so-delivery-date			//rc 04jun09
+			do correct-record
+			if lf-before-del-date <> tsd-so-delivery-date			//rc 04jun09
+				do build-dataset									//rc 04jun09
+			endif													//rc 04jun09
+			refresh data
+		// 14aug08
+		case md-find
+			do find-delsched
+			position tmp-scheduled-delivery
+			on index tsd-so-order-no tsd-so-bo-suffix
+			key is ws-find-so-order-no ws-find-so-bo-suffix
+		case md-review-notes
+			do review-notes
+			refresh data
+		case md-review-po
+			set ws-find-so-order-no	 =  tsd-so-order-no					//rc 21jul09
+			set ws-find-so-bo-suffix	 =  tsd-so-bo-suffix			//rc 21jul09
+			//
+			spl
+				"po/m6salespo.op6"
+			parameters
+				"-solpdetail"
+				tsd-so-order-no
+				tsd-so-bo-suffix
+				"enq"
+			set ws-review-po-called = TRUE
+			spl
+				"po/m6update"
+			parameters
+				"-p"
+				SPACES
+		case md-review-so
+			set ws-find-so-order-no	 =  tsd-so-order-no					//rc 21jul09
+			set ws-find-so-bo-suffix	 =  tsd-so-bo-suffix			//rc 21jul09
+			spl
+				"so/m50ordent"
+			parameters
+				"-E"
+				tsd-so-order-no
+				tsd-so-bo-suffix
+		case md-review-sol
+			set ws-find-so-order-no	 =  tsd-so-order-no					//rc 21jul09
+			set ws-find-so-bo-suffix	 =  tsd-so-bo-suffix			//rc 21jul09
+			// 18jun08
+			if ws-so-line-mode = "V"
+				spl	"rmd/so/solview"
+					parameters
+						tsd-so-order-no
+						tsd-so-bo-suffix
+			elseif ws-so-line-mode = "M"
+				spl	"so/m50lines"
+					parameters
+						tsd-so-order-no
+						tsd-so-bo-suffix
+						"-d"
+						"N"
+						0
+						"Y"
+						SPACES
+						SPACES
+			endif
+		case md-review-cust
+			set ws-find-so-order-no	 =  tsd-so-order-no					//rc 21jul09
+			set ws-find-so-bo-suffix	 =  tsd-so-bo-suffix			//rc 21jul09
+			spl	"deb/m10mast"
+			parameters
+				"-m"
+				tsd-so-cust-code
+                 case md-rcpt-cust
+                        set ws-find-so-order-no  =  tsd-so-order-no                                     //lg 1May12
+                        set ws-find-so-bo-suffix         =  tsd-so-bo-suffix
+                        spl     "deb/m1poscrec"
+
+		case md-confirm-delivery
+			set ws-so-order-no	 =  tsd-so-order-no
+			set ws-so-bo-suffix	 =  tsd-so-bo-suffix
+			set ws-balance-owing = 	tsd-balance-owing
+			//
+			do confirm-with-user
+			if ws-confirmed
+				// test for locked sales order
+				get copy-sales-order //lock lock-method no-wait
+				on index so-order-no so-bo-suffix
+				key is tsd-so-order-no tsd-so-bo-suffix
+				on error
+					message concat("Order " str(tsd-so-order-no) " is locked")
+					//do build-dataset
+					//refresh data
+					//review-from-current will get as close as poss to the s/o we were on
+					//do display-in-grid
+					//exit
+					continue
+				endon
+				set lr-proceed = TRUE
+				// 16jul08 test finance status
+				if tsd-financed = "Y"
+					do	confirm-financed entry once
+					parameters
+						tsd-so-order-no
+						tsd-so-bo-suffix
+					returning
+						lr-proceed
+				endif
+				if not lr-proceed
+					continue
+				endif
+				// 02apr08 test for unallocated po's
+				do	po-alloc-test
+				parameters
+					tsd-so-order-no
+					tsd-so-bo-suffix
+				returning
+					lf-all-lines-alloc			//type boolean
+					lf-alloc-message			//pic x(40)
+				if ws-allocation = "A" // lf-all-lines-alloc
+    	    	 	do confirm-delivery
+					parameters
+						tsd-so-order-no
+						tsd-so-bo-suffix
+				elseif ws-allocation = "U"
+					message "No items allocated"
+				else
+    	    	 	do confirm-delivery
+					parameters
+						tsd-so-order-no
+						tsd-so-bo-suffix
+				endif
+			endif
+			do build-dataset
+			//refresh data
+			//review-from-current will get as close as poss to the s/o we were on
+			//do display-in-grid					//rc 04jun09
+			//exit									//rc 04jun09
+		case md-order-schedule
+			set ws-find-so-order-no	 =  tsd-so-order-no					//rc 21jul09
+			set ws-find-so-bo-suffix	 =  tsd-so-bo-suffix			//rc 21jul09
+			spl
+				"so/m5delfifo"
+			parameters
+				"-amend-single"
+				tsd-so-order-no
+				tsd-so-bo-suffix
+		case md-send-sms
+			if tsd-sms-sent != "Y"
+				do mobile-no-clean-up
+					parameters
+						tsd-mobile-no
+					returning
+						tsd-mobile-no
+						lf-mobile-valid
+				if lf-mobile-valid
+					if tsd-mobile-no != SPACES
+						if tsd-mobile-no not in {"0438865340" "0402674944" "0417547387"}
+							//message "Not a testing mobile #"
+							//exit
+							// break
+						endif
+						//else
+							set lf-delivery-date-str = concat(zstr(day(tsd-so-delivery-date),2,0) "/" zstr(month(tsd-so-delivery-date),2,0) "/" substring(zstr(year(tsd-so-delivery-date),4,0),3,4))
+							//message lf-delivery-date-str
+							do send-email
+							parameters
+								//concat(strconcat(tsd-mobile-no) "@messagenet.com.au")
+								//concat(strconcat(tsd-mobile-no) "@pcsms.com.au")
+								concat(strconcat(tsd-mobile-no) strconcat(ws-sms-provider)) // 15jul08
+								concat("Your Snooze Delivery will be on " lf-delivery-date-str)
+
+								concat(" between " concat(zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0))
+								" and " concat(zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0))
+								" thanks for choosing " lf-store-details)
+							get sales-order-delivery //lock
+							on index so-order-no so-bo-suffix so-text-type
+							key is tsd-so-order-no tsd-so-bo-suffix "DI"
+							on error
+							else
+								set tsd-sms-sent = "Y"
+								set so-dl-text[7] = "Y"
+								update sales-order-delivery
+								//on error
+								//	message "Err: sms + truck"
+								//endon
+								// display tsd-so-dl-text
+								update tmp-scheduled-delivery
+								// write repaired mobile # back to na
+								get name-and-address-master lock
+								on index accountcode na-type
+								key is tsd-so-cust-code "C"
+								on error
+								else
+									set na-fax-no = tsd-mobile-no
+									update name-and-address-master
+								endon
+								refresh tsd-sms-sent
+								refresh data
+							endon
+						//endif
+					endif
+				else
+					message(concat(tsd-mobile-no " is not a valid mobile number")  )
+				endif
+			else
+				message "SMS already sent, set sent flag back to N if you want to resend"
+			endif
+		case md-filter-view
+			do filter-display
+			// 21aug08
+			//exit								//rc 04jun09
+			refresh data
+			//if ws-filter-view
+			//	set ws-filter-view = FALSE
+			//	exit
+			//endif
+		case md-filter-truck
+			do get-truck-filter
+			do build-dataset
+			do display-in-grid
+			exit
+		case md-toggle-whse
+			do toggle-whse
+			exit
+		case md-print-report
+			do print-delivery-sheet
+		case md-po-maint
+			spl "po/m6edit"
+		case md-delivery-details	//{5}
+			spl "pvi-snz/so/setdeldate"
+				parameters
+					tsd-so-order-no
+			        tsd-so-bo-suffix
+			        "-delsched"
+	endswitch
+	refresh data								//rc 04jun09
+	refresh										//rc 04jun09
+endconfirm
+after
+	//back-to-detail
+endscreen // view-in-grid -----------------------------------------------------
+
+procedure find-delsched
+//local field
+//	lf-accept				pic x
+
+	window @5,2 to @8,25 title is "Find Order"
+	box @5,3 to @8,25
+	accept ws-find-so-order-no		@6,15 title is "Order #:"
+
+
+	accept ws-find-so-bo-suffix		@7,15 title is "Suffix:"
+		uppercase
+		optional
+
+	//accept lf-accept				@8,15 title is "Accept Y/N?:"
+	//	uppercase
+	//	allowed "Y" "N"
+	//	default "Y"
+endprocedure // find-delsched -------------------------------------------------
+
+procedure display-in-grid
+	do view-in-grid
+endprocedure // display-in-grid -----------------------------------------------
+
+
+
+procedure correct-record
+	//window @1,1 to @6,53 				//rc 16jun09
+	window @1,1 to @12,53 				//rc 16jun09
+		title is concat("Edit details for " str(ws-so-order-no) ws-so-bo-suffix)
+
+local field
+	i								type numeric
+	f								type numeric
+	lf-accept						pic x
+	lf-valid-ph-no					type boolean				//rc 17jun09
+	//lf-so-delivery-date				like so-delivery-date
+	//lf-so-delivery-time             like so-delivery-time
+	//lf-so-actual-delivery-time      like so-actual-delivery-time
+	//lf-pickup-or-deliver            like so-spare-flag1
+	//lf-sms-sent 					pic x
+	//lf-truck    					like sys-tbl-code
+	//lf-mobile-no					like na-fax-no
+//	lf-old-so-delivery-date			like so-delivery-date
+//	lf-old-delivery-not-this-month	type boolean
+//	lf-date-override				type boolean
+//	lf-months-away					type numeric
+
+
+	get tmp-scheduled-delivery lock
+	on index tsd-so-order-no tsd-so-bo-suffix
+	key is ws-so-order-no ws-so-bo-suffix
+
+		if tsd-pickup-or-deliver = SPACES
+			set tsd-pickup-or-deliver = "D"
+		endif
+
+		box @1,1 to @6,52
+			title is " " 						//rc 16jun09
+		box @7,1 to @12,52						//rc 16jun09
+			title is "Contact Details"			//rc 16jun09
+		set lf-accept					         				= "Y"
+
+		//set lf-pickup-or-deliver        		                = tsd-pickup-or-deliver
+		//set lf-so-delivery-date			      		            = tsd-so-delivery-date
+		//set lf-so-delivery-time         		                = tsd-so-delivery-time
+		//set lf-so-actual-delivery-time  		                = tsd-so-actual-delivery-time
+		//set lf-mobile-no				            		    = tsd-mobile-no
+		//set lf-truck    				            		    = tsd-truck
+		//set lf-sms-sent 				            		    = tsd-sms-sent
+		// display current values
+		display tsd-pickup-or-deliver								@2,15 title is "Pickup/Deliver"
+		display tsd-so-delivery-date             					@3,15 title is "Delivery Date"
+		display tsd-so-delivery-time             					@4,15 title is "Earliest"     pic HH:MM
+		display tsd-so-actual-delivery-time      					@5,15 title is "Latest"     pic HH:MM
+		//display tsd-mobile-no										@2,38 title is "Mobile" pic is x(10)	//rc 16jun09
+		display tsd-truck											@3,38 title is "Truck" pic x(10)
+		display tsd-sms-sent											@4,38 title is "SMS Sent:" pic x
+
+		//start --------------------------------------------- //rc 16jun09
+		display tsd-contact-1 @8,11 pic is x(20)
+			title is "Mobile 1:"
+		display tsd-mobile-no @8,40 pic is x(10)
+		//
+		display tsd-contact-2 @9,11 pic is x(20)
+			title is "Mobile 2:"
+		display tsd-phone-no @9,40 pic is x(10)
+		//
+		display tsd-contact-3 @10,11 pic is x(20)
+			title is "Phone:"
+		display tsd-phone-no2 @10,40 pic is x(10)
+		//end ----------------------------------------------- //rc 16jun09
+ 		accept tsd-pickup-or-deliver									@2,15 title is "Pickup/Deliver"
+ 			default tsd-pickup-or-deliver
+
+
+
+ 		//14apr09 if date empty before entering 2 digit date it resulted in current month but year = 2018
+ 		//if tsd-so-delivery-date = 0
+ 		//   set lf-date-override = TRUE
+ 		//else
+		//	// 03apr09 capture old date
+		//	set lf-old-so-delivery-date = tsd-so-delivery-date
+		//	set lf-months-away =
+		//		(month(today()) + year(today()))
+		//		-
+		//		(month(lf-old-so-delivery-date) + year(lf-old-so-delivery-date))
+		//
+		//	//message str(month(lf-old-so-delivery-date) + year(lf-old-so-delivery-date))
+		//	//message str(month(today()) + year(today()))
+		//	//message str(lf-months-away)
+		//
+		//	if (month(lf-old-so-delivery-date) + year(lf-old-so-delivery-date)) != (month(today()) + year(today()))
+		//		set lf-old-delivery-not-this-month = true
+		//	endif
+		//endif
+		//14apr09
+
+		accept tsd-so-delivery-date             						@3,15 title is "Delivery Date"
+			default tsd-so-delivery-date
+			//14apr09
+			//// 03apr09 detect when user has entered 'days' only?
+			//validation
+			//	// future delivery dates should be left alone, assume override
+			//	if (month(tsd-so-delivery-date) + year(tsd-so-delivery-date)) > (month(today()) + year(today()))
+			//		set lf-date-override = TRUE
+			//	endif
+			//
+			//	if lf-old-so-delivery-date != tsd-so-delivery-date and lf-date-override = FALSE
+			//		if lf-old-delivery-not-this-month
+			//			//message "Changing date to current month"
+			//			set tsd-so-delivery-date = add-month(tsd-so-delivery-date,lf-months-away,0)
+			//			set lf-old-delivery-not-this-month = FALSE
+			//			set lf-date-override = TRUE
+			//			reenter tsd-so-delivery-date optional
+			//		endif
+			//	endif
+			//
+			//	//if tsd-so-delivery-date < 32
+			//	//	message "LT 32"
+			//	//endif
+			//endvalidation
+			//14apr09
+
+
+		accept tsd-so-delivery-time             						@4,15 title is "Earliest"     pic HH:MM
+			default tsd-so-delivery-time
+			set i = integer(tsd-so-delivery-time / 300)
+			set f = fraction(tsd-so-delivery-time / 300)
+			if f > 0.5
+				set i += 1
+			endif
+			set tsd-so-delivery-time = i * 300
+			refresh tsd-so-delivery-time
+
+
+		accept tsd-so-actual-delivery-time      					@5,15 title is "Latest"     pic HH:MM
+			default tsd-so-actual-delivery-time
+			set tsd-record-changed = TRUE
+
+			set i = integer(tsd-so-actual-delivery-time / 300)
+			set f = fraction(tsd-so-actual-delivery-time / 300)
+
+
+			if f > 0.5
+				set i += 1
+			endif
+
+			set tsd-so-actual-delivery-time = i * 300
+			refresh tsd-so-actual-delivery-time
+
+		if tsd-so-delivery-time != 0 or tsd-so-actual-delivery-time != 0
+			set tsd-delivery-window = concat ("  " zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) " - " zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0)) //@1,6 title is "Delivery Window" pic x(13)
+		else
+			set tsd-delivery-window = SPACES
+		endif
+
+		set ws-delivery-window = 	concat("Exp Deliv " zstr(DAY(tsd-so-delivery-date),2,0) " " substring(month-name(tsd-so-delivery-date),1,3) " "
+									zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) " - "
+									zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0))
+		// message ws-delivery-window
+		//start --------------------------------------------- //rc 16jun09
+// 		accept tsd-mobile-no									@2,38 title is "Mobile" pic is x(10)
+// 			default tsd-mobile-no
+// 			optional
+// 			validations
+// 				if tsd-mobile-no = SPACES
+// 					// fine
+// 				elseif (substring(tsd-mobile-no,1,2) != "04") or (num(tsd-mobile-no) < 400000000)
+// 					message "Invalid Mobile number, please re-enter"
+// 					reenter tsd-mobile-no optional
+// 				endif
+// 			endvalidations
+// 			get name-and-address-master lock
+// 			on index accountcode na-type
+// 			key is tsd-so-cust-code "C"
+// 			on error
+// 			else
+// 				set na-fax-no = tsd-mobile-no
+// 				update name-and-address-master
+// 			endon
+		//end ----------------------------------------------- //rc 16jun09
+
+		accept tsd-truck										@3,38 title is "Truck" pic x(10)
+			uppercase
+			default tsd-truck
+			optional
+			help "Enter Truck used for this delivery"
+			on help-key
+                set sys-tbl-type = "ZT"
+                do i85codes-table-help
+                set tsd-truck = sys-tbl-code
+                reenter optional
+        	endon
+        	validation
+			get sales-order-delivery // lock
+			on index so-order-no so-bo-suffix so-text-type
+			key is tsd-so-order-no tsd-so-bo-suffix "DI"
+			on error
+			else
+				set so-dl-user-only-alpha30-2 = tsd-truck
+				update sales-order-delivery
+				//on error
+				//	message "Err: tsd-truck"
+				//endon
+				// display tsd-so-dl-text
+
+				//refresh data
+			endon
+			endvalidation
+
+		accept tsd-sms-sent										@4,38 title is "SMS Sent:" pic x
+			uppercase
+			default tsd-sms-sent
+			optional
+			allowed "Y" "N" SPACES
+			// set SMS sent value
+			get sales-order-delivery lock
+			on index so-order-no so-bo-suffix so-text-type
+			key is tsd-so-order-no tsd-so-bo-suffix "DI"
+			on error
+			else
+				set so-dl-text[7] = tsd-sms-sent
+				update sales-order-delivery
+				//on error
+				//	message "Err: tsd-sms-sent"
+				//endon
+				// display tsd-so-dl-text
+				// hmm
+				//refresh data
+			endon
+
+
+			set tsd-sms-sent = substring(strconcat(so-dl-text[7]),1,1)
+		//display tsd-record-changed               					@1,18 title is ""
+
+		//start --------------------------------------------- //rc 16jun09
+		accept tsd-contact-1 @8,11 pic is x(20)
+			title is "Mobile:"
+			default tsd-contact-1
+			help "Contact for Mobile Number"
+			showvalue
+			uppercase
+			//allow "A" to "Z" SPACES	//{2}
+			disallow "0" to "9"
+		accept tsd-mobile-no @8,40 pic is x(10)
+			default tsd-mobile-no
+			//optional
+		validations
+			if tsd-mobile-no <> SPACES
+				if strlen(tsd-mobile-no) > 12
+				or strlen(tsd-mobile-no) < 10
+		        	message "Invalid Mobile number."
+					reenter
+				endif
+				do validate-phone-number
+					parameter tsd-mobile-no
+							"M"
+					returning lf-valid-ph-no
+				if lf-valid-ph-no = FALSE
+					message "Invalid Mobile Number"
+					reenter tsd-mobile-no
+				endif
+			endif
+		endvalidations
+		//
+		accept tsd-contact-2 @9,11 pic is x(20)
+			title is "Phone 1:"
+			default tsd-contact-2
+			help "Contact for Phone 1"
+			showvalue
+			uppercase
+			//allow "A" to "Z" SPACES	//{2}
+			disallow "0" to "9"
+		accept tsd-phone-no @9,40 pic is x(10)
+			default tsd-phone-no
+			optional
+		validations
+			if tsd-phone-no <> SPACES
+				if strlen(tsd-phone-no) > 12
+ 		        	message "Invalid Phone number."
+ 					reenter
+ 				endif
+				do validate-phone-number
+					parameter tsd-phone-no
+							"A"
+					returning lf-valid-ph-no
+				if lf-valid-ph-no = FALSE
+					message "Invalid Phone Number"
+					reenter tsd-phone-no
+				endif
+			endif
+		endvalidations
+		//
+		accept tsd-contact-3 @10,11 pic is x(20)
+			title is "Phone 2:"
+			default tsd-contact-3
+			help "Contact for Phone 2"
+			showvalue
+			uppercase
+			//allow "A" to "Z" SPACES	//{2}
+			disallow "0" to "9"
+		accept tsd-phone-no2 @10,40 pic is x(10)
+			default tsd-phone-no2
+			//optional
+		validations
+			if tsd-phone-no2 <> SPACES
+				if strlen(tsd-phone-no2) > 12
+ 		        	message "Invalid Phone number."
+ 					reenter
+ 				endif
+				do validate-phone-number
+					parameter tsd-phone-no2
+							"A"
+					returning lf-valid-ph-no
+				if lf-valid-ph-no = FALSE
+					message "Invalid Phone Number"
+					reenter tsd-phone-no2
+				endif
+			endif
+		endvalidations
+		//
+		get name-and-address-master lock
+		on index accountcode na-type
+		key is tsd-so-cust-code "C"
+		on error
+		else
+			set na-fax-no = tsd-mobile-no
+			//start --------------------------------------------- //rc 16jun09
+			set na-user-only-alpha30-1  = tsd-contact-1
+			set na-user-only-alpha30-2  = tsd-contact-2
+			set na-spare-alpha20-1      = tsd-contact-3
+			set na-phone                = tsd-phone-no
+			set na-mobile-phone         = tsd-phone-no2
+			//end ----------------------------------------------- //rc 16jun09
+			update name-and-address-master
+		endon
+
+		//end ----------------------------------------------- //rc 16jun09
+
+
+
+		accept lf-accept										@11,38 title is "Accept Y/N?:"
+			uppercase
+			allowed "Y" "N"
+			default lf-accept
+
+		if lf-accept = "Y"
+			//message tsd-so-delivery-date
+			//message lf-so-delivery-date
+			//set tsd-so-delivery-date = lf-so-delivery-date
+			//message concat("Updating " str(tsd-so-order-no) tsd-so-bo-suffix)
+			//set tsd-so-delivery-date           = lf-so-delivery-date
+			//set tsd-so-delivery-time           = lf-so-delivery-time
+			//set tsd-so-actual-delivery-time    = lf-so-actual-delivery-time
+			//set tsd-pickup-or-deliver          = lf-pickup-or-deliver
+			//set tsd-sms-sent                   = lf-sms-sent
+			//set tsd-truck                      = lf-truck
+			//set tsd-mobile-no                  = lf-mobile-no
+
+
+
+			update tmp-scheduled-delivery
+			get sales-order lock
+			on index so-order-no so-bo-suffix
+			key is tsd-so-order-no tsd-so-bo-suffix
+				set so-delivery-date       	= tsd-so-delivery-date
+				set so-delivery-time       	= tsd-so-delivery-time
+				set so-actual-delivery-time	= tsd-so-actual-delivery-time
+				set so-spare-flag1 			= tsd-pickup-or-deliver
+				set so-user-only-date1		= tsd-so-delivery-date	//rmd26jul10
+				update sales-order
+			do set-delivery-window-note
+			exit
+		else
+			reenter tsd-pickup-or-deliver
+		endif
+
+endprocedure // correct-record ------------------------------------------------
+
+procedure validate-phone-number				//rc 17jun09
+parameters
+	lp-input-string					pic x(20)
+	lp-type-of-no					pic x
+returning
+	lr-valid-mobile					type boolean
+//
+local field
+	i								type numeric
+	c								pic x
+	lf-working-string				pic x(20)
+	//
+	set lf-working-string = SPACES
+	//
+	for i = 1 to strlen(lp-input-string)   // down to 1
+		set c = substring(lp-input-string,i,i)
+		if valid-number(c)
+			set lf-working-string = concat(strconcat(lf-working-string) c)
+		endif
+	endfor
+ 	set lr-valid-mobile	= FALSE
+ 	//message lf-working-string
+ 	if strlen(lf-working-string) = 10
+ 		set lr-valid-mobile	= TRUE
+ 	else
+ 		set lr-valid-mobile	= FALSE
+ 	endif
+	if lp-type-of-no = "M"
+		if substring(lf-working-string,1,2) = "04"
+			set lr-valid-mobile	= TRUE
+		else
+ 			set lr-valid-mobile	= FALSE
+		endif
+ 	endif
+endprocedure // validate-phone-number -------------------------------------------------
+
+
+/*
+procedure correct-record-long
+	window @1,1 to @6,53 title is concat("Edit details for " str(ws-so-order-no) ws-so-bo-suffix)
+
+local field
+	i								type numeric
+	f								type numeric
+	lf-store-details				pic x(50)
+//	lf-delivery-date-str			pic x(8)
+//	lf-mobile-valid					type boolean
+//	lf-all-lines-alloc				type boolean
+//	lf-alloc-message				pic x(40)
+//	lr-proceed						type boolean
+
+	lf-accept						pic x
+	lf-so-delivery-date				like so-delivery-date
+	lf-so-delivery-time             like so-delivery-time
+	lf-so-actual-delivery-time      like so-actual-delivery-time
+	lf-pickup-or-deliver            like so-spare-flag1
+	lf-sms-sent 					pic x
+	lf-truck    					like sys-tbl-code
+	lf-mobile-no					like na-fax-no
+
+	get tmp-scheduled-delivery lock
+	on index tsd-so-order-no tsd-so-bo-suffix
+	key is ws-so-order-no ws-so-bo-suffix
+
+
+		// get store details from cash account
+		get system-control first
+		get system-user
+		on index user-id sys-comp-code
+		key is login-id() sys-consolidation-division
+		get name-and-address-master
+		on index accountcode na-type
+		key is user-store-id "WH"
+		// 17jun08
+		on error
+			message concat("No Address for Whse:" user-store-id)
+		else
+		endon
+
+		set lf-store-details = strconcat(concat("Snooze " strconcat(na-name) " PH: " na-phone))
+		// message lf-store-details
+
+		if tsd-pickup-or-deliver = SPACES
+			set tsd-pickup-or-deliver = "D"
+		endif
+
+		box @1,1 to @6,52
+		set lf-accept					         				= "N"
+
+		set lf-pickup-or-deliver        		                = tsd-pickup-or-deliver
+		set lf-so-delivery-date			      		            = tsd-so-delivery-date
+		set lf-so-delivery-time         		                = tsd-so-delivery-time
+		set lf-so-actual-delivery-time  		                = tsd-so-actual-delivery-time
+		set lf-mobile-no				            		    = tsd-mobile-no
+		set lf-truck    				            		    = tsd-truck
+		set lf-sms-sent 				            		    = tsd-sms-sent
+
+
+
+
+
+		// display current values
+		display lf-pickup-or-deliver								@2,15 title is "Pickup/Deliver"
+		display lf-so-delivery-date             					@3,15 title is "Delivery Date"
+		display lf-so-delivery-time             					@4,15 title is "Earliest"     pic HH:MM
+		display lf-so-actual-delivery-time      					@5,15 title is "Latest"     pic HH:MM
+		display lf-mobile-no										@2,38 title is "Mobile" pic is x(10)
+		display lf-truck											@3,38 title is "Truck" pic x(10)
+		display lf-sms-sent											@4,38 title is "SMS Sent:" pic x
+
+		accept lf-pickup-or-deliver								@2,15 title is "Pickup/Deliver"
+			uppercase
+			default lf-pickup-or-deliver // "D"
+			allowed "P" "D"
+
+		accept lf-so-delivery-date             						@3,15 title is "Delivery Date"
+			default lf-so-delivery-date
+
+
+		accept lf-so-delivery-time             						@4,15 title is "Earliest"     pic HH:MM
+			default lf-so-delivery-time
+			set tsd-record-changed = TRUE
+			set i = integer(lf-so-delivery-time / 300)
+			set f = fraction(lf-so-delivery-time / 300)
+			if f > 0.5
+				set i += 1
+			endif
+			set lf-so-delivery-time = i * 300
+			refresh lf-so-delivery-time
+
+
+		accept lf-so-actual-delivery-time      					@5,15 title is "Latest"     pic HH:MM
+			default lf-so-actual-delivery-time
+			set tsd-record-changed = TRUE
+
+			set i = integer(lf-so-actual-delivery-time / 300)
+			set f = fraction(lf-so-actual-delivery-time / 300)
+
+
+			if f > 0.5
+				set i += 1
+			endif
+
+			set lf-so-actual-delivery-time = i * 300
+			refresh lf-so-actual-delivery-time
+
+		set ws-delivery-window = 	concat("Exp Deliv " zstr(DAY(lf-so-delivery-date),2,0) " " substring(month-name(lf-so-delivery-date),1,3) " "
+									zstr(hour(lf-so-delivery-time),2,0) ":" zstr(minute(lf-so-delivery-time),2,0) " - "
+									zstr(hour(lf-so-actual-delivery-time),2,0) ":" zstr(minute(lf-so-actual-delivery-time),2,0))
+		// message ws-delivery-window
+
+		accept lf-mobile-no									@2,38 title is "Mobile" pic is x(10)
+			default lf-mobile-no
+			optional
+			validations
+				if lf-mobile-no = SPACES
+					// fine
+				elseif (substring(lf-mobile-no,1,2) != "04") or (num(lf-mobile-no) < 400000000)
+					message "Invalid Mobile number, please re-enter"
+					reenter lf-mobile-no optional
+				endif
+			endvalidations
+			get name-and-address-master lock
+			on index accountcode na-type
+			key is tsd-so-cust-code "C"
+			on error
+			else
+				set na-fax-no = lf-mobile-no
+				update name-and-address-master
+			endon
+
+		accept lf-truck										@3,38 title is "Truck" pic x(10)
+			uppercase
+			default lf-truck
+			optional
+			help "Enter Truck used for this delivery"
+			on help-key
+                set sys-tbl-type = "ZT"
+                do i85codes-table-help
+                set lf-truck = sys-tbl-code
+                reenter optional
+        	endon
+        	validation
+			get sales-order-delivery // lock
+			on index so-order-no so-bo-suffix so-text-type
+			key is tsd-so-order-no tsd-so-bo-suffix "DI"
+			on error
+			else
+				set so-dl-user-only-alpha30-2 = lf-truck
+				update sales-order-delivery
+				//on error
+				//	message "Err: tsd-truck"
+				//endon
+				// display tsd-so-dl-text
+
+				//refresh data
+			endon
+			endvalidation
+
+		accept lf-sms-sent										@4,38 title is "SMS Sent:" pic x
+			uppercase
+			default lf-sms-sent
+			optional
+			allowed "Y" "N"
+			// set SMS sent value
+			get sales-order-delivery lock
+			on index so-order-no so-bo-suffix so-text-type
+			key is tsd-so-order-no tsd-so-bo-suffix "DI"
+			on error
+			else
+				set so-dl-text[7] = lf-sms-sent
+				update sales-order-delivery
+				//on error
+				//	message "Err: tsd-sms-sent"
+				//endon
+				// display tsd-so-dl-text
+				// hmm
+				//refresh data
+			endon
+
+
+			set lf-sms-sent = substring(strconcat(so-dl-text[7]),1,1)
+		//display tsd-record-changed               					@1,18 title is ""
+
+
+		accept lf-accept										@5,38 title is "Accept Y/N?:"
+			uppercase
+			allowed "Y" "N"
+			default "N"
+
+		if lf-accept = "Y"
+			//message tsd-so-delivery-date
+			//message lf-so-delivery-date
+			//set tsd-so-delivery-date = lf-so-delivery-date
+			//message concat("Updating " str(tsd-so-order-no) tsd-so-bo-suffix)
+			set tsd-so-delivery-date           = lf-so-delivery-date
+			set tsd-so-delivery-time           = lf-so-delivery-time
+			set tsd-so-actual-delivery-time    = lf-so-actual-delivery-time
+			set tsd-pickup-or-deliver          = lf-pickup-or-deliver
+			set tsd-sms-sent                   = lf-sms-sent
+			set tsd-truck                      = lf-truck
+			set tsd-mobile-no                  = lf-mobile-no
+
+
+
+			update tmp-scheduled-delivery
+			get sales-order lock
+			on index so-order-no so-bo-suffix
+			key is tsd-so-order-no tsd-so-bo-suffix
+				set so-delivery-date         = tsd-so-delivery-date
+				set so-delivery-time         = tsd-so-delivery-time
+				set so-actual-delivery-time  = tsd-so-actual-delivery-time
+				set so-spare-flag1 			 = tsd-pickup-or-deliver
+				update sales-order
+			do set-delivery-window-note
+			exit
+		else
+			reenter lf-pickup-or-deliver
+		endif
+
+endprocedure // correct-record-long -------------------------------------------
+*/
+
+procedure confirm-with-user // 03apr09
+local field
+	lf-confirm					pic x
+	window @10,10 to @14,40 title is "Confirm"
+	box @10,11 to @14,39
+
+	//display strconcat(str(ws-so-order-no) ws-so-bo-suffix)				@11,14 background // scale 120 bold background
+	//display concat("Order Balance: $" fstr(ws-balance-owing,7,2))		@12,14 scale 120 bold background
+	display ws-so-order-no				@11,24 title is "Order #:" pic zzzzzzzzzz   scale 110
+	display ws-balance-owing			@12,24 title is "Balance:" pic ------9.99 	scale 110 // scale 120 bold background
+	accept lf-confirm 					@13,24 title is "Confirm Y/N:" 				scale 110 // scale 120 bold background
+		uppercase
+		allowed "Y" "N"
+		default "N"
+
+	if lf-confirm = "N"
+		set ws-confirmed = FALSE
+	else
+		set ws-confirmed = TRUE
+	endif
+endprocedure // confirm-with-user ---------------------------------------------
+
+/*
+procedure confirm-with-user-old // 03apr09
+local field
+	lf-confirm					pic x
+	window @10,10 to @12,30 title is "Confirm"
+	box @10,11 to @12,29
+
+	accept lf-confirm @11,27 title is "Confirm Y/N"
+		uppercase
+		allowed "Y" "N"
+		default "N"
+
+	if lf-confirm = "N"
+		set ws-confirmed = FALSE
+	else
+		set ws-confirmed = TRUE
+	endif
+endprocedure // confirm-with-user-old -----------------------------------------
+*/
+
+screen confirm-financed
+	window @5,5 to @10,62 title is "Confirm Financed Order"
+	//allowed entry-once correct
+
+local field
+	lf-typed-accept						pic x
+	lf-rep-code							like rep-code
+
+
+parameters
+	lp-so-order-no          		like so-order-no
+	lp-so-bo-suffix                 like so-bo-suffix
+
+returning
+	lr-proceed   					type boolean
+
+before
+	box @5,5 to @9,62 title is "Finance Finalised Y/N?"
+	//display "Has the documentation been finalised for this Finance deal?"		@6,8 background
+	display   "Has the documentation been submitted to the Financier for this deal?" @6,8 background
+	display	"Y/N?"																@7,29 background
+	display "Enter Rep Code"													@8,21 background
+
+
+detail
+	accept lf-typed-accept			@7,34 title is "Y/N?"
+		uppercase
+		allowed "Y" "N"
+		default SPACES
+		//reenter optional
+
+	accept lf-rep-code				@8,34 title is "Enter Rep Code"
+		uppercase
+		//blank
+		default SPACES
+		show_value
+		on help-key
+			do
+				m1enqrep-rep-review
+			set lf-rep-code = rep-code
+		endon
+		validations
+			get rep-master
+			on index rep-code
+			key is lf-rep-code
+			on error
+				message concat(lf-rep-code " unknown")
+				reenter lf-rep-code //optional
+			else
+			endon
+		endvalidations
+	//display lf-rep-code				@8,30 title is "Enter Rep Code"
+
+
+
+after
+	//if lf-typed-accept = SPACES
+	//	back-to-detail
+	//endif
+    //
+	//if lf-rep-code = SPACES
+	//	back-to-detail
+	//endif
+
+	if (lf-typed-accept = SPACES) or (lf-rep-code = SPACES)
+		set lr-proceed = FALSE
+	elseif lf-typed-accept = "N"
+		set lr-proceed = FALSE
+	else
+		set so-order-no 	= lp-so-order-no
+		set so-bo-suffix	= lp-so-bo-suffix
+		set so-note-type 	= "~"
+		set so-user-code 	= "CONFDELFIN"
+		set so-note-date 	= today()
+		set so-note-text 	= concat("RESP:" lf-typed-accept " REP:" lf-rep-code)
+
+		get sales-order-notes
+		on error
+			insert sales-order-notes
+		else
+			update sales-order-notes
+		endon
+		set lr-proceed = TRUE
+	endif
+confirm
+	auto
+confirmed
+endconfirm
+
+endscreen // confirm-financed -------------------------------------------------
+
+procedure po-alloc-test
+parameters
+	lp-so-order-no    			like so-order-no
+	lp-so-bo-suffix             like so-bo-suffix
+
+returning
+	lr-all-lines-alloc			type boolean
+	lr-message					pic x(40)
+
+local field
+	lf-all-alloc				type boolean
+	lf-all-unalloc				type boolean
+
+
+	set ws-allocation 		= "X"
+	set lf-all-alloc		= TRUE
+	set lf-all-unalloc		= TRUE
+	set lr-all-lines-alloc 	= TRUE
+	set lr-message 			= SPACES
+
+	extract sales-order-line
+	on index so-order-no so-bo-suffix sol-line-seq
+	key is lp-so-order-no lp-so-bo-suffix 0
+	next same so-order-no so-bo-suffix
+	detail
+		if sol-line-type in {"SN" "KN"}
+			get sales-order-line-purchase
+			on error
+				if sol-shipped-qty > 0
+					set lf-all-unalloc = FALSE
+				else
+					set lf-all-alloc = FALSE
+					set lr-all-lines-alloc = FALSE
+				endif
+			else
+				if solp-status = "A"
+					set lf-all-unalloc = FALSE
+				else
+				//if solp-status != "A"
+
+					set lf-all-alloc = FALSE
+					set lr-all-lines-alloc = FALSE
+
+					if strlen(lr-message) > 0
+						set lr-message = concat(lr-message " " str(solp-po-order-no) solp-backorder-flag)
+					else
+						set lr-message = concat(str(solp-po-order-no) solp-backorder-flag)
+					endif
+				endif
+			endon
+		endif
+	endextract
+
+
+	if lf-all-alloc
+		set ws-allocation = "A"
+	elseif lf-all-unalloc
+		set ws-allocation = "U"
+	else
+		set ws-allocation = "M"
+	endif
+
+
+endprocedure // po-alloc-test -------------------------------------------------
+
+
+//procedure po-alloc-test-old
+//parameters
+//	lp-so-order-no    			like so-order-no
+//	lp-so-bo-suffix             like so-bo-suffix
+//
+//returning
+//	lr-all-lines-alloc			type boolean
+//	lr-message					pic x(40)
+//
+//local field
+//	lf-all-alloc				type boolean
+//	lf-all-unalloc				type boolean
+//
+//
+//	set ws-allocation 		= "X"
+//	set lf-all-alloc		= TRUE
+//	set lf-all-unalloc		= TRUE
+//	set lr-all-lines-alloc 	= TRUE
+//	set lr-message 			= SPACES
+//
+//	extract sales-order-line-purchase
+//	on index so-order-no so-bo-suffix sol-line-seq
+//	key is lp-so-order-no lp-so-bo-suffix 0
+//	next same so-order-no so-bo-suffix
+//	detail
+//		if solp-status = "A"
+//			set lf-all-unalloc = FALSE
+//
+//		else
+//		//if solp-status != "A"
+//
+//			set lf-all-alloc = FALSE
+//			set lr-all-lines-alloc = FALSE
+//
+//			if strlen(lr-message) > 0
+//				set lr-message = concat(lr-message " " str(solp-po-order-no) solp-backorder-flag)
+//			else
+//				set lr-message = concat(str(solp-po-order-no) solp-backorder-flag)
+//			endif
+//		endif
+//	endextract
+//
+//
+//
+//	if lf-all-alloc
+//		set ws-allocation = "A"
+//	elseif lf-all-unalloc
+//		set ws-allocation = "U"
+//	else
+//		set ws-allocation = "M"
+//	endif
+//
+//	//test if some items were already shipped as they are in stock
+//
+//endprocedure // po-alloc-test-old ---------------------------------------------
+
+menu filter-display
+	window @11,12 to @21,20 title is "View Deliveries for"
+
+			set ws-filter-view = FALSE
+
+	option "Overdue" @12,15 // 28oct08
+			set ws-period-to-view = "OD"
+			set ws-report-title	= "Overdue Deliveries"
+			do build-dataset
+			//do display-in-grid								//rc 04jun09
+			refresh data										//rc 04jun09
+			set ws-filter-view = TRUE
+			exit												//rc 04jun09
+
+	option "Today" @13,15
+			set ws-period-to-view = "T"
+			set ws-report-title	= "Deliveries for Today"
+			do build-dataset
+			//do display-in-grid								//rc 04jun09
+			refresh data										//rc 04jun09
+			set ws-filter-view = TRUE
+			exit
+
+	option "Tomorrow" @14,15
+			set ws-period-to-view = "TM"
+			set ws-report-title	= "Deliveries for Tomorrow"
+			do build-dataset
+			//do display-in-grid								//rc 04jun09
+			refresh data										//rc 04jun09
+			set ws-filter-view = TRUE
+			exit
+
+	option "Enter Date" @15,15
+			do get-user-delivery-date
+			set ws-period-to-view = "U"
+			//set ws-report-title	= concat("Deliveries for: " zstr(day(ws-user-delivery-date),2,0) "/" zstr(month(ws-user-delivery-date),2,0) "/" substring(zstr(year(ws-user-delivery-date),4,0),3,4))
+			set ws-report-title	= concat("Deliveries for: " zstr(day(ws-user-delivery-date),2,0) "-" uppercase(substring(month-name(ws-user-delivery-date),1,3)) "-" zstr(year(ws-user-delivery-date),4,0))
+			do build-dataset
+			//do display-in-grid								//rc 04jun09
+			refresh data										//rc 04jun09
+			set ws-filter-view = TRUE
+			exit
+
+
+	option "This Week" @16,15
+			set ws-period-to-view = "TW"
+			set ws-report-title	= "Deliveries for This Week"
+			do build-dataset
+			//do display-in-grid								//rc 04jun09
+			refresh data										//rc 04jun09
+			set ws-filter-view = TRUE
+			exit
+
+	option "Next Week" @17,15
+			set ws-period-to-view = "NW"
+			set ws-report-title	= "Deliveries for Next Week"
+			do build-dataset
+			//do display-in-grid								//rc 04jun09
+			refresh data										//rc 04jun09
+			set ws-filter-view = TRUE
+			exit
+
+	option concat("This Month [ " substring(month-name(today()),1,3) " ]") @18,15
+			set ws-period-to-view = "C"
+			set ws-report-title	= "Deliveries for This Month"
+			do build-dataset
+			//do display-in-grid								//rc 04jun09
+			refresh data										//rc 04jun09
+			set ws-filter-view = TRUE
+			exit
+
+
+	option concat("Next Month [ " substring(month-name(add-month(today(),1,1)),1,3) " ]") @19,15
+			set ws-period-to-view = "N"
+			set ws-report-title	= "Deliveries for Next Month"
+			//do build-dataset
+			//do display-in-grid
+			//set ws-filter-view = TRUE
+			//exit
+			//start --------------------------------------------- //rc 04jun09
+			//spl
+			//	"rc/so/delsched2"
+			//parameters
+			//	"-solview"
+			//	"N"
+			set ws-so-line-mode = "V"
+			set ws-period-to-view = "N"
+			do build-dataset
+			refresh data
+			//end ----------------------------------------------- //rc 04jun09
+			exit
+	// 08mar08
+	option concat("To Be Advised") @20,15
+			set ws-period-to-view = "TBA"
+			set ws-report-title	= "Delivery Date Not Set"
+			do build-dataset
+			//do display-in-grid								//rc 04jun09
+			refresh data										//rc 04jun09
+			set ws-filter-view = TRUE
+			exit
+
+	option concat("ALL") @21,15
+			set ws-period-to-view = "A"
+			set ws-report-title	= "All Pending Deliveries"
+			do build-dataset
+			//do display-in-grid								//rc 04jun09
+			refresh data										//rc 04jun09
+			set ws-filter-view = TRUE
+			exit
+
+
+endmenu // filter-display -----------------------------------------------------
+
+
+
+menu review-notes
+	window @11,12 to @14,20 title is "Review Notes/Instructions"
+
+	option "Delivery Instructions" @12,15 // 28oct08
+		do review-delivery-instructions
+
+	option "Customer Order Notes" @13,15
+		spl
+			"so/m50extra"
+		parameters
+			tsd-so-order-no
+			tsd-so-bo-suffix
+			"-son"
+
+endmenu // filter-display -----------------------------------------------------
+
+
+menu toggle-whse
+	window @12,12 to @20,20 title is "View Deliveries for"
+
+	option "DC" @13,15
+			set ws-whse-to-view = "DC"
+			set ws-report-title	= concat(user-whse ":" strconcat(ws-report-title))
+			do build-dataset
+			do display-in-grid
+			exit
+
+	option "Store" @14,15
+			set ws-whse-to-view = "STR"
+			set ws-report-title	= concat(user-whse ":" strconcat(ws-report-title))
+			do build-dataset
+			do display-in-grid
+			exit
+
+	option concat("ALL") @15,15
+			set ws-whse-to-view = "*"
+			set ws-report-title	= concat("All:" strconcat(ws-report-title))
+			do build-dataset
+			do display-in-grid
+			exit
+
+
+endmenu // toggle-whse --------------------------------------------------------
+
+procedure print-delivery-sheet
+	// 08jul08
+	// do print-delivery-sheet-3
+	//01apr09
+	//do print-delivery-sheet-4
+	//do print-delivery-sheet-5					//rc 10jun09
+	do print-delivery-sheet-6					//rc 10jun09
+endprocedure // print-delivery-sheet ------------------------------------------
+
+
+procedure print-delivery-sheet-1
+local field
+	i								type numeric
+//	j								type numeric
+	lf-spoolfile-name				pic x(20)
+	lf-address-string-1				pic x(60)
+	lf-address-string-2				pic x(60)
+	lf-full-delivery-note			pic x(120)
+	lf-delivery-window				pic x(15) // "12:45 - 15:45" = 12 char, "Customer Pickup" = 15 char
+	lf-phone-string					pic x(40)
+
+
+
+	set ws-col-1      = 1       + 4
+	set ws-col-2      = 17      + 4
+	set ws-col-3      = 26      + 4
+	set ws-col-4      = 36      + 4
+	set ws-col-5      = 57      + 4
+	set ws-col-6      = 82      + 4
+	set ws-col-7      = 94      + 4
+	set ws-col-8      = 120     + 4
+	set ws-col-9      = 125     + 4
+	set ws-col-10     = 126     + 4
+	set ws-col-11     = 127     + 4
+
+	set i = 0
+
+
+	report ws-report-title
+
+
+	header is top-of-page-1
+	page
+
+	extract tmp-scheduled-delivery
+	on index tsd-so-delivery-date tsd-so-delivery-time tsd-so-actual-delivery-time
+
+	before tsd-so-delivery-date
+		do daily-sub-heading-1
+
+
+	detail
+		need 4 lines
+		set i += 1
+		get name-and-address-master
+		on index accountcode na-type
+		key is tsd-so-cust-code "C"
+		on error
+			set lf-address-string-1 = SPACES
+			set lf-address-string-2 = SPACES
+
+			set lf-phone-string = tsd-mobile-no
+		else
+			//set lf-address-string = concat(strconcat(na-company) " " strconcat(na-street) " " strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+			set lf-address-string-1 = concat(strconcat(na-company) " " strconcat(na-street))
+			set lf-address-string-2 = concat(strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+			if strlen(str-concat(na-phone)) = 0
+				set lf-phone-string = tsd-mobile-no
+			else
+				set lf-phone-string = strconcat(na-phone)
+				if strlen(strconcat(tsd-mobile-no)) > 0
+					set lf-phone-string = concat(strconcat(na-phone) "/" strconcat(tsd-mobile-no))
+				endif
+			endif
+		endon
+
+		if tsd-pickup-or-deliver = "P"
+			set lf-delivery-window = "Customer Pickup"
+		else
+			set lf-delivery-window = concat(zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) "-"
+									zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0))
+		endif
+
+		print
+			lf-delivery-window				in col ws-col-1 bold
+			tsd-so-order-no					in col ws-col-2 bold
+
+			// tsd-so-delivery-time			in col ws-col-3 pic HH:MM
+			// tsd-so-actual-delivery-time		in col ws-col-4 pic HH:MM
+			tsd-balance-owing				in col ws-col-3 pic zzzz9.99 bold
+			tsd-shortname					in col ws-col-4 bold
+			lf-phone-string					in col ws-col-5 bold
+			lf-address-string-1				in col ws-col-6 bold
+		print
+			lf-address-string-2				in col ws-col-6 bold
+
+
+
+/*
+		extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is tsd-so-order-no tsd-so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			get stock-master
+			on error
+			else
+			endon
+			if sol-line-type in {"SN" "KN"}
+				print
+					stock-code					in col ws-col-2
+					stk-description				in col ws-col-3
+			endif
+		endextract
+*/
+		get sales-order-delivery
+		on index so-order-no so-bo-suffix so-text-type
+		key is tsd-so-order-no tsd-so-bo-suffix "DI"
+		on error
+			set lf-full-delivery-note = SPACES
+		else
+			set lf-full-delivery-note = concat(strconcat(so-dl-text[1]) " " strconcat(so-dl-text[2]) " " strconcat(so-dl-text[3]) " " strconcat(so-dl-text[4]))
+			if strlen(lf-full-delivery-note) > 0
+				print
+					80"-"						in col ws-col-1
+				print
+					lf-full-delivery-note		in col ws-col-1
+				print
+					80"-"						in col ws-col-1
+			endif
+		endon
+
+	//	skip
+			print
+				132"_"						in col ws-col-1
+
+
+    endextract
+	if i > 0
+		set lf-spoolfile-name = spoolfile-name()
+		report finished // on ws-report-title
+	    message concat(strconcat(lf-spoolfile-name) " Created")
+	endif
+
+endprocedure // print-delivery-sheet-1 ----------------------------------------
+
+
+procedure top-of-page-1
+		print
+			strconcat(company-name " Delivery Schedule") in col 1 font 15 bold // scale 200 bold
+
+
+		print
+			"Prepared:" in col 1
+	       	today() in col 11
+			tod() in col 23 pic HH:MM
+			"by" in col 29
+			login-id() in col 32
+		//skip
+
+/*
+		print
+			"Delivery"							in col ws-col-1
+			"Order"							in col ws-col-2 + 3
+			//"Delivery"						in col ws-col-3
+			"Balance"						in col ws-col-3 + 1
+			"Customer"						in col ws-col-4
+			"Phone #"						in col ws-col-5
+			"Address"						in col ws-col-6
+*/
+
+
+	//	print
+	//		132"_"
+
+
+endprocedure // top-of-page-1 -------------------------------------------------
+
+procedure daily-sub-heading-1
+
+		skip
+		print
+			"Deliveries for " in col 1 bold
+			tsd-so-delivery-date in col 16 bold //underline
+		//print
+/*
+		print
+			"Delivery               "						in col ws-col-1       underline bold
+			"Order                  "							in col ws-col-2 + 3   underline bold
+			//"Delivery             "					in col ws-col-3       underline bold
+			"Balance                "						in col ws-col-3 + 1   underline bold
+			"Customer               "						in col ws-col-4       underline bold
+			"Phone #                    "						in col ws-col-5       underline bold
+			"Address                                               "						in col ws-col-6       underline bold
+	//	print
+	//		132"_" in col 1
+*/
+/*
+			print
+
+				"Delivery"						in col ws-col-1       underline bold
+				132"_"							in col ws-col-1 + 1
+				"Order"							in col ws-col-2 + 3   underline bold
+				"Balance"						in col ws-col-3 + 1   underline bold
+				"Customer"						in col ws-col-4       underline bold
+				"Phone #"						in col ws-col-5       underline bold
+				"Address"						in col ws-col-6       underline bold
+*/
+		print
+			"Time                   "						in col ws-col-1       underline bold
+			"Order                  "							in col ws-col-2 + 3   underline bold
+			//"Delivery             "					in col ws-col-3       underline bold
+			"Balance                "						in col ws-col-3 + 1   underline bold
+			"Customer               "						in col ws-col-4       underline bold
+			"Phone #                    "						in col ws-col-5       underline bold
+			"Address                                       *"						in col ws-col-6 underline bold
+
+
+
+
+
+endprocedure // daily-sub-heading-1 -------------------------------------------
+
+
+
+
+procedure print-delivery-sheet-2
+local field
+	i								type numeric
+//	j								type numeric
+	lf-spoolfile-name				pic x(20)
+	lf-address-string-1				pic x(60)
+	lf-address-string-2				pic x(60)
+	lf-full-delivery-note			pic x(120)
+	lf-delivery-window				pic x(15) // "12:45 - 15:45" = 12 char, "Customer Pickup" = 15 char
+	lf-phone-string					pic x(40)
+
+
+
+	set ws-col-1      = 1       //+ 4
+	set ws-col-2      = 17      //+ 4
+	set ws-col-3      = 26      //+ 4
+	set ws-col-4      = 36      //+ 4
+	set ws-col-5      = 63      //+ 4
+	set ws-col-6      = 94      //+ 4
+	set ws-col-7      = 94      //+ 4
+	set ws-col-8      = 120     //+ 4
+	set ws-col-9      = 125     //+ 4
+	set ws-col-10     = 126     //+ 4
+	set ws-col-11     = 127     //+ 4
+
+	set i = 0
+
+
+	report ws-report-title
+
+
+	//header is top-of-page-2
+	header is daily-sub-heading-2
+	//page
+
+	extract tmp-scheduled-delivery
+	on index tsd-so-delivery-date tsd-so-delivery-time tsd-so-actual-delivery-time
+
+	before tsd-so-delivery-date
+	//	do daily-sub-heading-2
+		page
+
+
+	detail
+		need 4 lines
+		set i += 1
+		get name-and-address-master
+		on index accountcode na-type
+		key is tsd-so-cust-code "C"
+		on error
+			set lf-address-string-1 = SPACES
+			set lf-address-string-2 = SPACES
+
+			set lf-phone-string = tsd-mobile-no
+		else
+			//set lf-address-string = concat(strconcat(na-company) " " strconcat(na-street) " " strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+			set lf-address-string-1 = concat(strconcat(na-company) " " strconcat(na-street))
+			set lf-address-string-2 = concat(strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+			if strlen(str-concat(na-phone)) = 0
+				set lf-phone-string = tsd-mobile-no
+			else
+				set lf-phone-string = strconcat(na-phone)
+				if strlen(strconcat(tsd-mobile-no)) > 0
+					set lf-phone-string = concat(strconcat(na-phone) "/" strconcat(tsd-mobile-no))
+				endif
+			endif
+		endon
+
+		if tsd-pickup-or-deliver = "P"
+			set lf-delivery-window = "Customer Pickup"
+		else
+			set lf-delivery-window = concat(zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) "-"
+									zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0))
+		endif
+
+
+		print
+			lf-delivery-window				in col ws-col-1 bold
+			tsd-so-order-no					in col ws-col-2 bold
+
+			// tsd-so-delivery-time			in col ws-col-3 pic HH:MM
+			// tsd-so-actual-delivery-time		in col ws-col-4 pic HH:MM
+			tsd-balance-owing				in col ws-col-3 pic zzzz9.99 bold
+			tsd-shortname					in col ws-col-4 bold
+			lf-phone-string					in col ws-col-5 bold
+			lf-address-string-1				in col ws-col-6 bold
+		print
+			lf-address-string-2				in col ws-col-6 bold
+
+
+
+/*
+		extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is tsd-so-order-no tsd-so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			get stock-master
+			on error
+			else
+			endon
+			if sol-line-type in {"SN" "KN"}
+				print
+					stock-code					in col ws-col-2
+					stk-description				in col ws-col-3
+			endif
+		endextract
+*/
+		get sales-order-delivery
+		on index so-order-no so-bo-suffix so-text-type
+		key is tsd-so-order-no tsd-so-bo-suffix "DI"
+		on error
+			set lf-full-delivery-note = SPACES
+		else
+			set lf-full-delivery-note = concat(strconcat(so-dl-text[1]) " " strconcat(so-dl-text[2]) " " strconcat(so-dl-text[3]) " " strconcat(so-dl-text[4]))
+			if strlen(lf-full-delivery-note) > 0
+				print
+					80"-"						in col ws-col-1
+				print
+					lf-full-delivery-note		in col ws-col-1
+				print
+					80"-"						in col ws-col-1
+			endif
+		endon
+
+	//	skip
+			print
+				132"_"						in col ws-col-1
+
+
+
+    endextract
+	if i > 0
+		set lf-spoolfile-name = spoolfile-name()
+		report finished // on ws-report-title
+	    message concat(strconcat(lf-spoolfile-name) " Created")
+	endif
+
+endprocedure // print-delivery-sheet-2 ----------------------------------------
+
+procedure print-delivery-sheet-3
+local field
+	i								type numeric
+//	j								type numeric
+	lf-spoolfile-name				pic x(20)
+	lf-address-string-1				pic x(60)
+	lf-address-string-2				pic x(60)
+	lf-full-delivery-note			pic x(120)
+	lf-delivery-window				pic x(15) // "12:45 - 15:45" = 12 char, "Customer Pickup" = 15 char
+	lf-phone-string-1				pic x(40)
+	lf-phone-string-2				pic x(40)
+	lf-item-count					type numeric
+
+
+	set ws-col-1      = 1       //+ 4
+	set ws-col-2      = 17      //+ 4
+	set ws-col-3      = 26      //+ 4
+	set ws-col-4      = 31      //+ 4
+	set ws-col-5      = 55      //+ 4
+	set ws-col-6      = 82      //+ 4
+	set ws-col-7      = 125     //+ 4
+	set ws-col-8      = 120     //+ 4
+	set ws-col-9      = 125     //+ 4
+	set ws-col-10     = 126     //+ 4
+	set ws-col-11     = 127     //+ 4
+
+	set i = 0
+
+
+	report ws-report-title
+
+
+
+	header is daily-sub-heading-3
+
+
+	extract tmp-scheduled-delivery
+	on index tsd-so-delivery-date tsd-so-delivery-time tsd-so-actual-delivery-time
+
+	before tsd-so-delivery-date
+		page
+
+
+	detail
+		need 12 lines
+		set i += 1
+		get name-and-address-master
+		on index accountcode na-type
+		key is tsd-so-cust-code "C"
+		on error
+			set lf-address-string-1 = SPACES
+			set lf-address-string-2 = SPACES
+
+			set lf-phone-string-1 = tsd-mobile-no
+		else
+			//set lf-address-string = concat(strconcat(na-company) " " strconcat(na-street) " " strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+			set lf-address-string-1 = concat(strconcat(na-company) " " strconcat(na-street))
+			if substring(lf-address-string-1,1,1) = SPACES
+				set lf-address-string-1 = substring(lf-address-string-1,2,strlen(lf-address-string-1))
+			endif
+			set lf-address-string-2 = concat(strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+			if substring(lf-address-string-2,1,1) = SPACES
+				set lf-address-string-2 = substring(lf-address-string-2,2,strlen(lf-address-string-2))
+			endif
+			if strlen(str-concat(na-phone)) = 0
+				set lf-phone-string-1 = tsd-mobile-no
+			else
+				set lf-phone-string-1 = strconcat(na-phone)
+				set lf-phone-string-2 = strconcat(tsd-mobile-no)
+
+			endif
+		endon
+
+		if tsd-pickup-or-deliver = "P"
+			set lf-delivery-window = "Customer Pickup"
+		else
+			set lf-delivery-window = concat(zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) "-"
+									zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0))
+		endif
+
+
+		print
+			lf-delivery-window				in col ws-col-1 bold
+			tsd-so-order-no					in col ws-col-2 bold
+
+			// tsd-so-delivery-time			in col ws-col-3 pic HH:MM
+			// tsd-so-actual-delivery-time		in col ws-col-4 pic HH:MM
+
+			tsd-shortname					in col ws-col-4 bold
+			lf-phone-string-1				in col ws-col-5 bold
+			lf-address-string-1				in col ws-col-6 bold
+			tsd-balance-owing				in col ws-col-7 - 2 pic ------9.99 bold
+
+		if tsd-truck = SPACES
+		else
+			set tsd-truck = concat("(" strconcat(tsd-truck) ")")
+		endif
+		print
+			tsd-truck						in col ws-col-1 bold
+			lf-phone-string-2				in col ws-col-5 bold
+			lf-address-string-2				in col ws-col-6 bold
+			no-new-line
+		if tsd-financed = "Y"
+			print
+				"Financed"					in col ws-col-7	bold
+		endif
+
+
+		set lf-item-count = 0
+
+		extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is tsd-so-order-no tsd-so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			get stock-master
+			on error
+			else
+			endon
+			if sol-line-type in {"SN" "KN" "SS"} and sol-shipped-qty > 0 // 09apr08
+				set lf-item-count += sol-shipped-qty
+				print
+					sol-shipped-qty				in col ws-col-1	 + 8 pic zzzz9	// 08apr08
+					stock-code					in col ws-col-2
+					stk-description				in col ws-col-4
+			endif
+		endextract
+		// 08apr08
+		if lf-item-count > 1
+	        print
+	        	//strconcat(str(lf-item-count) " Items") in col ws-col-1 + 8
+	        	lf-item-count					in col ws-col-1	 + 8 pic zzzz9 bold
+	        	"Items"							in col ws-col-2 bold
+		elseif lf-item-count = 1
+	        print
+	        	//strconcat(str(lf-item-count) " Item") in col ws-col-1 + 8
+	        	lf-item-count					in col ws-col-1	 + 8 pic zzzz9 bold
+	        	"Item"							in col ws-col-2 bold
+	    endif
+
+
+		get sales-order-delivery
+		on index so-order-no so-bo-suffix so-text-type
+		key is tsd-so-order-no tsd-so-bo-suffix "DI"
+		on error
+			set lf-full-delivery-note = SPACES
+		else
+			skip
+			set lf-full-delivery-note = concat(strconcat(so-dl-text[1]) " " strconcat(so-dl-text[2]) " " strconcat(so-dl-text[3]) " " strconcat(so-dl-text[4]))
+			if strlen(lf-full-delivery-note) > 0
+				//print
+				//	80"-"						in col ws-col-1
+				print
+					lf-full-delivery-note		in col ws-col-2
+				//print
+				//	80"-"						in col ws-col-1
+			endif
+		endon
+
+		skip
+			print
+				"Received in Good Order and Condition"                         in col 12
+			//print
+			//	"Qffer dfgdfg derkldjfg dfgjhkjh kerhj"                in col 12
+			//print
+			//	"jfkj erinfnvore osfilm pwofls/; lsfmlksdlfkj"         in col 12
+			//print
+			//	".skdfjlmlolsdk  lskfj posdfnl sfilj osijf WT&8"       in col 12
+
+			skip
+			//print
+			//	"Payment Type: _______________________" in col 6
+			print
+				"Payment Type: __________" in col 12
+				"Signed: _______________________" //in col 12
+				"  Date: ___/___/___"
+
+			print
+				132"_"						in col ws-col-1
+
+
+
+    endextract
+	if i > 0
+		set lf-spoolfile-name = spoolfile-name()
+		report finished // on ws-report-title
+	    message concat(strconcat(lf-spoolfile-name) " Created")
+	endif
+
+endprocedure // print-delivery-sheet-3 ----------------------------------------
+
+procedure print-delivery-sheet-4
+local field
+	i								type numeric
+//	j								type numeric
+	lf-spoolfile-name				pic x(20)
+	lf-address-string-1				pic x(60)
+	lf-address-string-2				pic x(60)
+	lf-full-delivery-note			pic x(120)
+	lf-delivery-window				pic x(15) // "12:45 - 15:45" = 12 char, "Customer Pickup" = 15 char
+	lf-phone-string-1				pic x(40)
+	lf-phone-string-2				pic x(40)
+	lf-item-count					type numeric
+
+
+	set ws-col-1      = 1       //+ 4        	"Time"							in col ws-col-1     bold  	// underline bold
+	set ws-col-2      = 14 //17 //+ 4       	"Order"							in col ws-col-2 + 3 bold  	// underline bold
+	set ws-col-3      = 26      //+ 4       	//"Delivery"					in col ws-col-3     bold  	// underline bold
+	set ws-col-4      = 26 //31 //+ 4       	"Customer"						in col ws-col-4     bold  	// underline bold
+	set ws-col-5      = 59 //55 //+ 4       	"Phone #"						in col ws-col-5     bold  	// underline bold
+	set ws-col-6      = 82      //+ 4       	"Address"						in col ws-col-6 	bold	// underline bold
+	set ws-col-7      = 125     //+ 4       	"Balance"						in col ws-col-7	+ 1	bold  	// underline bold
+	set ws-col-8      = 120     //+ 4
+	set ws-col-9      = 125     //+ 4
+	set ws-col-10     = 126     //+ 4
+	set ws-col-11     = 127     //+ 4
+
+	set i = 0
+
+
+	report ws-report-title
+
+
+
+	header is daily-sub-heading-4
+
+
+	extract tmp-scheduled-delivery
+	//on index tsd-so-delivery-date tsd-so-delivery-time tsd-so-actual-delivery-time
+	on index tsd-truck tsd-so-delivery-date tsd-so-delivery-time tsd-so-actual-delivery-time
+
+
+	before tsd-truck
+		page
+
+	//before tsd-so-delivery-date
+	//	page
+
+
+	detail
+		need 12 lines
+		set i += 1
+		//22jan09 look for DA record first, fall back to C.
+		get name-and-address-master
+		on index accountcode na-type
+		key is tsd-so-cust-code "DA"
+		on error
+			get name-and-address-master
+			on index accountcode na-type
+			key is tsd-so-cust-code "C"
+			on error
+				set lf-address-string-1 = SPACES
+				set lf-address-string-2 = SPACES
+
+				set lf-phone-string-1 = tsd-mobile-no
+			endon
+		endon
+		//set lf-address-string = concat(strconcat(na-company) " " strconcat(na-street) " " strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+		set lf-address-string-1 = concat(strconcat(na-company) " " strconcat(na-street))
+		if substring(lf-address-string-1,1,1) = SPACES
+			set lf-address-string-1 = substring(lf-address-string-1,2,strlen(lf-address-string-1))
+		endif
+		set lf-address-string-2 = concat(strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+		if substring(lf-address-string-2,1,1) = SPACES
+			set lf-address-string-2 = substring(lf-address-string-2,2,strlen(lf-address-string-2))
+		endif
+		if strlen(str-concat(na-phone)) = 0
+			set lf-phone-string-1 = tsd-mobile-no
+		else
+			set lf-phone-string-1 = strconcat(na-phone)
+			set lf-phone-string-2 = strconcat(tsd-mobile-no)
+
+		endif
+		//22jan09
+
+		if tsd-pickup-or-deliver = "P"
+			set lf-delivery-window = "Customer Pickup"
+		else
+			set lf-delivery-window = concat(zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) "-"
+									zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0))
+		endif
+
+
+		print
+			lf-delivery-window				in col ws-col-1 bold
+			tsd-so-order-no					in col ws-col-2 bold
+
+			// tsd-so-delivery-time			in col ws-col-3 pic HH:MM
+			// tsd-so-actual-delivery-time		in col ws-col-4 pic HH:MM
+
+			tsd-shortname					in col ws-col-4 bold
+			lf-phone-string-1				in col ws-col-5 bold
+			lf-address-string-1				in col ws-col-6 bold
+			tsd-balance-owing				in col ws-col-7 - 2 pic ------9.99 bold
+
+		//if tsd-truck = SPACES
+		//else
+		//	set tsd-truck = concat("(" strconcat(tsd-truck) ")")
+		//endif
+		print
+			//tsd-truck						in col ws-col-1 bold
+			lf-phone-string-2				in col ws-col-5 bold
+			lf-address-string-2				in col ws-col-6 bold
+			no-new-line
+		if tsd-financed = "Y"
+			print
+				"Financed"					in col ws-col-7	bold
+		else
+			print
+				SPACES						in col ws-col-7	bold
+		endif
+
+
+		set lf-item-count = 0
+
+		extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is tsd-so-order-no tsd-so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			get stock-master
+			on error
+			else
+			endon
+			if sol-line-type in {"SN" "KN" "SS"} and sol-shipped-qty > 0 // 09apr08
+				set lf-item-count += sol-shipped-qty
+				print
+					//sol-shipped-qty				in col ws-col-1	 + 8 pic zzzz9	// 08apr08
+					sol-shipped-qty				in col ws-col-1	+ 6 pic zzzz9	// 08jul08
+					stock-code					in col ws-col-2
+					//16oct08
+					//stk-description				in col ws-col-4
+					concat(strconcat(stk-description) " " strconcat(stk-desc-line-2) " " strconcat(stk-desc-line-3)) in col ws-col-4
+					//16oct08
+
+			endif
+			// 08jul08 note lines
+			if sol-line-type in {"DN"}
+				if sol-line-description != spaces
+					print
+						//<{1}
+						//sol-line-description		in col ws-col-2
+						concat(sol-line-description stock-code sol-stk-unit-desc sol-price-overide-flag
+						sol-whse-code sol-update-whse sol-short-ship-reason-code) in col ws-col-2
+						//>{1}
+				endif
+			endif
+		endextract
+		// 08apr08
+		if lf-item-count > 1
+	        print
+	        	//strconcat(str(lf-item-count) " Items") in col ws-col-1 + 8
+	        	lf-item-count					in col ws-col-1	 + 6 pic zzzz9 bold
+	        	"Items"							in col ws-col-2 bold
+		elseif lf-item-count = 1
+	        print
+	        	//strconcat(str(lf-item-count) " Item") in col ws-col-1 + 8
+	        	lf-item-count					in col ws-col-1	 + 6 pic zzzz9 bold
+	        	"Item"							in col ws-col-2 bold
+	    endif
+
+
+		get sales-order-delivery
+		on index so-order-no so-bo-suffix so-text-type
+		key is tsd-so-order-no tsd-so-bo-suffix "DI"
+		on error
+			set lf-full-delivery-note = SPACES
+		else
+			skip
+			set lf-full-delivery-note = concat(strconcat(so-dl-text[1]) " " strconcat(so-dl-text[2]) " " strconcat(so-dl-text[3]) " " strconcat(so-dl-text[4]))
+			if strlen(lf-full-delivery-note) > 0
+				//print
+				//	80"-"						in col ws-col-1
+				print
+					lf-full-delivery-note		in col ws-col-2
+				//print
+				//	80"-"						in col ws-col-1
+			endif
+		endon
+
+		skip
+			print
+				"Received in Good Order and Condition"                         in col 12
+			//print
+			//	"Qffer dfgdfg derkldjfg dfgjhkjh kerhj"                in col 12
+			//print
+			//	"jfkj erinfnvore osfilm pwofls/; lsfmlksdlfkj"         in col 12
+			//print
+			//	".skdfjlmlolsdk  lskfj posdfnl sfilj osijf WT&8"       in col 12
+
+			skip
+			//print
+			//	"Payment Type: _______________________" in col 6
+			print
+				"Payment Type: __________" in col 12
+				"Signed: _______________________" //in col 12
+				"  Date: ___/___/___"
+
+			print
+				132"_"						in col ws-col-1
+
+
+
+    endextract
+	if i > 0
+		set lf-spoolfile-name = spoolfile-name()
+		report finished // on ws-report-title
+	    message concat(strconcat(lf-spoolfile-name) " Created")
+	endif
+
+endprocedure // print-delivery-sheet-4 ----------------------------------------
+
+procedure print-delivery-sheet-5
+local field
+	i								type numeric
+//	j								type numeric
+	lf-spoolfile-name				pic x(20)
+	lf-address-string-1				pic x(60)
+	lf-address-string-2				pic x(60)
+	lf-full-delivery-note			pic x(120)
+	lf-delivery-window				pic x(15) // "12:45 - 15:45" = 12 char, "Customer Pickup" = 15 char
+	lf-phone-string-1				pic x(40)
+	lf-phone-string-2				pic x(40)
+	lf-item-count					type numeric
+	lf-original-store-code			like so-territory-code
+	lf-original-store-desc			like sys-description
+	set ws-col-1      = 1       //+ 4        	"Time"							in col ws-col-1     bold  	// underline bold
+	set ws-col-2      = 14 //17 //+ 4       	"Order"							in col ws-col-2 + 3 bold  	// underline bold
+	set ws-col-3      = 26      //+ 4       	//"Delivery"					in col ws-col-3     bold  	// underline bold
+	set ws-col-4      = 26 //31 //+ 4       	"Customer"						in col ws-col-4     bold  	// underline bold
+	set ws-col-5      = 59 //55 //+ 4       	"Phone #"						in col ws-col-5     bold  	// underline bold
+	set ws-col-6      = 82      //+ 4       	"Address"						in col ws-col-6 	bold	// underline bold
+	set ws-col-7      = 125     //+ 4       	"Balance"						in col ws-col-7	+ 1	bold  	// underline bold
+	set ws-col-8      = 120     //+ 4
+	set ws-col-9      = 125     //+ 4
+	set ws-col-10     = 126     //+ 4
+	set ws-col-11     = 127     //+ 4
+	set i = 0
+	report ws-report-title
+	header is daily-sub-heading-5
+	extract tmp-scheduled-delivery
+	//on index tsd-so-delivery-date tsd-so-delivery-time tsd-so-actual-delivery-time
+	on index tsd-truck tsd-so-delivery-date tsd-so-delivery-time tsd-so-actual-delivery-time
+	before tsd-truck
+		page
+	//before tsd-so-delivery-date
+	//	page
+	detail
+		need 12 lines
+		set i += 1
+		//22jan09 look for DA record first, fall back to C.
+		get name-and-address-master
+		on index accountcode na-type
+		key is tsd-so-cust-code "DA"
+		on error
+			get name-and-address-master
+			on index accountcode na-type
+			key is tsd-so-cust-code "C"
+			on error
+				set lf-address-string-1 = SPACES
+				set lf-address-string-2 = SPACES
+				set lf-phone-string-1 = tsd-mobile-no
+			endon
+		endon
+		//set lf-address-string = concat(strconcat(na-company) " " strconcat(na-street) " " strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+		set lf-address-string-1 = concat(strconcat(na-company) " " strconcat(na-street))
+		if substring(lf-address-string-1,1,1) = SPACES
+			set lf-address-string-1 = substring(lf-address-string-1,2,strlen(lf-address-string-1))
+		endif
+		set lf-address-string-2 = concat(strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+		if substring(lf-address-string-2,1,1) = SPACES
+			set lf-address-string-2 = substring(lf-address-string-2,2,strlen(lf-address-string-2))
+		endif
+		if strlen(str-concat(na-phone)) = 0
+			set lf-phone-string-1 = tsd-mobile-no
+		else
+			set lf-phone-string-1 = strconcat(na-phone)
+			set lf-phone-string-2 = strconcat(tsd-mobile-no)
+		endif
+		//22jan09
+		if tsd-pickup-or-deliver = "P"
+			set lf-delivery-window = "Customer Pickup"
+		else
+			set lf-delivery-window = concat(zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) "-"
+									zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0))
+		endif
+		// 01apr09 lookup originating store
+		get sales-order
+		on index so-order-no so-bo-suffix
+		key is tsd-so-order-no tsd-so-bo-suffix
+		on error
+			initialise sales-order
+			set lf-original-store-code				= SPACES
+		else
+			set lf-original-store-code				= so-territory-code
+			get system-table
+			on index sys-tbl-type sys-tbl-code
+			key is "TC" lf-original-store-code
+			on error
+				set lf-original-store-desc			= SPACES
+			else
+				set lf-original-store-desc			= sys-description
+			endon
+		endon
+		print
+			lf-delivery-window				in col ws-col-1 bold
+			tsd-so-order-no					in col ws-col-2 bold
+			// tsd-so-delivery-time			in col ws-col-3 pic HH:MM
+			// tsd-so-actual-delivery-time		in col ws-col-4 pic HH:MM
+			tsd-shortname					in col ws-col-4 bold
+			lf-phone-string-1				in col ws-col-5 bold
+			lf-address-string-1				in col ws-col-6 bold
+			tsd-balance-owing				in col ws-col-7 - 2 pic ------9.99 bold
+		//if tsd-truck = SPACES
+		//else
+		//	set tsd-truck = concat("(" strconcat(tsd-truck) ")")
+		//endif
+		print
+			//tsd-truck						in col ws-col-1 bold
+			//01apr09 store # and name
+			//"Store 123 Snooze Smithsville"	in col ws-col-1 bold
+			concat("Store # " strconcat(lf-original-store-code) " " strconcat(lf-original-store-desc)) in col ws-col-1 bold
+			//"Smithsville"					in col ws-col-4 bold
+			lf-phone-string-2				in col ws-col-5 bold
+			lf-address-string-2				in col ws-col-6 bold
+			no-new-line
+		if tsd-financed = "Y"
+			print
+				"Financed"					in col ws-col-7	bold
+		else
+			print
+				SPACES						in col ws-col-7	bold
+		endif
+		skip				//rc 29may09
+		set lf-item-count = 0
+		//
+		extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is tsd-so-order-no tsd-so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			get stock-master
+			on error
+			else
+			endon
+			if sol-line-type in {"SN" "KN" "SS"} and sol-shipped-qty > 0 // 09apr08
+				set lf-item-count += sol-shipped-qty
+				print
+					//sol-shipped-qty				in col ws-col-1	 + 8 pic zzzz9	// 08apr08
+					sol-shipped-qty				in col ws-col-1	+ 6 pic zzzz9 bold	// 08jul08 //rc 29may09
+					stock-code					in col ws-col-2 bold			//rc 29may09
+					//16oct08
+					//stk-description				in col ws-col-4
+					concat(strconcat(stk-description) " " strconcat(stk-desc-line-2) " " strconcat(stk-desc-line-3)) in col ws-col-4 bold	//rc 29may09
+					//16oct08
+			endif
+			// 08jul08 note lines
+			if sol-line-type in {"DN"}
+				if sol-line-description != spaces
+					print
+						//<{1}
+						//sol-line-description		in col ws-col-2 bold   //rc 29may09
+						concat(sol-line-description stock-code sol-stk-unit-desc sol-price-overide-flag
+						sol-whse-code sol-update-whse sol-short-ship-reason-code) in col ws-col-2 bold
+						//>{1}
+				endif
+			endif
+		endextract
+		// 08apr08
+		if lf-item-count > 1
+	        print
+	        	//strconcat(str(lf-item-count) " Items") in col ws-col-1 + 8
+	        	lf-item-count					in col ws-col-1	 + 6 pic zzzz9 bold
+	        	"Items"							in col ws-col-2 bold
+		elseif lf-item-count = 1
+	        print
+	        	//strconcat(str(lf-item-count) " Item") in col ws-col-1 + 8
+	        	lf-item-count					in col ws-col-1	 + 6 pic zzzz9 bold
+	        	"Item"							in col ws-col-2 bold
+	    endif
+
+
+		get sales-order-delivery
+		on index so-order-no so-bo-suffix so-text-type
+		key is tsd-so-order-no tsd-so-bo-suffix "DI"
+		on error
+			set lf-full-delivery-note = SPACES
+		else
+			skip
+			set lf-full-delivery-note = concat(strconcat(so-dl-text[1]) " " strconcat(so-dl-text[2]) " " strconcat(so-dl-text[3]) " " strconcat(so-dl-text[4]))
+			if strlen(lf-full-delivery-note) > 0
+				//print
+				//	80"-"						in col ws-col-1
+				print
+					lf-full-delivery-note		in col ws-col-2 bold
+				//print
+				//	80"-"						in col ws-col-1
+			endif
+		endon
+
+		skip
+			print
+				"Received in Good Order and Condition"                         in col 12 bold
+			//print
+			//	"Qffer dfgdfg derkldjfg dfgjhkjh kerhj"                in col 12
+			//print
+			//	"jfkj erinfnvore osfilm pwofls/; lsfmlksdlfkj"         in col 12
+			//print
+			//	".skdfjlmlolsdk  lskfj posdfnl sfilj osijf WT&8"       in col 12
+
+			skip
+			//print
+			//	"Payment Type: _______________________" in col 6
+			print
+				"Payment Type: __________" in col 12
+				"Signed: _______________________" //in col 12  bold
+				"  Date: ___/___/___"  bold
+
+			print
+				132"_"						in col ws-col-1
+
+
+
+    endextract
+	if i > 0
+		set lf-spoolfile-name = spoolfile-name()
+		report finished // on ws-report-title
+	    message concat(strconcat(lf-spoolfile-name) " Created")
+	endif
+
+endprocedure // print-delivery-sheet-5 ----------------------------------------
+
+
+procedure daily-sub-heading-6						//rc 10jun09
+	//start --------------------------------------------- //rc 07jul09
+	local field
+		lf-truck-desc				like sys-description
+	get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "ZT" tsd-truck
+	on error
+		set lf-truck-desc = SPACES
+	else
+		set lf-truck-desc = sys-description
+	endon
+	//end ----------------------------------------------- //rc 07jul09
+	print
+		strconcat(company-name " Delivery Schedule") in col 1 bold
+	// skip
+	print
+		"Truck:" in col 1 bold
+		tsd-truck in col 16 bold
+		lf-truck-desc in col 34	bold				//rc 07jul09
+	print
+		"Delivery Date:" in col 1 bold
+		tsd-so-delivery-date in col 16 bold //underline
+	print
+		"Prepared:" in col 1
+       	today() in col 16 // 11
+		tod() in col 28 // 23 pic HH:MM
+		"by" in col 34 // 29
+		login-id() in col 37 // 32
+	print
+		"Time"							in col ws-col-1     bold  	// underline bold
+		"Order"							in col ws-col-2 + 3 bold  	// underline bold
+		//"Delivery"					in col ws-col-3     bold  	// underline bold
+		"Customer"						in col ws-col-4     bold  	// underline bold
+		"Address"						in col ws-col-5     bold  	// underline bold
+		//"Address 2"						in col ws-col-6 	bold	// underline bold
+		"Balance"						in col ws-col-7	+ 1	bold  	// underline bold
+endprocedure // daily-sub-heading-6 -------------------------------------------
+
+
+procedure print-delivery-sheet-6									//rc 10jun09
+local field
+	i								type numeric
+	lf-spoolfile-name				pic x(20)
+	lf-address-string-1				pic x(60)
+	lf-address-string-2				pic x(60)
+	lf-full-delivery-note			pic x(120)
+	lf-delivery-window				pic x(15) // "12:45 - 15:45" = 12 char, "Customer Pickup" = 15 char
+	lf-phone-string-1				pic x(40)
+	lf-phone-string-2				pic x(40)
+	lf-item-count					type numeric
+	lf-original-store-code			like so-territory-code
+	lf-original-store-desc			like sys-description
+	set ws-col-1      = 1       //+ 4        	"Time"							in col ws-col-1     bold  	// underline bold
+	set ws-col-2      = 14 //17 //+ 4       	"Order"							in col ws-col-2 + 3 bold  	// underline bold
+	set ws-col-3      = 26      //+ 4       	//"Delivery"					in col ws-col-3     bold  	// underline bold
+	set ws-col-4      = 26 //31 //+ 4       	"Customer"						in col ws-col-4     bold  	// underline bold
+	set ws-col-5      = 59 //55 //+ 4       	"Phone #"						in col ws-col-5     bold  	// underline bold
+	set ws-col-6      = 82      //+ 4       	"Address"						in col ws-col-6 	bold	// underline bold
+	set ws-col-7      = 125     //+ 4       	"Balance"						in col ws-col-7	+ 1	bold  	// underline bold
+	set ws-col-8      = 120     //+ 4
+	set ws-col-9      = 125     //+ 4
+	set ws-col-10     = 126     //+ 4
+	set ws-col-11     = 127     //+ 4
+	set i = 0
+	report ws-report-title
+	header is daily-sub-heading-6
+	extract tmp-scheduled-delivery
+	//on index tsd-so-delivery-date tsd-so-delivery-time tsd-so-actual-delivery-time
+	on index tsd-truck tsd-so-delivery-date tsd-so-delivery-time tsd-so-actual-delivery-time
+	before tsd-truck
+		page
+	//before tsd-so-delivery-date
+	//	page
+	detail
+		need 12 lines
+		set i += 1
+		//<{4} look for Sales Order DA then Customer DA, then Customer C
+		get sales-order-delivery
+			on index so-order-no so-bo-suffix so-text-type
+			key is tsd-so-order-no tsd-so-bo-suffix "DA"
+		on error
+			//22jan09 look for DA record first, fall back to C.
+			get name-and-address-master
+			on index accountcode na-type
+			key is tsd-so-cust-code "DA"
+			on error
+				get name-and-address-master
+				on index accountcode na-type
+				key is tsd-so-cust-code "C"
+				on error
+					set lf-address-string-1 = SPACES
+					set lf-address-string-2 = SPACES
+					set lf-phone-string-1 = tsd-mobile-no
+				endon
+			endon
+			//set lf-address-string = concat(strconcat(na-company) " " strconcat(na-street) " " strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+			set lf-address-string-1 = concat(strconcat(na-company) " " strconcat(na-street))
+			if substring(lf-address-string-1,1,1) = SPACES
+				set lf-address-string-1 = substring(lf-address-string-1,2,strlen(lf-address-string-1))
+			endif
+			set lf-address-string-2 = concat(strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+			if substring(lf-address-string-2,1,1) = SPACES
+				set lf-address-string-2 = substring(lf-address-string-2,2,strlen(lf-address-string-2))
+			endif
+			if strlen(str-concat(na-phone)) = 0
+				set lf-phone-string-1 = tsd-mobile-no
+			else
+				set lf-phone-string-1 = strconcat(na-phone)
+				set lf-phone-string-2 = strconcat(tsd-mobile-no)
+			endif
+			//22jan09
+		else
+			set lf-address-string-1 = concat(strconcat(so-dl-text[1]) " " strconcat(so-dl-text[2]))
+		    set lf-address-string-2 = concat(strconcat(so-dl-text[3]) " " strconcat(so-dl-text[4]) " " so-dl-postcode)
+		    set lf-phone-string-1 = strconcat(so-dl-text[6])
+		    set lf-phone-string-2 = strconcat(so-dl-text[7])
+		endon
+		//<{4}
+		if tsd-pickup-or-deliver = "P"
+			set lf-delivery-window = "Customer Pickup"
+		else
+			set lf-delivery-window = concat(zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) "-"
+									zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0))
+		endif
+		// 01apr09 lookup originating store
+		get sales-order
+		on index so-order-no so-bo-suffix
+		key is tsd-so-order-no tsd-so-bo-suffix
+		on error
+			initialise sales-order
+			set lf-original-store-code				= SPACES
+		else
+			set lf-original-store-code				= so-territory-code
+			get system-table
+			on index sys-tbl-type sys-tbl-code
+			key is "TC" lf-original-store-code
+			on error
+				set lf-original-store-desc			= SPACES
+			else
+				set lf-original-store-desc			= sys-description
+			endon
+		endon
+		//<{6}
+		get name-and-address-master
+		on index accountcode na-type
+		key is tsd-so-cust-code "C"
+		on error
+			initialise name-and-address-master
+		else
+			//we should have phone details in hand to display against Contact #: labels
+		endon
+		//>{6}
+		print
+			lf-delivery-window				in col ws-col-1 bold
+			tsd-so-order-no					in col ws-col-2 bold
+			tsd-shortname					in col ws-col-4 bold
+			concat(uppercase(strconcat(lf-address-string-1))," " ,uppercase(strconcat(lf-address-string-2))) in col ws-col-5 bold
+			tsd-balance-owing				in col ws-col-7 - 2 pic ------9.99 bold
+		print
+			"Contact #:" in col ws-col-1 bold
+			concat(uppercase(strconcat(na-user-only-alpha30-1)), " : " na-fax-no) in col ws-col-3 bold
+			concat(uppercase(strconcat(na-user-only-alpha30-2)), " : " na-phone) in col ws-col-6 bold
+		if na-spare-alpha20-1 <> SPACES
+			print
+				"Contact #:" in col ws-col-1 bold
+				concat(uppercase(strconcat(na-spare-alpha20-1)), " : " na-mobile-phone) in col ws-col-3 bold
+		endif
+		//
+		print
+			concat("Store # " strconcat(lf-original-store-code) " " strconcat(lf-original-store-desc)) in col ws-col-1 bold
+			no-new-line
+		if tsd-financed = "Y"
+			print
+				"Financed"					in col ws-col-7	bold
+		else
+			print
+				SPACES						in col ws-col-7	bold
+		endif
+		skip				//rc 29may09
+		set lf-item-count = 0
+		//
+		extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is tsd-so-order-no tsd-so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		detail
+			get stock-master
+			on error
+			else
+			endon
+			if sol-line-type in {"SN" "KN" "SS"} and sol-shipped-qty > 0 // 09apr08
+				set lf-item-count += sol-shipped-qty
+				print
+					sol-shipped-qty				in col ws-col-1	+ 6 pic zzzz9 //bold	// 08jul08 //rc 29may09
+					stock-code					in col ws-col-2 //bold			//rc 29may09
+					concat(strconcat(stk-description) " " strconcat(stk-desc-line-2) " " strconcat(stk-desc-line-3)) in col ws-col-4 //bold	//rc 29may09
+			endif
+			if sol-line-type in {"DN"}
+				if sol-line-description != spaces
+					print
+						//<{1}
+						//sol-line-description		in col ws-col-2 //bold   //rc 29may09
+						concat(sol-line-description stock-code sol-stk-unit-desc sol-price-overide-flag
+						sol-whse-code sol-update-whse sol-short-ship-reason-code) in col ws-col-2
+						//>{1}
+				endif
+			endif
+		endextract
+		if lf-item-count > 1
+	        print
+	        	lf-item-count					in col ws-col-1	 + 6 pic zzzz9 bold
+	        	"Items"							in col ws-col-2 //bold
+		elseif lf-item-count = 1
+	        print
+	        	lf-item-count					in col ws-col-1	 + 6 pic zzzz9 bold
+	        	"Item"							in col ws-col-2 //bold
+	    endif
+		get sales-order-delivery
+		on index so-order-no so-bo-suffix so-text-type
+		key is tsd-so-order-no tsd-so-bo-suffix "DI"
+		on error
+			set lf-full-delivery-note = SPACES
+		else
+			skip
+			set lf-full-delivery-note = concat(strconcat(so-dl-text[1]) " " strconcat(so-dl-text[2]) " " strconcat(so-dl-text[3]) " " strconcat(so-dl-text[4]))
+			if strlen(lf-full-delivery-note) > 0
+				print
+					lf-full-delivery-note		in col ws-col-2 bold
+			endif
+		endon
+		skip
+			print
+				"Received in Good Order and Condition"                         in col 12 bold
+			skip
+			print
+				"Payment Type: __________" in col 12
+				"Signed: _______________________" //in col 12  bold
+				"  Date: ___/___/___"  bold
+			print
+				132"_"						in col ws-col-1
+    endextract
+	if i > 0
+		set lf-spoolfile-name = spoolfile-name()
+		report finished // on ws-report-title
+	    message concat(strconcat(lf-spoolfile-name) " Created")
+	endif
+endprocedure // print-delivery-sheet-6 ----------------------------------------
+
+/*
+procedure top-of-page-2
+		print
+			strconcat(company-name " Delivery Schedule") in col 1 font 15 bold // scale 200 bold
+
+
+		print
+			"Prepared:" in col 1
+	       	today() in col 11
+			tod() in col 23 pic HH:MM
+			"by" in col 29
+			login-id() in col 32
+		//skip
+endprocedure // top-of-page-2 -------------------------------------------------
+*/
+
+procedure daily-sub-heading-2
+
+
+		print
+			strconcat(company-name " Delivery Schedule") in col 1 font 15 bold // scale 200 bold
+		skip
+		print
+			"Deliveries for " in col 1 bold
+			tsd-so-delivery-date in col 16 bold //underline
+
+
+		print
+			"Prepared:" in col 1
+	       	today() in col 11
+			tod() in col 23 pic HH:MM
+			"by" in col 29
+			login-id() in col 32
+
+		print
+
+		//	"Time                   "						in col ws-col-1       underline bold
+		//	"Order                  "							in col ws-col-2 + 3   underline bold
+		//	//"Delivery             "					in col ws-col-3       underline bold
+		//	"Balance                  "						in col ws-col-3 + 1   underline bold
+		//	"Customer                         "						in col ws-col-4       underline bold
+		//	"Phone #                           "						in col ws-col-5       underline bold
+		//	"Address                                *"						in col ws-col-6 underline bold
+
+
+			"Time"							in col ws-col-1     bold  	// underline bold
+			"Order"							in col ws-col-2 + 3 bold  	// underline bold
+			//"Delivery"					in col ws-col-3     bold  	// underline bold
+			"Balance"						in col ws-col-3 + 1 bold  	// underline bold
+			"Customer"						in col ws-col-4     bold  	// underline bold
+			"Phone #"						in col ws-col-5     bold  	// underline bold
+			"Address"						in col ws-col-6 	bold	// underline bold
+
+
+endprocedure // daily-sub-heading-2 -------------------------------------------
+
+procedure daily-sub-heading-3
+
+
+		print
+			strconcat(company-name " Delivery Schedule") in col 1 font 15 bold // scale 200 bold
+		skip
+		print
+			"Deliveries for " in col 1 bold
+			tsd-so-delivery-date in col 16 bold //underline
+
+
+		print
+			"Prepared:" in col 1
+	       	today() in col 11
+			tod() in col 23 pic HH:MM
+			"by" in col 29
+			login-id() in col 32
+
+		print
+
+		//	"Time                   "						in col ws-col-1       underline bold
+		//	"Order                  "							in col ws-col-2 + 3   underline bold
+		//	//"Delivery             "					in col ws-col-3       underline bold
+		//	"Balance                  "						in col ws-col-3 + 1   underline bold
+		//	"Customer                         "						in col ws-col-4       underline bold
+		//	"Phone #                           "						in col ws-col-5       underline bold
+		//	"Address                                *"						in col ws-col-6 underline bold
+
+
+			"Time"							in col ws-col-1     bold  	// underline bold
+			"Order"							in col ws-col-2 + 3 bold  	// underline bold
+			//"Delivery"					in col ws-col-3     bold  	// underline bold
+			"Customer"						in col ws-col-4     bold  	// underline bold
+			"Phone #"						in col ws-col-5     bold  	// underline bold
+			"Address"						in col ws-col-6 	bold	// underline bold
+			"Balance"						in col ws-col-7	+ 1	bold  	// underline bold
+
+endprocedure // daily-sub-heading-3 -------------------------------------------
+
+procedure daily-sub-heading-4
+
+
+		print
+			strconcat(company-name " Delivery Schedule") in col 1 font 15 bold // scale 200 bold
+		// skip
+		print
+			"Truck:" in col 1 bold
+			tsd-truck in col 16 bold //underline
+		print
+			"Delivery Date:" in col 1 bold
+			tsd-so-delivery-date in col 16 bold //underline
+
+		print
+			"Prepared:" in col 1
+	       	today() in col 16 // 11
+			tod() in col 28 // 23 pic HH:MM
+			"by" in col 34 // 29
+			login-id() in col 37 // 32
+
+		print
+
+		//	"Time                   "						in col ws-col-1       underline bold
+		//	"Order                  "							in col ws-col-2 + 3   underline bold
+		//	//"Delivery             "					in col ws-col-3       underline bold
+		//	"Balance                  "						in col ws-col-3 + 1   underline bold
+		//	"Customer                         "						in col ws-col-4       underline bold
+		//	"Phone #                           "						in col ws-col-5       underline bold
+		//	"Address                                *"						in col ws-col-6 underline bold
+
+
+			"Time"							in col ws-col-1     bold  	// underline bold
+			"Order"							in col ws-col-2 + 3 bold  	// underline bold
+			//"Delivery"					in col ws-col-3     bold  	// underline bold
+			"Customer"						in col ws-col-4     bold  	// underline bold
+			"Phone #"						in col ws-col-5     bold  	// underline bold
+			"Address"						in col ws-col-6 	bold	// underline bold
+			"Balance"						in col ws-col-7	+ 1	bold  	// underline bold
+
+endprocedure // daily-sub-heading-4 -------------------------------------------
+
+procedure daily-sub-heading-5
+
+		print
+			strconcat(company-name " Delivery Schedule") in col 1 bold // scale 200 bold
+		// skip
+		print
+			"Truck:" in col 1 bold
+			tsd-truck in col 16 bold
+		print
+			"Delivery Date:" in col 1 bold
+			tsd-so-delivery-date in col 16 bold //underline
+
+		print
+			"Prepared:" in col 1
+	       	today() in col 16 // 11
+			tod() in col 28 // 23 pic HH:MM
+			"by" in col 34 // 29
+			login-id() in col 37 // 32
+
+		print
+
+		//	"Time                   "						in col ws-col-1       underline bold
+		//	"Order                  "							in col ws-col-2 + 3   underline bold
+		//	//"Delivery             "					in col ws-col-3       underline bold
+		//	"Balance                  "						in col ws-col-3 + 1   underline bold
+		//	"Customer                         "						in col ws-col-4       underline bold
+		//	"Phone #                           "						in col ws-col-5       underline bold
+		//	"Address                                *"						in col ws-col-6 underline bold
+
+
+			"Time"							in col ws-col-1     bold  	// underline bold
+			"Order"							in col ws-col-2 + 3 bold  	// underline bold
+			//"Delivery"					in col ws-col-3     bold  	// underline bold
+			"Customer"						in col ws-col-4     bold  	// underline bold
+			"Phone #"						in col ws-col-5     bold  	// underline bold
+			"Address"						in col ws-col-6 	bold	// underline bold
+			"Balance"						in col ws-col-7	+ 1	bold  	// underline bold
+
+endprocedure // daily-sub-heading-5 -------------------------------------------
+
+
+procedure mobile-no-clean-up
+local field
+	i								type numeric
+	c								pic x
+	lf-working-string				pic x(20)
+
+parameters
+	lp-input-string					pic x(20)
+
+returning
+	lr-mobile-no					pic x(10)
+	lr-valid-mobile					type boolean
+
+	for i = strlen(lp-input-string) down to 1
+		set c = substring(lp-input-string,i,i)
+		//if c != SPACES							//rc 17jun09
+		if valid-number(c)							//rc 17jun09
+			set lf-working-string = concat(c lf-working-string)
+		endif
+	endfor
+	set lr-valid-mobile	= FALSE
+	//message lf-working-string
+	if strlen(lf-working-string) = 10
+		set lr-mobile-no = strconcat(lf-working-string)
+		if substring(lr-mobile-no,1,2) = "04"
+			set lr-valid-mobile	= TRUE
+		endif
+	endif
+
+endprocedure // remove-spaces -------------------------------------------------
+
+/*
+procedure force-ship
+// 25mar08 if sol-shipped-qty = 0, set to sol-ordered-qty and log to a spool file
+parameters
+	lp-so-order-no					like so-order-no
+	lp-so-bo-suffix					like so-bo-suffix
+
+local field
+	lf-force-ship					type boolean
+
+
+	set so-order-no =  lp-so-order-no
+	set so-bo-suffix = lp-so-bo-suffix
+	set lf-force-ship = FALSE
+
+	// pre test
+	extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is so-order-no so-bo-suffix 0
+		next same so-order-no so-bo-suffix
+		when sol-line-type = 'SN'
+		or sol-line-type = 'KN	'
+	detail
+		if sol-shipped-qty != sol-ordered-qty
+			set lf-force-ship = TRUE
+		endif
+	endextract
+
+	if not lf-force-ship
+		exit
+	else
+		report
+			"Conf Del Force Ship" spool-only
+
+			get sales-order lock
+			on error
+				print
+					so-order-no
+					so-bo-suffix
+					" not found"
+			else
+				extract sales-order-line lock
+					on index so-order-no so-bo-suffix sol-line-seq
+					key is so-order-no so-bo-suffix 0
+					next same so-order-no so-bo-suffix
+					when sol-line-type = 'SN'
+					or sol-line-type = 'KN	'
+				detail
+					if sol-shipped-qty != sol-ordered-qty
+						print
+							so-order-no
+							so-bo-suffix
+							sol-line-seq
+							stock-code
+							"Ordered:"
+							sol-ordered-qty
+							"Shipped - Was:"
+							sol-shipped-qty
+							"  Now:"
+							sol-ordered-qty
+						set sol-shipped-qty = sol-ordered-qty
+						set sol-print-line = "T"
+						update sales-order-line
+					endif
+				endextract
+			endon
+		report finished
+	endif
+endprocedure // force-ship
+*/
+
+procedure confirm-delivery
+parameters
+	lp-so-order-no					like so-order-no
+	lp-so-bo-suffix					like so-bo-suffix
+
+	set so-order-no =  lp-so-order-no
+	set so-bo-suffix = lp-so-bo-suffix
+
+	//message concat("1:" str(so-order-no) so-bo-suffix)
+
+
+		get sales-order lock
+		//message concat("2:" str(so-order-no) so-bo-suffix " Status:" so-order-status)
+		// 18jun08
+		on error
+			message concat(str(so-order-no) so-bo-suffix " is locked")
+			exit
+		endon
+
+		// 01jul08 - test if multi-po splits..
+
+		//if so-order-status in { "11" "18" "70" }//{ I5SO_BACK_ORDER I5SO_RDY_TO_PRINT_INVOICE}
+		if ws-allocation = "A"
+			//set ws-old-status = so-order-status
+			set so-order-status = "70" // I5SO_RDY_TO_PRINT_INVOICE
+			//AUDIT_SO_STATUS_CHANGE(ws-old-status,so-order-status)
+			update sales-order
+			// 12mar08
+			extract sales-order-line lock
+				on index so-order-no so-bo-suffix sol-line-seq
+				key is so-order-no so-bo-suffix 0
+				next same so-order-no so-bo-suffix
+				when sol-line-type in {"KN" "SN"}
+			detail
+				if sol-shipped-qty != 0
+				and sol-backorder-qty = 0
+					set sol-print-line = "T"
+					update sales-order-line
+				endif
+			endextract
+
+		//elseif so-order-status in {"44" "34" }// {I5SO_BEING_PURCHASED I5SO_RDY_TO_BE_PURCHASED}
+		elseif ws-allocation = "M"
+			//Look for a non-taken line - if found set to taken
+			//and run the split process.
+			set ws-found-taken = NO
+			set ws-kit-found = FALSE
+			set ws-kit-taken = FALSE
+			extract sales-order-line lock
+				on index so-order-no so-bo-suffix sol-line-seq
+				key is so-order-no so-bo-suffix 0
+				next same so-order-no so-bo-suffix
+				when sol-line-type = 'SN'
+				or sol-line-type = 'KN	'
+			detail
+				//// 01jul08
+				//if sol-shipped-qty != 0
+				//and sol-backorder-qty = 0
+				//	set sol-print-line = "T"
+				//	update sales-order-line
+				//endif
+
+				if sol-line-type = 'KN'
+					set ws-kit-found = TRUE
+					set ws-kit-taken = TRUE
+					set ws-kit-line-seq	= sol-line-seq
+				elseif ws-kit-found
+				and sol-chg-type not in  { 'T' 'D' }
+					set ws-kit-found = FALSE
+					set ws-kit-taken = FALSE
+				endif
+				if ws-kit-taken
+					save sales-order-line
+					extract sales-order-line lock
+						on index so-order-no so-bo-suffix sol-line-seq
+						key is so-order-no so-bo-suffix ws-kit-line-seq
+						next same so-order-no so-bo-suffix
+						when sol-line-type in { "KN" "SN" }
+						finish when sol-line-seq <> ws-kit-line-seq
+						and sol-chg-type not in { 'T' 'D' }
+					detail
+						set ws-found-taken = YES
+						//message concat(str(so-order-no) so-bo-suffix str(sol-line-seq) "Setting Taken 1")
+						set sol-print-line = 'T'
+						update sales-order-line
+					endextract
+					restore sales-order-line
+					get sales-order-line lock
+						on index so-order-no so-bo-suffix sol-line-seq
+				endif
+				if sol-shipped-qty != 0
+				and sol-backorder-qty = 0
+					if not ws-kit-found
+						//message concat(str(so-order-no) so-bo-suffix str(sol-line-seq) "Setting Taken 2")
+						set ws-found-taken = YES
+						set sol-print-line = 'T'
+						update sales-order-line
+					endif
+				elseif ws-kit-found
+					set ws-kit-taken = FALSE
+				endif
+			endextract
+			if ws-kit-taken
+				save sales-order-line
+				extract sales-order-line lock
+					on index so-order-no so-bo-suffix sol-line-seq
+					key is so-order-no so-bo-suffix ws-kit-line-seq
+					next same so-order-no so-bo-suffix
+					when sol-line-type in { "KN" "SN" }
+					finish when sol-line-seq <> ws-kit-line-seq
+					and sol-chg-type not in { 'T' 'D' }
+				detail
+					//message concat(str(so-order-no) so-bo-suffix str(sol-line-seq) "Setting Taken 3")
+					set ws-found-taken = YES
+					set sol-print-line = 'T'
+					update sales-order-line
+				endextract
+				restore sales-order-line
+				get sales-order-line lock
+					on index so-order-no so-bo-suffix sol-line-seq
+			endif
+			if ws-found-taken = YES
+
+				spl 'so/m5bosplit' parameters are '-one_taken'
+					str(so-order-no) so-bo-suffix 'Y'
+				get copy-sales-order lock
+					on index so-whse-code so-order-type-code
+						so-order-no so-bo-suffix
+					key is so-whse-code so-order-type-code
+						so-order-no so-bo-suffix
+				on error
+				endon
+				// set ws-old-status = so-order-status
+				set so-order-status = "70"//I5SO_RDY_TO_PRINT_INVOICE
+				//AUDIT_SO_STATUS_CHANGE(ws-old-status,so-order-status)
+				update copy-sales-order
+			endif
+		endif
+		get copy-sales-order lock
+			on index so-whse-code so-order-type-code
+				so-order-no so-bo-suffix
+		set so-actual-delivery-date = today()
+		if so-invoice-date != zero
+			set so-processing-date = so-invoice-date
+		else
+			set so-processing-date = today()
+			set so-invoice-date = today()
+		endif
+		update copy-sales-order
+		spl 'deb/m1poscrec' parameters '-cash'
+			str(so-order-no) so-bo-suffix
+		get sales-order
+			on index so-whse-code so-order-type-code
+				so-order-no so-bo-suffix
+
+
+		//message concat("3:" str(so-order-no) so-bo-suffix " Pos Mode:" sys-point-of-sale-mode-used)
+		if (sys-point-of-sale-mode-used != '6') and (so-order-status in { "11" "18" "30" "31" "34" "40" "44" "70" })
+		// if not (sys-point-of-sale-mode-used = '6'
+			// and (so-order-status in I5SOSTATII_SO_SHIPABLE_STATII
+			// or so-order-status in  {I5SO_BACK_ORDER
+			// I5SO_RDY_TO_BE_PURCHASED I5SO_BEING_PURCHASED}))
+		then
+			get tmp-sales-order lock
+				on index so-order-no desc so-bo-suffix desc
+				key is so-order-no so-bo-suffix
+			on error
+			else
+				delete tmp-sales-order
+				get tmp-sales-order next
+					on index so-order-no desc so-bo-suffix desc
+				on error
+					// potential problem when we only has one sales
+					// order in the tmp-sales-order
+					// do nothing
+				endon
+			endon
+		endif
+endprocedure // confirm-delivery ----------------------------------------------
+
+
+/*
+procedure review-notes
+	window @20,20 to @30,55 title is concat("Delivery Notes")
+	allowed md-entry md-correct
+
+local field
+	lf-accept				pic x
+
+	get sales-order-delivery
+	on index so-order-no so-bo-suffix so-text-type
+	key is tsd-so-order-no tsd-so-bo-suffix "DI"
+	on error
+		set so-order-no = tsd-so-order-no
+		set so-bo-suffix = tsd-so-bo-suffix
+		set so-text-type = "DI"
+		//set lf-new-record = TRUE
+	else
+	endon
+
+	display "Line 1:" @21,22 background
+	display so-dl-text[1] @21,30//  title is "Line 1:"
+
+
+	accept so-dl-text[1] @21,30// title is "Line 1:"
+		default so-dl-text[1]
+		optional
+	accept so-dl-text[2] @22,30 title is "Line 2:"
+		default so-dl-text[2]
+		optional
+	accept so-dl-text[3] @23,30 title is "Line 3:"
+		default so-dl-text[3]
+		optional
+	accept so-dl-text[4] @24,30 title is "Line 4:"
+		default so-dl-text[4]
+		optional
+	// Only lines 1-5 appear on posinv, reserving line 5 for delivery window
+	// 30 chars - could do "Exp Deliv 02 Dec 12:00 - 14:30"
+	//accept so-dl-text[5] @25,30 title is "Line 5:"
+	//	default so-dl-text[5]
+	//	optional
+	//accept so-dl-text[6] @26,30 title is "Line 6:"
+	//	default so-dl-text[6]
+	//	optional
+	//accept so-dl-text[7] @27,30 title is "Line 7:"
+	//	default so-dl-text[7]
+	//	optional
+
+	accept lf-accept @28,30 title is "Correct Y/N?:"
+		uppercase
+		allowed "Y" "N"
+		default "Y"
+
+	if lf-accept = "N"
+		reenter so-dl-text//[1] optional
+	endif
+
+
+endprocedure // review-notes --------------------------------------------------
+*/
+
+//screen review-notes
+screen review-delivery-instructions
+	window @20,20 to @30,60 title is concat("Delivery Notes")
+
+local field
+	lf-new-record				type boolean
+	i							type numeric
+
+	primary sales-order-delivery
+//	// select * from sales-order-delivery
+	where so-order-no = tsd-so-order-no
+	and so-bo-suffix = tsd-so-bo-suffix
+	and so-text-type = "DI"
+	allowed entry-once correct
+
+
+before
+	get sales-order-delivery
+	on index so-order-no so-bo-suffix so-text-type
+	key is tsd-so-order-no tsd-so-bo-suffix "DI"
+	lookup
+	on error
+		// message "No Record"
+		initialise sales-order-delivery
+		for i = 1 to 4
+			set so-dl-text[i] = SPACES
+		endfor
+		set so-order-no = tsd-so-order-no
+		set so-bo-suffix = tsd-so-bo-suffix
+		set so-text-type = "DI"
+		set lf-new-record = TRUE
+	else
+		get sales-order-delivery
+		on index so-order-no so-bo-suffix so-text-type
+		key is tsd-so-order-no tsd-so-bo-suffix "DI"
+
+	endon
+
+	mode entry-once
+		when lf-new-record = TRUE
+
+
+detail
+
+	accept so-dl-text[1] @21,30 title is "Line 1:"
+		default so-dl-text[1]
+		optional
+
+	accept so-dl-text[2] @22,30 title is "Line 2:"
+		default so-dl-text[2]
+		optional
+	accept so-dl-text[3] @23,30 title is "Line 3:"
+		default so-dl-text[3]
+		optional
+	accept so-dl-text[4] @24,30 title is "Line 4:"
+		default so-dl-text[4]
+		optional
+	// Only lines 1-5 appear on posinv, reserving line 5 for delivery window
+	// 30 chars - could do "Exp Deliv 02 Dec 12:00 - 14:30"
+	//accept so-dl-text[5] @25,30 title is "Line 5:"
+	//	default so-dl-text[5]
+	//	optional
+	//accept so-dl-text[6] @26,30 title is "Line 6:"
+	//	default so-dl-text[6]
+	//	optional
+	//accept so-dl-text[7] @27,30 title is "Line 7:"
+	//	default so-dl-text[7]
+	//	optional
+
+confirm
+	auto
+confirmed
+	//do set-delivery-window-note
+//	switch on screen-mode()
+
+//	endswitch
+endconfirm
+
+
+endscreen // review-delivery-instructions -------------------------------------
+
+
+
+procedure send-email
+// /usr/bin/sendemail = echo "$3" | mailx -s "$2" $1
+parameters
+	lp-email-address					pic x(50)
+	//lp-body								pic x(80)
+	//lp-subject							pic x(80)
+	lp-subject							pic x(80)
+	lp-body								pic x(80)
+
+	//set lf-email-address = "0437129986@messagenet.com.au"
+	//set lf-body = "I'm the body"
+	//set lf-subject = "I'm the subject"
+
+
+	//set lf-command-string = strconcat(concat("echo '" lf-body " | mail -s " lf-subject "0437129986@messagenet.com.au"))
+	//message lf-command-string
+	command
+		"/usr/bin/sendemail"
+
+	parameters
+		lp-email-address
+		lp-subject
+		lp-body
+
+
+	message "Message Sent"
+
+endprocedure // send-email ----------------------------------------------------
+
+procedure set-delivery-window-note
+local field
+	i					type numeric
+//	f					type numeric
+
+	//message "Setting Del Window Note"
+	get sales-order-delivery lock
+	on index so-order-no so-bo-suffix so-text-type
+	key is tsd-so-order-no tsd-so-bo-suffix "DI"
+	//lookup
+	on error
+		// message "No Record"
+		initialise sales-order-delivery
+		for i = 1 to 4
+			set so-dl-text[i] = SPACES
+		endfor
+		set so-order-no = tsd-so-order-no
+		set so-bo-suffix = tsd-so-bo-suffix
+		set so-text-type = "DI"
+		set so-dl-text[5] = ws-delivery-window
+		insert sales-order-delivery
+	else
+		set so-dl-text[5] = ws-delivery-window
+		update sales-order-delivery
+				//on error
+				//	message "Err: delivery-window"
+				//endon
+	endon
+
+endprocedure // set-delivery-window-note --------------------------------------
+
+
+screen get-user-delivery-date
+	window @5,5 to @8,27 title is "Enter Delivery Date"
+	allowed entry
+	before
+		box @5,5 to @7,27 title is "Delivery Date"
+	detail
+		accept ws-user-delivery-date @6,12 title is "Date:"
+	confirm
+		auto
+	confirmed
+		exit
+	endconfirm
+endscreen // get-user-delivery-date -------------------------------------------
+
+
+screen get-truck-filter
+	window @5,5 to @8,27 title is "Enter Truck"
+	allowed entry
+	before
+		box @5,5 to @7,27 title is "Select Truck or SPACE for all"
+	detail
+		accept ws-truck-filter @6,12 title is "Truck:"
+			default SPACES
+		on help-key
+               set sys-tbl-type = "ZT"
+               do i85codes-table-help
+               set ws-truck-filter = sys-tbl-code
+               reenter optional
+        endon
+	confirm
+		auto
+	confirmed
+		exit
+	endconfirm
+endscreen // get-user-delivery-date -------------------------------------------
+
+
+//		set ws-delivery-window = 	concat("Exp Deliv " zstr(DAY(tsd-so-delivery-date),2,0) " " substring(month-name(tsd-so-delivery-date),1,3) " "
+//									zstr(hour(tsd-so-delivery-time),2,0) ":" zstr(minute(tsd-so-delivery-time),2,0) " - "
+//									zstr(hour(tsd-so-actual-delivery-time),2,0) ":" zstr(minute(tsd-so-actual-delivery-time),2,0))
+//
+
+
+
+
+/*
+procedure copy-sales-order
+	local field
+		lf-accountcode				like accountcode
+	//
+	window @18,44 to @23,80
+		title is "Processing"
+		color white
+		no-hide
+	if get-param(1) != '-b'
+		display bitmap concat(getenv("BMS")'/images/edgecog1.gif') @18,44
+		display "     Now at :" @21,50 background
+	endif
+	set ws-previous-order-no = so-order-no
+	set ws-previous-suffix = so-bo-suffix
+	set ws-copy-order-status = so-order-status
+	set ws-copy-whse-code = so-whse-code
+	if ws-copy-notes = YES
+		set ws-original-order-no = so-order-no
+		set ws-original-bo-suffix = so-bo-suffix
+	endif
+	//
+	if ws-customer-found = IN_MAILER
+		do create-new-order
+	elseif (get-param(1) = '-quote'
+	and so-cust-code = spaces)
+		do create-new-order
+	elseif get_param(1) = '-quotecopy'
+		set accountcode = ws-start-customer
+		do create-new-order
+	else
+		extract deb-master
+			on index accountcode
+			key is ws-start-customer
+			when bill-to = ws-bill-to
+			or ws-bill-to = spaces
+			and NOT (so-order-type-code = I5SO_TYPE_PROFORMA
+				and accountcode = ws-original-customer)
+			next different accountcode
+			finish when accountcode > ws-end-customer
+		before accountcode
+			if get-param(1) != '-b'
+				display accountcode @21,65 foreground prompt
+			endif
+		detail
+			if deb-status = "C"
+				message "Account is closed (not copied) " accountcode
+				continue
+			elseif deb-status = "D"
+				message "Account is deleted (not copied) " accountcode
+				continue
+			endif
+			get sales-order
+				on index so-cust-code so-order-no so-bo-suffix
+				key is ws-original-customer ws-previous-order-no
+						ws-previous-suffix
+			on error
+				get sales-order-archive
+					on index so-cust-code so-order-no so-bo-suffix
+					key is ws-original-customer ws-previous-order-no
+							ws-previous-suffix
+				on error
+					message "Could not locate sales order "
+							ws-previous-order-no " " ws-previous-suffix
+					continue
+				endon
+			endon
+			if so-order-source = 'O'
+				message "Cannot copy - Sales order is non-stock"
+			else
+				if ws-no-of-copies = 1
+					set lf-accountcode = accountcode
+					do create-new-order
+					get deb-master
+						on index accountcode
+						key is lf-accountcode
+					on error
+					endon
+					if ws-problem-found = YES
+						exit
+					endif
+				else
+					for i = 1 to ws-no-of-copies
+						if ws-del-date != zero
+							do determine-new-delivery-date
+						endif
+						set lf-accountcode = accountcode
+						do create-new-order
+						get deb-master
+							on index accountcode
+							key is lf-accountcode
+						on error
+						endon
+						if ws-problem-found = YES
+							exit
+						endif
+					endfor
+				endif
+			endif
+		endextract
+	endif
+endprocedure //copy-sales-order ------------------------------------------------
+*/
+
+
+
+
+// delsched.spl
