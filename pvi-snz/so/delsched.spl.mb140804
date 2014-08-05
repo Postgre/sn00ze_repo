@@ -1,7 +1,5 @@
 // delsched.spl
-version-number "20140804.001" // {8}
 //version-number "LIVE pvi-snz/so/delsched 20090414"
-// 04aug14	mb		{8}	include deb-trans-archive when looking for any past payments for the SO Sales Order 
 // 28may14	rmd	{3} suppress SMS mode
 // 16apr14	rmd	{2} updated balance calculation
 // 16jan14	rmd	{1} migrate to 10.3.0.9 710.x
@@ -315,19 +313,6 @@ object tmp-sales-order
 	key is so-whse-code	desc so-order-no desc so-bo-suffix desc unique
 
 
-// < {8}
-#define UPDATE_PAYMENTS_TAKEN \
-	on index accountcode /* tr-sort-key */ \
-	key is tsd-so-cust-code /* SPACES */ \
-	next same accountcode \
-	detail \
-		if trans-type in {"CR" "PD", "JE"} AND dr-tr-order-no = tsd-so-order-no \
-			set lf-payments-taken += tr-amount * -1 \
-		endif \
-		if trans-type = "PD" AND dr-tr-order-no = tsd-so-order-no \
-			set tsd-financed = "Y" \
-		endif
-// > {8}
 
 procedure main
 local field
@@ -634,21 +619,6 @@ local field
 
 						set tsd-financed = "N"
 
-
-// 04aug14	mb		{8}	include deb-trans-archive when looking for any past payments for the SO Sales Order 
-// < {8}
-						extract deb-trans-archive
-							UPDATE_PAYMENTS_TAKEN
-						endextract //deb-trans-archive
-
-						extract deb-trans
-						//--
-							UPDATE_PAYMENTS_TAKEN
-						endextract //deb-trans
-// > {8}
-
-/* //{8}
-						//-- UPDATE_PAYMENTS_TAKEN :
 						extract deb-trans
 						//on index accountcode tr-sort-key
 						on index accountcode trans-ref batch-ref dr-tr-trans-no
@@ -664,7 +634,6 @@ local field
 								set tsd-financed = "Y"
 							endif
 						endextract
-*/ //{8}
 
 						set tsd-balance-owing = tsd-balance-owing - lf-payments-taken
 						set ws-counter-1 += 1
