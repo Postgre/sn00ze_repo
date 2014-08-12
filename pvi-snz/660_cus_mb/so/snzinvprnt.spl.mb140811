@@ -22,7 +22,6 @@
 //
 // Modifcations
 //	When	Who		ChangeID	Changes
-//	07aug14	mb		{2}		fix issue where only option to exit is to say YES to update email address.
 //	26apr13	rmd		{14}		modify printers found in get-printer (F2 lookup)
 //	26jul12	rmd		{13}		cater for 60 char email address
 //								e.g. peterpercivalpattersonspetpig@gmail.com (39 char)
@@ -224,17 +223,6 @@ field
 #include "../../../../bms/so/i50statchg.spl"
 #include "../../../../bms/so/i50headso.spl"
 
-#define XEXT_FILE "tmp_snzinvprnt"
-object ff-ext-snzinvprnt
-	//like object
-	file XEXT_FILE
-	type external
-	record
-		fes-email			pic x(60)			// = lf-original-email
-		fes-accountcode	like so-cust-code	// = lf-so-accountcode	// = so-cust-code
-	endrecord
-//end-object ff-ext-snzinvprnt
-
 object	tmp-orders
 	type memory
 	record
@@ -255,36 +243,6 @@ object sales-order-comms type is external
 		so-order-no
 		so-bo-suffix
 	endrecord
-
-// < {2}
-field
-	lf-update-email			pic x 	//{2}
-	lf-temp-email				pic x(60)
-	lf-original-email			pic x(60)
-	lf-so-accountcode			like so-cust-code
-
-#define UPDATE_EMAIL_INIT(ACODE,BEMAIL) \
-	set accountcode = ACODE \
-	set na-type = "E" \
-	set na-name		= substring(BEMAIL,1,30) \
-	set na-company	= substring(BEMAIL,31,60) \
-//end-#define UPDATE_EMAIL_INIT
-
-//UPDATE_EMAIL(lf-so-accountcode,lf-temp-email)
-#define UPDATE_EMAIL(ACODE,BEMAIL) \
-	get name-and-address-master \
-		on index accountcode na-type \
-		key is ACODE "E" \
-	on error \
-		UPDATE_EMAIL_INIT(ACODE,BEMAIL) \
-		insert name-and-address-master \
-	else \
-		UPDATE_EMAIL_INIT(ACODE,BEMAIL) \
-		update name-and-address-master \
-	endon //get name-and-address-master
-//end-#define UPDATE_EMAIL(ACODE,BEMAIL)
-// > {2}
-
 
 procedure main
 	get system-control first
@@ -488,11 +446,6 @@ detail
 			set na-name = SPACES
 			set na-company = SPACES
 		endon
-		// < {2}
-		set lf-original-email	= spaces //strconcat(na-name na-company)
-		set lf-so-accountcode	= spaces //so-cust-code
-		set lf-temp-email			= spaces
-		// > {2}
 		set lf-email-address = strconcat(na-name na-company)    //{13}
 		if lf-email-address = SPACES or pattern(lf-email-address, "@") = 0
 			message "No valid email address, please provide one"
@@ -532,68 +485,6 @@ detail
 				//	message "Invalid email address, please amend"                       //{13}
 					reenter lf-email-address
 				else
-					if lf-email-address != strconcat(na-name na-company)    //{1}
-						// < {2}
-						set lf-original-email	= strconcat(na-name na-company)
-						set lf-so-accountcode	= so-cust-code
-						set lf-temp-email			= spaces
-						// > {2}
-						//splay "Email Address:"	@16,57 background
-						//accept lf-email-address		@16,72
-						//default lf-email-address
-						display "Update Email?:" 	@17,57 background	//{1}
-						accept lf-update-email 		@17,72            //{1}
-							uppercase
-							allowed "Y" "N"
-							default "N"
-							help "Update email address?"
-						if lf-update-email = "Y"
-							UPDATE_EMAIL(lf-so-accountcode,lf-email-address)
-						else
-							//-- email entered is only temporary for this reprint, and needs to be restored to original email.
-							//-- 
-							set lf-temp-email			= lf-email-address
-							UPDATE_EMAIL(lf-so-accountcode,lf-temp-email)
-							//-- -------------------------------------------------------------------------
-							//-- at this point, write to temp file details to restore original email
-							//-- note : the restore to occur AFTER the SO is reprinted, and will have to be done
-							//-- at $CUS/pvi-snz/sys/ordreprint.spl 
-							//-- -------------------------------------------------------------------------
-							//-- 
-							if lf-temp-email != spaces
-								open ff-ext-snzinvprnt truncate permanent
-								set fes-email			= lf-original-email
-								set fes-accountcode	= lf-so-accountcode	// = so-cust-code
-								insert ff-ext-snzinvprnt
-							endif //lf-temp-email != spaces
-/*
-		//if lf-temp-email = spaces or lf-original-email = spaces
-message 'zaz a: lf-update-email = ' lf-update-email
-		if lf-update-email = "Y" 
-			//-- leave updated email address already updated in table update.
-		else
-message 'zaz aa: lf-original-email = ' lf-original-email
-			if lf-original-email	!= spaces
-				//-- restore original email address.
-				set lf-update-email = "N"
-	message 'zaz b: lf-so-accountcode = ' lf-so-accountcode
-				if lf-so-accountcode = spaces
-					//unable to update email address without correct SO account code.
-				else
-					//restore email address to the original email address value :
-	message 'zaz c: lf-original-email = ' lf-original-email
-					UPDATE_EMAIL(lf-so-accountcode,lf-original-email)
-					set lf-so-accountcode	= spaces
-					set lf-original-email	= spaces
-				endif //lf-so-accountcode = spaces
-			endif //lf-original-email	!= spaces
-		endif //lf-temp-email = spaces
-*/
-							//-- -------------------------------------------------------------------------
-							//
-						endif
-					endif
-					/*
 					//if lf-email-address <> strconcat(na-name na-country)
 						//prompt for email address update?
 						//for now update or insert without question
@@ -615,7 +506,6 @@ message 'zaz aa: lf-original-email = ' lf-original-email
 							update name-and-address-master
 						endon
 					//endif
-					*/
 				endif
 			endvalidation
 			//{13} -------------------------------------------------------- end
