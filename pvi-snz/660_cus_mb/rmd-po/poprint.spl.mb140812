@@ -167,26 +167,9 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		//display "Email Address:"	@16,62 background   //{1}
 		//accept lf-email-address		@16,77          //{1}
 		set lf-temp-email			= spaces		//{2}
-	//-- --------------------------------------------------
-	//-- note : the following 'Update email? ' is important, otherwise the TITLE does not display further down :
-	//-- --------------------------------------------------
-		accept lf-update-email
-			@17,47 
-			title "Update email?:"
-			read-only
-	/*
 		display "Email Address:"	@16,32 background	//{1}
 		accept lf-email-address		@16,47              //{1}
 			default lf-email-address
-	*/
-	//-- --------------------------------------------------
-		accept lf-email-address
-			@16,47 
-			title "Email Address:"
-			default lf-email-address
-			help "Enter the email address to send the Purchase Order to."
-			//allowed "P" "S" "E"
-			//uppercase
 			validation
 				if pattern(lf-email-address, "@") = 0 or pattern(lf-email-address, ".") = 0 or pattern(strconcat(lf-email-address), " ") > 0 or pattern(lf-email-address, "\") > 0 or pattern(lf-email-address, "/") > 0
 					message "Email address is not valid:" lf-email-address
@@ -202,18 +185,12 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 					// > {2}
 					//display "Update Email?:" 	@17,62 background   //{1}
 					//accept lf-update-email 		@17,77          //{1}
-				/*
 					display "Update Email?:" 	@17,32 background	//{1}
 					accept lf-update-email 		@17,47              //{1}
-				*/
-					accept lf-update-email
-						@17,47 
-						title "Update email?:"
-						//tle "Email Address:"
 						uppercase
 						allowed "Y" "N"
 						default "N"
-						help "Update supplier's email address with the entered email address?"
+						help "Update suppliers email address?"
 					if lf-update-email = "Y"
 						get name-and-address-master
 							on index accountcode na-type
@@ -314,8 +291,8 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 // > {2}
 		//display "Complete?:"     	@17,91 background 	//@17,66 background	//{1}
 		//accept lf-complete			@17,102 			//@17,77        //{1}
-		display "Complete?:"     	@18,36 background 	//@17,66 background //{1}
-		accept lf-complete			@18,47 			//@17,77                //{1}
+		display "Complete?:"     	@17,36 background 	//@17,66 background //{1}
+		accept lf-complete			@17,47 			//@17,77                //{1}
 			uppercase
 			allowed "Y" "N"
 			default "Y"
@@ -364,8 +341,8 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 				strconcat(lf-command)
 		//display "Complete?:"     	@17,91 background 	//@17,66 background	//{1}
 		//accept lf-complete			@17,102 			//@17,77        //{1}
-		display "Complete?:"     	@18,61 background 	//@17,66 background //{1}
-		accept lf-complete			@18,72 			//@17,77                //{1}
+		display "Complete?:"     	@17,61 background 	//@17,66 background //{1}
+		accept lf-complete			@17,72 			//@17,77                //{1}
 			uppercase
 			allowed "Y" "N"
 			default "Y"
@@ -383,8 +360,8 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 			"-spool"
 		//display "Complete?:"     	@17,91 background 	//@17,66 background	//{1}
 		//accept lf-complete			@17,102 			//@17,77        //{1}
-		display "Complete?:"     	@18,61 background 	//@17,66 background //{1}
-		accept lf-complete			@18,72 			//@17,77                //{1}
+		display "Complete?:"     	@17,61 background 	//@17,66 background //{1}
+		accept lf-complete			@17,72 			//@17,77                //{1}
 			uppercase
 			allowed "Y" "N"
 			default "Y"
