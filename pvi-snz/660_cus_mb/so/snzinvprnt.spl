@@ -23,6 +23,8 @@
 // Modifcations
 //	When	Who		ChangeID	Changes
 //	07aug14	mb		{2}		fix issue where only option to exit is to say YES to update email address.
+//									-- see also pvi-snz/sys/ordreprint.spl  (for second part of required changes)
+//
 //	26apr13	rmd		{14}		modify printers found in get-printer (F2 lookup)
 //	26jul12	rmd		{13}		cater for 60 char email address
 //								e.g. peterpercivalpattersonspetpig@gmail.com (39 char)
