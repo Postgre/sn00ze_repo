@@ -2,6 +2,7 @@
 version-number "20140804.001" // {8}
 //version-number "LIVE pvi-snz/so/delsched 20090414"
 // 04aug14	mb		{8}	include deb-trans-archive when looking for any past payments for the SO Sales Order 
+//								-- update for 710 : no longer has a separate archive table object.
 // 28may14	rmd	{3} suppress SMS mode
 // 16apr14	rmd	{2} updated balance calculation
 // 16jan14	rmd	{1} migrate to 10.3.0.9 710.x
@@ -637,9 +638,11 @@ local field
 
 // 04aug14	mb		{8}	include deb-trans-archive when looking for any past payments for the SO Sales Order 
 // < {8}
+					/* //-- 710 and above no longer has separate archive deb-trans table object
 						extract deb-trans-archive
 							UPDATE_PAYMENTS_TAKEN
 						endextract //deb-trans-archive
+					*/ //-- 710 and above no longer has separate archive deb-trans table object
 
 						extract deb-trans
 						//--
