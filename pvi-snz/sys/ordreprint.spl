@@ -217,6 +217,10 @@ local field
 //message concat("zaz c : update so-code / email : " strconcat(fes-accountcode) " / " strconcat(fes-email) )
 			UPDATE_EMAIL(fes-accountcode, fes-email)
 		endextract //ff-ext-snzinvprnt all
+		//--
+		//-- important to clear temp file at this point :
+		open ff-ext-snzinvprnt truncate permanent
+		//--
 	endon //open ff-ext-snzinvprnt permanent
 
 endprocedure // get-user-input ------------------------------------------------

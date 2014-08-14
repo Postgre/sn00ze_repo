@@ -19,6 +19,7 @@
 //		tsl-shortname
 //	endrecord
 //	key is tsl-so-order-no unique
+version-number "pvi-snz/sys/ordreprint 20140814.001"
 version-number "CUSTOM BETA pvi-snz/sys/ordreprnt 20090419.004"
 
 #define XEXT_FILE "tmp_snzinvprnt"
@@ -72,7 +73,6 @@ field
 	endon //get name-and-address-master
 //end-#define UPDATE_EMAIL(ACODE,BEMAIL)
 // > {2}
-
 
 procedure get-user-input
 local field
@@ -217,10 +217,6 @@ local field
 //message concat("zaz c : update so-code / email : " strconcat(fes-accountcode) " / " strconcat(fes-email) )
 			UPDATE_EMAIL(fes-accountcode, fes-email)
 		endextract //ff-ext-snzinvprnt all
-		//--
-		//-- important to clear temp file at this point :
-		open ff-ext-snzinvprnt truncate permanent
-		//--
 	endon //open ff-ext-snzinvprnt permanent
 
 endprocedure // get-user-input ------------------------------------------------
