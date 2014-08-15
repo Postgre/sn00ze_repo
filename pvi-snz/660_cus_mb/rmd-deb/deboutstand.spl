@@ -1,4 +1,5 @@
 // deboutstand.spl
+//	15aug14	mb		{1}	fix i/o error : deb-master - record not found
 // 10jan14	rmd	report running 12 lines over when previewing XML then printing to Windows printer
 // 07May12	lg	Added extra lines for ***Order Older than... - added 35 days on top of 56 day existing
 // 01jul09 	rc	fix the display of rep code in the Sales Order Notes section.
@@ -351,6 +352,13 @@ procedure build-warnings
 		on index accountcode
 		key is tdc-accountcode
 
+// < {1}
+		on error
+			//-- 
+		else
+			//-- found deb-master record :
+			//--
+// > {1}
 		// 20may08
 		//if balance > 0
 		//	set tdc-trans-warnings = "*** CUSTOMER OWES MONEY ***"
@@ -392,6 +400,10 @@ procedure build-warnings
                         endif
 
 		endextract
+// < {1}
+		//--
+		endon //get deb-master
+// > {1}
 	endextract
 endprocedure // build-warnings ----------------------------------------------
 
@@ -405,6 +417,12 @@ procedure build-order-list
 		get deb-master
 		on index accountcode
 		key is so-cust-code
+// < {1}
+		on error
+			//-- ignore if no matching deb-master customer record.
+			continue
+		endon //get deb-master
+// > {1}
 
 		// should we ignore this order
 		// 06jun08 show ready to update
