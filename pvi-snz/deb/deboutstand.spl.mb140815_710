@@ -1,5 +1,4 @@
 // deboutstand.spl
-//	15aug14	mb		{2}	fix i/o error : deb-master - record not found
 // 14may14	rmd	{1} upgrade for 710.3
 //						tr-sort-key fix switch to trans-ref
 //						switch index accountcode tr-sort-key
@@ -360,13 +359,6 @@ procedure build-warnings
 		get deb-master
 		on index accountcode
 		key is tdc-accountcode
-// < {2}
-		on error
-			//-- 
-		else
-			//-- found deb-master record :
-			//--
-// > {2}
 
 		// 20may08
 		//if balance > 0
@@ -409,10 +401,6 @@ procedure build-warnings
                         endif
 
 		endextract
-// < {2}
-		//--
-		endon //get deb-master
-// > {2}
 	endextract
 endprocedure // build-warnings ----------------------------------------------
 
@@ -428,14 +416,6 @@ procedure build-order-list
 		on error		//{1}
 			continue	//{1}
 		endon
-/* //< {2}
-// < {2}
-		on error
-			//-- ignore if no matching deb-master customer record.
-			continue
-		endon //get deb-master
-// > {2}
-*/ //> {2}
 		// should we ignore this order
 		// 06jun08 show ready to update
 		//if so-order-status in {"80" "90" "99"} or so-order-total-amount = 0 // or accountcode = territory  // 08may08
