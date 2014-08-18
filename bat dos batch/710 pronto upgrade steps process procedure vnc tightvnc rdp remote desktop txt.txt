@@ -1,0 +1,29 @@
+Subject: 710 Upgrade Notes       tightvnc csm3126  PC ip address : 10.3.1.133 
+
+
+1. Initial File Copy Process - 1m15 seconds - for 2nd largest dataset
+                Logged in as Root into Putty shell session
+                cd /pro/data/l401; 
+                rm *.dat;
+                rsync -av --progress prontod1:/data/stores/401/*.dat .
+
+2.            Login as Root into ProClient
+3.            su - informix
+4.            "pronto"
+5.            Locate Database of the Dataset we are working with
+6.            Click on "Tables-in-db"
+7.            "Drop tables"
+8.            type * to replace the name of the table displayed already then confirm.
+
+
+Initial Import - Using Dictionary type 660.2
+9.            Log in as psd into Putty shell session (login as root then "su - psd"
+10.          cd /pro/data/l401; 
+11.          procopy -d /oldsrv/bms/bms -i;
+12.          Check for Major errors in Import (look at procopy.log)
+
+710 Upgrade
+13.          Log into Pronto as psd again
+14.          Open up Company list and click on the Dataset you imported.
+15.          710 Upgrade will commence.
+16.          RUn SYS.M186 to rebuild/check User permissions
