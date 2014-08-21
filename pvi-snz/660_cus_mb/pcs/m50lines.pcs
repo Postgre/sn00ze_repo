@@ -1,0 +1,344 @@
+#PRONTO Screen Customiser File (Override statements only).
+procedure before-of-a300-lines
+	{
+	#display
+	#	{
+	#	orig_text = "Seq#"
+	#	suppress = true
+	#	}
+	display
+		{
+		orig_coordinate = 2,64
+		coordinate = 2.00,63.00
+		}
+	}
+screen a300-get-order-lines
+	{
+	#25jun10 rmd intended to cleanup orphaned notes if lines removed, caught in endless loop
+	#after identifying the first culprit
+	#trigger
+	#	{
+	#	trigger_point = screen_exit
+	#	run = "rmd/so/Bdiscprcaud4" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate str-item-price "-line" "-orphclean" "Clean Orphan Lines" "0"
+	#	type = pronto
+	#	}
+	trigger
+		{
+		trigger_point = screen_exit
+		#run = "rmd/so/discprcaud6" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate str-item-price "-line" "-orphclean" "Clean Orphan Lines" "0"
+		run = "rmd/so/discprcaud7" so-order-no so-bo-suffix
+		type = pronto
+		}
+	trigger
+		{
+		trigger_point = before_accept
+		name = ws-confirm
+		#run = "rmd/so/defsolstat" so-order-no so-bo-suffix sol-line-seq
+		#run = "rmd/so/defsolstat" sol-backorder-qty
+		run = "rmd/so/defsolstat" so-order-no so-bo-suffix sol-line-seq sol-backorder-qty so-cust-code ws-order-type
+		type = pronto
+		}
+	#trigger
+	#	{
+	#	trigger_point = after_accept
+	#	name = ws-confirm
+	#	run = "rmd/so/discprcaud4" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate str-item-price "-line" "-dispgross2" "Gross to display." "0"
+	#	type = pronto
+	#	}
+	#02feb08 unsuppress sol-line-seq
+	#accept
+	#	{
+	#	name = sol-line-seq
+	#	suppress = true
+	#	}
+	accept
+		{
+		name = str-ordered-qty
+		#coordinate = 8,32
+		default = 1
+		#picture = x(6)
+		}
+	mode
+		{
+		name = "find"
+		suppress = true
+		}
+	mode
+		{
+		name = "md-serial"
+		suppress = true
+		}
+	mode
+		{
+		name = "md-kit-options"
+		suppress = true
+		}
+	mode
+		{
+		name = "md-seq-no"
+		suppress = true
+		}
+	trigger
+		{
+		trigger_point = on_help
+		name = ws-accept-stk-code
+		run = "rmd/stk/stklookup6"
+		type = pronto
+		}
+	#24may10 no price override popup, is still read-only
+	#30may10 re-enabled price override for increases or giveaways
+	#trigger
+	#	{
+	#	trigger_point = before_accept
+	#	name = str-item-price
+	#	#31may10 new combined program handles -price and -disc
+	#	#run = "rmd/so/setsolprc" so-order-no so-bo-suffix sol-line-seq stock-code str-item-price "-line"
+	#	#run = "rmd/so/Bdiscprcaud2" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate str-item-price "-line" "-price" "Price Override?" "0"
+	#	type = pronto
+	#	run = "rmd/so/discprcaud6" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate str-item-price "-line" "-discprice" "Price/Discount Change?" "0"
+	#	type = pronto
+	#	}
+	#accept
+	#	{
+	#	name = str-item-price
+	#	suppress = true
+	#	readonly = true
+	#	}
+	#trigger
+	#	{
+	#	trigger_point = before_accept
+	#	name = sol-disc-rate
+	#	#24may10 added str-item-price as param 6
+	#	#31may10 added mode as param 8
+	#	#run = "rmd/so/Bdiscprcaud2" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate str-item-price "-line" "-disc" "Apply Discount?" "0"
+	#	run = "rmd/so/discprcaud6" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate str-item-price "-line" "-discq" "Apply Discount?" "0"
+	#	type = pronto
+	#	}
+	#accept
+	#	{
+	#	name = sol-disc-rate
+	#	#suppress = true
+	#	readonly = true
+	#	}
+	#sol-line-amount
+	display
+		{
+		orig_coordinate = 8,67
+		picture = s9(7)v9(2)
+		}
+	display
+		{
+		orig_coordinate = 8,37
+		suppress = true
+		}
+	display
+		{
+		orig_coordinate = 8,41 #sol-item-price
+		#picture = s9(6)v9(4) #original?
+		#picture = s9(6)v9(2) #169.9000
+		#picture = zzzzz9.99  #169.9000
+		#picture = s9(4)v9(2) #16990.0050 
+		#picture = s9(8)v9(2) #1699.0000 now 1.6990
+		#picture = s9(6)v9(6) #1699.0000 now 169.9000
+		#suppress = true
+		}
+#	accept
+#		{
+#		name = sol-user-only-num1
+#		suppress = false
+#		readonly = true
+#		coordinate = 8,44
+#		#picture = s9(9)v9(2)
+#		picture = zzzzzz9.99
+#		}
+#	trigger
+#		{
+#		trigger_point = before_accept
+#		name = sol-user-only-num1
+#		run = "rmd/so/discprcaud4" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate str-item-price "-line" "-dispgross" "Gross to display." "0"
+#		type = pronto
+#		}
+	}
+screen b320-process-the-box
+	{
+	display
+		{
+		orig_text = "Seq#"
+		suppress = true
+		}
+	#10mar09
+	#	accept
+	#		{
+	#		name = lf-str-sol-tax-rate-code
+	#		default = "1"
+	#		suppress = true
+	#		}
+	#10mar09
+	trigger
+		{
+		trigger_point = before_accept
+		name = sol-chg-type
+		run = "rmd/so/getchgtype" so-order-no so-bo-suffix sol-line-seq
+		type = pronto
+		}
+	accept
+		{
+		name = sol-chg-type
+		coordinate = 23.00,30.00
+		#default = "0"
+		suppress = true
+		}
+	accept
+		{
+		name = sol-item-cost
+		readonly = true
+		}
+	#trigger
+	#	{
+	#	trigger_point = before_accept
+	#	name = sol-item-price
+	#	#run = "rmd/so/discprcaud" so-order-no so-bo-suffix sol-line-seq stock-code sol-item-price "-footer"
+	#	#run = "rmd/so/Bdiscprcaud2" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate sol-item-price "-footer" "-price" "Price Override?" "0"
+	#	run = "rmd/so/discprcaud6" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate str-item-price "-footer" "-discprice" "Price/Discount Change?" "0"
+	#	type = pronto
+	#	}
+	#accept
+	#	{
+	#	name = sol-item-price
+	#	#suppress = true
+	#	readonly = true
+	#	}
+	#trigger
+	#	{
+	#	trigger_point = before_accept
+	#	name = sol-disc-rate
+	#	#run = "rmd/so/discprcaud" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate sol-item-price "-footer"
+	#	#run = "rmd/so/Bdiscprcaud2" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate sol-item-price "-footer" "-discq" "Apply Discount?" "0"
+	#	run = "rmd/so/discprcaud6" so-order-no so-bo-suffix sol-line-seq stock-code sol-disc-rate str-item-price "-footer" "-discq" "Apply Discount?" "0"
+	#	type = pronto
+	#	}
+	#accept
+	#	{
+	#	name = sol-disc-rate
+	#	#suppress = true
+	#	readonly = true
+	#	}
+	}
+menu help-for-confirm
+	{
+	#02feb08 resize does not work when menu is displayed
+	#window
+	#	{
+	#	window_size = 6,22
+	#	}
+	option
+		{
+		orig_text = "A - Search by alternative part number"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "C - Next line is a note line"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "D - Maintain delivery address"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "E - Expected Delivery Date"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "F - Factory to Supply Item"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "G - Equipment Trades"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "H - Flag a hidden line"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "I - Internal to Supply Item"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "K - Treat as Indent Item"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "L - Lost line"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "M - Manufacture line item"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "N - Not confirmed"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "O - Other Line Notes"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "P - Maintain the item price"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "Q - Supplier quotation"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "S - Substitute item code"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "W - Check quantities in other whse"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "Z - Short ship reason code"
+		suppress = true
+		}
+	}
+screen i50lines-get-ship-bo-qty
+	{
+	trigger
+		{
+		trigger_point = before_accept
+		name = sol-shipped-qty
+		run = "rmd/so/cashtest" so-order-no so-bo-suffix sol-line-seq str-ordered-qty
+		type = pronto
+		}
+	}
+menu ask-type-of-discount-processing
+	{
+	option
+		{
+		#SYCAS
+		orig_text = "Change Line Discount"
+		suppress = true
+		}
+	}
+

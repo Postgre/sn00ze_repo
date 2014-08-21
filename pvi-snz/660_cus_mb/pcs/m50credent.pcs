@@ -1,0 +1,720 @@
+#PRONTO Screen Customiser File (Override statements only).
+screen get-order-header
+	{
+	display
+		{
+		orig_text = "Bill To  :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Avail Cr :"
+		suppress = true
+		}
+	display
+		{
+		name = i5crlimit-credit-limit-availab
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Access   :"
+		suppress = true
+		}
+	accept
+		{
+		name = ws-pin-number
+		suppress = true
+		#default = "0"
+		}
+	accept
+		{
+		name = dr-deb-notes
+		suppress = true
+		#default = "0"
+		}
+	display
+		{
+		orig_text = "Contact  :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Type     :"
+		coordinate = 7.00,2.00
+		suppress = true
+		}
+	accept
+		{
+		orig_coordinate = 7,13
+		suppress = true
+		default = "C"
+		}
+	display
+		{
+		orig_text = "Normal              "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Asset Capitalization"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Credit Note - Rebate"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Credit Note - Invoice"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Deliver on Behalf of"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Tax Only Order"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Forward order       "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Cost Adjustment     "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Hire - Rental       "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Project Issue       "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Forward Transfer    "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Lay-By              "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Direct Ship Order   "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "On Consignment      "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Phone order/Invoice "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Quotation           "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Return Authorisation"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Normal/Service Cont "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Transfer            "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Bulk Order          "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Lump Sum Billed     "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Warranty Claim      "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Contract Order      "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Proforma order      "
+		suppress = true
+		}
+	accept
+		{
+		name = so-cust-reference
+		suppress = true
+		#default = "0"
+		}
+	display
+		{
+		orig_text = "Cust. Ref:"
+		suppress = true
+		}
+	accept
+		{
+		name = so-order-no
+		suppress = true
+		#needs to pickup the next order no
+		#default = "0"
+		}
+	display
+		{
+		orig_text = "Order No.:"
+		suppress = true
+		}
+	box
+		{
+		orig_coordinate = 1.00,1.00
+		coordinate = 11.00,48.00
+		suppress = true
+		}
+	window
+		{
+		window_size = 14,58
+		title = "Return Items"
+		}
+	accept
+		{
+		name = ws-cust-code
+		coordinate = 3.00,13.00
+		picture = x(11)
+		#default = " "
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Customer :"
+		coordinate = 3.00,2.00
+		suppress = true
+		}
+	#trigger
+	#	{
+	#	trigger_point = after_accept
+	#	name = ws-cust-code
+	#	run = "rmd/deb/verifyacct" ws-cust-code
+	#	type = pronto
+	#	}
+	trigger
+		{
+		trigger_point = before_accept
+		name = ws-cust-code
+		run = "rmd/deb/verifyacct"
+		type = pronto
+		}
+	confirm
+		{
+		default = "yes"
+		suppress = true
+		}
+	
+	box
+		{
+		orig_coordinate = 12.00,1.00
+		coordinate = 30.00,48.00
+		suppress = true
+		}
+	box
+		{
+		orig_coordinate = 13.00,49.00
+		coordinate = 21.00,95.00
+		suppress = true
+		}
+	display
+		{
+		orig_coordinate = 14,53
+		suppress = true
+		}
+	display
+		{
+		orig_coordinate = 15,51
+		suppress = true
+		}
+	display
+		{
+		orig_coordinate = 22,57
+		suppress = true
+		}
+	box
+		{
+		orig_coordinate = 22.00,49.00
+		coordinate = 30.00,95.00
+		suppress = true
+		}
+	box
+		{
+		orig_coordinate = 1.00,49.00
+		coordinate = 12.00,95.00
+		suppress = true
+		}
+	display
+		{
+		name = na-name
+		coordinate = 2.00,14.00
+		}
+	display
+		{
+		orig_coordinate = 2,53
+		coordinate = 2.00,6.00
+		}
+	display
+		{
+		name = na-company
+		coordinate = 3.00,14.00
+		}
+	display
+		{
+		orig_coordinate = 3,51
+		coordinate = 3.00,4.00
+		}
+	display
+		{
+		name = na-street
+		coordinate = 4.00,14.00
+		}
+	display
+		{
+		name = na-suburb
+		coordinate = 5.00,14.00
+		}
+	display
+		{
+		name = na-country
+		coordinate = 6.00,14.00
+		}
+	display
+		{
+		name = na-address-6
+		coordinate = 7.00,12.00
+		suppress = true
+		}
+	display
+		{
+		name = na-address-7
+		coordinate = 8.00,12.00
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Postcode:"
+		coordinate = 8.00,4.00
+		}
+	display
+		{
+		name = postcode
+		coordinate = 8.00,14.00
+		}
+	display
+		{
+		name = na-phone
+		coordinate = 10.00,14.00
+		}
+	display
+		{
+		name = na-fax-no
+		coordinate = 11.00,14.00
+		}
+	display
+		{
+		orig_text = "Phone:"
+		coordinate = 10.00,7.00
+		}
+	display
+		{
+		orig_text = "Fax:"
+		coordinate = 11.00,9.00
+		}
+	box
+		{
+		orig_coordinate = 1.00,3.00
+		coordinate = 12.00,54.00
+		add = true
+		title = "Customer Address"
+		}
+	display
+		{
+		text = "Ref:"
+		coordinate = 6.00,9.00
+		add = true
+		attributes = background, prompt
+		}
+	display
+		{
+		text = "Order#:"
+		coordinate = 9.00,6.00
+		add = true
+		attributes = background, prompt
+		}
+	accept
+		{
+		orig_coordinate = 7,14
+		suppress = true
+		default = "C"
+		}
+	}
+procedure a601-display-order-info
+	{
+	display
+		{
+		name = so-cust-code
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Customer    :"
+		suppress = true
+		}
+	display
+		{
+		name = shortname
+		suppress = true
+		}
+	}
+screen a2010-edit-the-so
+	{
+	display
+		{
+		name = so-cust-code
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Customer No.:"
+		suppress = true
+		}
+	}
+screen get-normal-order
+	{
+	accept
+		{
+		name = so-cust-reference
+		#default = " "
+		suppress = true
+		}
+	}
+screen finish-the-credit-note-or-rma
+	{
+	trigger
+		{
+		trigger_point = screen_exit
+		run = "rmd/so/cretender" accountcode so-order-no so-bo-suffix
+		type = pronto
+		}
+	accept
+		{
+		name = ws-edit-cnote
+		suppress = true
+		default = "F"
+		}
+	display
+		{
+		orig_text = "Action Type:"
+		suppress = true
+		}
+	confirm
+		{
+		default = "yes"
+		suppress = true
+		}
+	}
+screen address-correct
+	{
+	accept
+		{
+		name = na-name
+		suppress = true
+		#default = " "
+		}
+	accept
+		{
+		name = na-company
+		suppress = true
+		#default = " "
+		}
+	accept
+		{
+		name = na-street
+		suppress = true
+		#default = " "
+		}
+	accept
+		{
+		name = na-country
+		suppress = true
+		#default = " "
+		}
+	accept
+		{
+		name = na-address-6
+		suppress = true
+		#default = " "
+		}
+	accept
+		{
+		name = na-address-7
+		suppress = true
+		#default = " "
+		}
+	accept
+		{
+		name = postcode
+		suppress = true
+		#default = " "
+		}
+	accept
+		{
+		name = na-phone
+		suppress = true
+		#default = " "
+		}
+	accept
+		{
+		name = na-fax-no
+		suppress = true
+		#default = " "
+		}
+	accept
+		{
+		name = na-tax-province-code
+		suppress = true
+		#default = " "
+		}
+	display
+		{
+		orig_text = "Province :"
+		#suppress = true
+		suppress = true
+		}
+	mode
+		{
+		name = "correct"
+		suppress = true
+		}
+	box
+		{
+		orig_coordinate = 13.00,34.00
+		coordinate = 26.00,80.00
+		suppress = true
+		}
+	window
+		{
+		window_size = 14,47
+		}
+	confirm
+		{
+		default = "yes"
+		suppress = true
+		}
+	accept
+		{
+		name = na-suburb
+		suppress = true
+		#default = " "
+		}
+	}
+screen full-order-entry
+	{
+	accept
+		{
+		name = ws-entry-order-date
+		suppress = true
+		default = today
+		}
+	display
+		{
+		orig_text = "Order date :"
+		suppress = true
+		}
+	confirm
+		{
+		default = "yes"
+		suppress = true
+		}
+	window
+		{
+		window_size = 0,0
+		title = " "
+		}
+	}
+screen get-restricted-normal-order
+	{
+	accept
+		{
+		name = so-cust-reference
+		suppress = true
+		default = " "
+		}
+	window
+		{
+		window_size = 6,24
+		}
+	}
+screen get-reason-code-screen
+	{
+	window
+		{
+		window_size = 7,55
+		}
+	}
+procedure main
+	{
+	window
+		{
+		window_size = 4,16
+		}
+	confirm
+		{
+		default = "yes"
+		suppress = true
+		}
+	}
+procedure get-order-details
+	{
+	confirm
+		{
+		default = "yes"
+		suppress = true
+		}
+	}
+procedure a112-display-name-address
+	{
+	display
+		{
+		name = dr-deb-notes
+		suppress = true
+		}
+	display
+		{
+		name = na-name
+		suppress = true
+		}
+	display
+		{
+		name = na-company
+		suppress = true
+		}
+	display
+		{
+		name = na-street
+		suppress = true
+		}
+	display
+		{
+		name = na-suburb
+		suppress = true
+		}
+	display
+		{
+		name = na-country
+		suppress = true
+		}
+	display
+		{
+		name = na-address-6
+		suppress = true
+		}
+	display
+		{
+		name = na-address-7
+		suppress = true
+		}
+	display
+		{
+		name = postcode
+		suppress = true
+		}
+	display
+		{
+		name = na-phone
+		suppress = true
+		}
+	display
+		{
+		name = na-fax-no
+		suppress = true
+		}
+	window
+		{
+		window_size = 4,22
+		}
+	confirm
+		{
+		default = "yes"
+		suppress = true
+		}
+	}
+procedure b100-check-customer-info
+	{
+	display
+		{
+		orig_coordinate = 3,14
+		suppress = true
+		}
+	display
+		{
+		name = accountcode
+		suppress = true
+		}
+	accept
+		{
+		name = ws-bill-to
+		suppress = true
+		default = " "
+		}
+	display
+		{
+		name = shortname
+		suppress = true
+		}
+	confirm
+		{
+		default = "yes"
+		suppress = true
+		}
+	window
+		{
+		window_size = 4,26
+		}
+	}
+procedure ok-to-conclude-order
+	{
+	window
+		{
+		window_size = 4,33
+		}
+	confirm
+		{
+		default = "yes"
+		suppress = true
+		}
+	}
