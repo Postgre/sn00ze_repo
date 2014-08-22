@@ -1,0 +1,10 @@
+#PRONTO Screen Customiser File (Override statements only).
+screen order-entry
+	{
+	accept
+		{
+		name = po-order-no
+		readonly = true
+		#default = " "
+		}
+	}
