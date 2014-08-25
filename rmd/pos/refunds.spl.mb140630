@@ -1,8 +1,6 @@
 // refunds.spl
-//	30jun14	mb	{1}	add time stamp to header, add time stamp after first column transaction date column of report
 // 12mar08	rmd	converted from $CUS/refunds.enq
 // 29jul08	rmd -silent mode, defaults to user-store-id start and end on today
-version-number "140630.000" //{1}
 
 object tmp-cash-draw
 type is memory
@@ -15,8 +13,6 @@ type is memory
 		tmp-cd-item-accountcode  				like cd-item-accountcode
 		tmp-cd-money-type        				like cd-money-type      
 		tmp-cd-money-amount      				like cd-money-amount   
-		tmp-cd-date-stamp							like cd-date-stamp	//{1}
-		tmp-cd-time-stamp							like cd-time-stamp	//{1}
 	endrecord
 	key is tmp-cd-terminal tmp-cd-trans-seq-no tmp-cd-item-seq-no //unique
 	key is tmp-cd-terminal tmp-cd-trans-date tmp-cd-item-accountcode tmp-cd-trans-seq-no
@@ -114,8 +110,6 @@ procedure build-dataset
 					set tmp-cd-item-accountcode = cd-item-accountcode
 					set tmp-cd-money-type       = cd-money-type      
 					set tmp-cd-money-amount     = cd-money-amount   
-					set tmp-cd-date-stamp		= cd-date-stamp	//{1}
-					set tmp-cd-time-stamp		= cd-time-stamp	//{1}
 					insert tmp-cash-draw	    	
 				else
 				endif
@@ -124,19 +118,10 @@ procedure build-dataset
 	endextract
 endprocedure // build-dataset -------------------------------------------------
 
-//<{1}
-#define COL_OFFSET 25
-#define COL_NO_2 col 15
-#define COL_NO_3 col 27 //col 15 + 12
-//>{1}
 procedure report-header
 	print 
 		company-name in col 1
-		/* //<{1}
 		today() in col 104
-		*/ //>{1}
-		today() in col 104 - 15	//{1}
-		tod() in col 104			//{1}
 		"Page No." in col 117
 		pageno() in col 125
 	print "REFUND REPORT FOR" in col 56 bold 
@@ -149,36 +134,17 @@ procedure report-header
 	skip
 	print
 		"Trans" in col 2
-		/* //<{1}
 		"Customer" in col 17
 		"Order" in col 37
 		"Trans" in col 50
 		"Amount" in col 79
-		*/ //>{1}
-		//<{1}
-		"Date/Time" in COL_NO_2					//<{1}
-		"Customer" in col 17	+ COL_OFFSET	//<{1}
-		"Order" in col 37		+ COL_OFFSET	//<{1}
-		"Trans" in col 50		+ COL_OFFSET	//<{1}
-		"Amount" in col 79	+ COL_OFFSET	//<{1}
-		//>{1}
 	print
 		"Date" in col 2
-		/* //<{1}
 		"Code" in col 17
 		"Number" in col 37
 		"Type" in col 50
 		"$" in col 81
 		"Refund?" in col 91
-		*/ //>{1}
-		//<{1}
-		"Stamp" in COL_NO_2						//<{1}
-		"Code" in col 17		+ COL_OFFSET	//<{1}
-		"Number" in col 37	+ COL_OFFSET	//<{1}
-		"Type" in col 50		+ COL_OFFSET	//<{1}
-		"$" in col 81			+ COL_OFFSET	//<{1}
-		"Refund?" in col 91	+ COL_OFFSET	//<{1}
-		//>{1}
 	print "==================================================================================================================================" in col 1
 	
 	//skip 1
@@ -202,33 +168,28 @@ procedure refund-report
 		if tmp-cd-money-amount > 0
 			print
 				tmp-cd-trans-date in col 1
-		/* //<{1}
 				tmp-cd-item-accountcode in col 17 bold
-		*/ //>{1}
-				tmp-cd-date-stamp	in COL_NO_2		//<{1}
-				tmp-cd-time-stamp in COL_NO_3		//<{1}
-				tmp-cd-item-accountcode in col 17 + COL_OFFSET bold			//<{1}
 				//tmp-cd-trans-seq-no in col 26 //pic zzz9
-				tmp-cd-item-reference in col 34 + COL_OFFSET bold				//<{1}
-				tmp-cd-money-type in col 47 + 3 + COL_OFFSET bold no newline		//<{1}
+				tmp-cd-item-reference in col 34 bold
+				tmp-cd-money-type in col 47 bold no newline
 			if tmp-cd-money-type = "T"
-				print "Transfer/Eftpos" in col 49 + COL_OFFSET bold			//<{1}
+				print "Transfer/Eftpos" in col 49 bold
 				no newline
 			elseif tmp-cd-money-type = "H"
-				print "Cash" in col 49 + COL_OFFSET bold no newline
+				print "Cash" in col 49 bold no newline
 			elseif tmp-cd-money-type = "X"
-				print "Amex" in col 49 + COL_OFFSET bold no newline
+				print "Amex" in col 49 bold no newline
 			elseif tmp-cd-money-type = "N"
-				print "Diners" in col 49 + COL_OFFSET bold no newline
+				print "Diners" in col 49 bold no newline
 			elseif tmp-cd-money-type = "C"
-				print "Finance" in col 49 + COL_OFFSET bold no newline
+				print "Finance" in col 49 bold no newline
 			elseif tmp-cd-money-type = "Q"
-				print "Cheque" in col 49 + COL_OFFSET bold no newline
+				print "Cheque" in col 49 bold no newline
 			endif
 			print
-				tmp-cd-money-amount in col 70 + COL_OFFSET bold no newline
+				tmp-cd-money-amount in col 70 bold no newline
 			if tmp-cd-money-amount > 0
-				print "*** REFUND ***" in col 88 + COL_OFFSET bold no newline
+				print "*** REFUND ***" in col 88 bold no newline
 			endif
 			skip
 	// ***********************************
@@ -237,33 +198,28 @@ procedure refund-report
 		else
 			print
 				tmp-cd-trans-date in col 1
-		/* //<{1}
 				tmp-cd-item-accountcode in col 17
-		*/ //>{1}
-				tmp-cd-date-stamp	in COL_NO_2		//<{1}
-				tmp-cd-time-stamp in COL_NO_3		//<{1}
-				tmp-cd-item-accountcode in col 17 + COL_OFFSET //<{1}
 				//tmp-cd-trans-seq-no in col 26 //pic zzz9
-				tmp-cd-item-reference in col 34 + COL_OFFSET //<{1}
-				tmp-cd-money-type in col 47 + 3 + COL_OFFSET no newline
+				tmp-cd-item-reference in col 34
+				tmp-cd-money-type in col 47 no newline
 			if tmp-cd-money-type = "T"
-				print "Transfer/Eftpos" in col 49  + COL_OFFSET //<{1}
+				print "Transfer/Eftpos" in col 49 
 				no newline
 			elseif tmp-cd-money-type = "H"
-				print "Cash" in col 49 + COL_OFFSET no newline
+				print "Cash" in col 49 no newline
 			elseif tmp-cd-money-type = "X"
-				print "Amex" in col 49 + COL_OFFSET no newline
+				print "Amex" in col 49 no newline
 			elseif tmp-cd-money-type = "N"
-				print "Diners" in col 49 + COL_OFFSET no newline
+				print "Diners" in col 49 no newline
 			elseif tmp-cd-money-type = "C"
-				print "Finance" in col 49 + COL_OFFSET no newline
+				print "Finance" in col 49 no newline
 			elseif tmp-cd-money-type = "Q"
-				print "Cheque" in col 49 + COL_OFFSET no newline
+				print "Cheque" in col 49 no newline
 			endif
 			print
-				tmp-cd-money-amount in col 70 + COL_OFFSET no newline
+				tmp-cd-money-amount in col 70 no newline
 			if tmp-cd-money-amount > 0
-				print "*** REFUND ***" in col 88 + COL_OFFSET no newline
+				print "*** REFUND ***" in col 88 no newline
 			endif
 			skip
 		endif
