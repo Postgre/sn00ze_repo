@@ -1,0 +1,31 @@
+#PRONTO Screen Customiser File (Override statements only).
+screen purchase-orders
+	{
+	mode
+		{
+		name = "prev-scr"
+		suppress = true
+		}
+	mode
+		{
+		name = "next-scr"
+		suppress = true
+		}
+	mode
+		{
+		name = "Print Labels"
+		add = true
+		}
+	trigger
+		{
+		trigger_point = confirmed
+		name = "Print Labels"
+		run = "stk/m42stklab" "-polabel" po-order-no po-backorder-flag " " " "
+		type = pronto
+		}
+	mode
+		{
+		name = "md-order-enquiry"
+		text = "P/O Enq"
+		}
+	}

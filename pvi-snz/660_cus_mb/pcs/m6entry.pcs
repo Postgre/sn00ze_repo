@@ -14,7 +14,7 @@ accept
 	coordinate = 9.00,26.00
 	helpline = "Territory Code"
 	default = "  "
-	picture = x(2)
+	picture = x(4)
 	#-- uppercase = true
 	}
 display
@@ -30,9 +30,24 @@ trigger
 	{
 	trigger_point = on_help
 	name = po-user-only-alpha4-1
-	#run = "so/m5ordenq" "-enq-by-terr-rep"
-	#run = "deb/m10cdterr"
 	#screen i85codes-enquiry params 1) 2) -params 3) -e
+	run = "so/snzf2lookup" "-lookup" "TC" po-user-only-alpha4-1
+	type = pronto
+	}
+trigger
+	{
+	trigger_point = before_accept
+	name = po-user-only-alpha4-1
+	#run = "rmd/deb/verifyacct" po-user-only-alpha4-1
+	run = "so/snzf2lookup" "-default" "TC" po-user-only-alpha4-1
+	type = pronto
+	}
+trigger
+	{
+	trigger_point = after_accept
+	name = po-user-only-alpha4-1
+	#run = "rmd/deb/verifyacct" po-user-only-alpha4-1
+	run = "so/snzf2lookup" "-verify" "TC" po-user-only-alpha4-1
 	type = pronto
 	}
 }

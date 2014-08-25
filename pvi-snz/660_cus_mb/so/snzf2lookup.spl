@@ -1,0 +1,90 @@
+//-------------------------------------------------------------------------
+// 25aug14	mb  {0} initial create snzf2lookup.spl
+//
+// eg. call from $CUS/pcs/m6entry.pcs :
+//
+//			run = "$CUS/so/snzf2lookup" "-lookup" "TC" po-user-only-alpha4-1
+//			run = "$CUS/so/snzf2lookup" "-verify" "TC" po-user-only-alpha4-1
+//			run = "$CUS/so/snzf2lookup" "-default" "TC" po-user-only-alpha4-1
+//
+//-------------------------------------------------------------------------
+version-number "snzf2Lookup 20140825"
+#include "../../../../bms/include/i85codes.spl"
+
+procedure main
+	returning
+		lr-return-code	like so-territory-code
+	//--
+	field	lf-param1 type string
+			lf-param2 type string
+			lf-param3 type string
+	//--
+	get system-control first
+	//--
+	//-- set default TC territory store via user login id :
+	set lr-return-code = spaces
+	get system-user
+		on index	user-id sys-comp-code
+		key is	login-id() sys-consolidation-division
+	//case "-user-store-id"
+	set lr-return-code = user-store-id
+	//--
+	set lf-param1	= get-param(1) //-- eg. "-lookup"  "-verify"  "-default"
+	set lf-param2	= get-param(2) //-- eg. "TC" = territory lookup / verify
+	set lf-param3	= get-param(3) //-- eg. po-user-only-alpha4-1 = code to lookup
+	//--
+	switch on lf-param1 //-- "-lookup"  "-verify"  "-default"
+	case "-default"
+		set lr-return-code = user-store-id
+	case "-lookup"
+		//--
+		set i85codes-enq = YES
+		set sys-tbl-type = lf-param2 //"TC"
+		do m85-code-maint
+		//do i85codes-table-help
+		//if sys-tbl-code > SPACES
+			set lr-return-code = sys-tbl-code
+		//endif
+		//reenter lr-return-code optional
+		//--
+	case "-verify"
+		//--
+		get system-table lookup
+			on index sys-tbl-type sys-tbl-code
+			key is lf-param2 lf-param3 //"TC" po-user-only-alpha4-1 ws-store
+		on error
+			//if lf-param3 = SPACES
+			//else
+				message concat("Store '" strconcat(lf-param3) "' is not defined.")
+				//reenter ws-store
+			//endif
+		//else
+		//	set lr-return-code = sys-tbl-code //user-store-id
+		endon //get system-table lookup
+		//--
+	endswitch //switch on lf-param1
+		//--
+endprocedure //main ----------------------------------------------------------
+
+/*
+		on help-key
+			set sys-tbl-type = "TC"
+			do i85codes-table-help
+			if sys-tbl-code > SPACES
+				set ws-store = sys-tbl-code
+			endif
+			reenter ws-store optional
+		endon
+		validations
+			get system-table lookup
+				on index sys-tbl-type sys-tbl-code
+				key is "TC" ws-store
+			on error
+				if ws-store = SPACES
+				else
+					message "Store entered is not defined."
+					reenter ws-store
+				endif
+			endon
+		endvalidations
+*/
