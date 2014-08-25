@@ -1,0 +1,44 @@
+who -u|grep -v "`date +%b" "%d`"|awk ' { print "skill -KILL -v "$2" "$5" ."substr($5,length($5)-1,length($5))"." } '
+
+#-- kill sessions idle for over 9 hours :
+who -u|grep -v "`date +%b" "%d`"|awk ' { if(substr($5,length($5)-4,length($5)-3) > 9 ) print "skill -KILL -v "$2" "$5" ."substr($5,length($5)-4,length($5)-3)"." } '
+
+#-- kill sessions idle for over 45 mins :
+who -u|grep -v "`date +%b" "%d`"|awk ' { if(substr($5,length($5)-1,length($5)) > 45 ) print "skill -KILL -v "$2" "$5" ."substr($5,length($5)-1,length($5))"." } '
+
+#-- skill replaced by pkill :
+#-- -----------------------------
+# pkill -KILL -t pts/#
+#-- -----------------------------
+
+#-- kill sessions idle for over 45 mins :
+who -u|grep -v "`date +%b" "%d`"|awk ' { if(substr($5,length($5)-1,length($5)) > 45 ) print "pkill -KILL -t "$2" "$5" ."substr($5,length($5)-1,length($5))"." } '
+
+#-- kill sessions idle for over 9 hours :
+who -u|grep -v "`date +%b" "%d`"|awk ' { if(substr($5,length($5)-4,length($5)-3) > 9 ) print "pkill -KILL -t "$2" "$5" ."substr($5,length($5)-4,length($5)-3)"." } '
+
+#-- ------------------------------
+#-- ------------------------------
+#-- sort by idle column :
+who -u|sort -n -k 5
+#-- ------------------------------
+#-- ------------------------------
+#-- force kill logout ALL idle USERS after 24 hours idle :
+#echo "pkill -KILL -t `who -u | awk '$5 == "old" && $1 != "psd" && $1 != "root" && $1 != "pronto" { print $2}'` "
+echo "`who -u | awk '$5 == "old" && $1 != "psd" && $1 != "root" && $1 != "pronto" { print \"pkill -KILL -t \" $2}'` "
+#
+#-- force kill logout ALL idle USERS after 35 mins idle :
+#echo "pkill -KILL -t `who -u | awk 'substr($5,length($5)-1,length($5)) > 35 && $1 != "psd" && $1 != "root" && $1 != "pronto" { print $2}'` "
+echo "`who -u | awk 'substr($5,length($5)-1,length($5)) > 35 && $1 != "psd" && $1 != "root" && $1 != "pronto" { print \"pkill -KILL -t \" $2}'` "
+#
+#-- ------------------------------
+#-- force kill logout ALL idle USERS after 9 hours idle :
+#-- ------------------------------
+#-- -----------------------------------------------------------------
+echo "`who -u | awk 'substr($5,length($5)-4,length($5)-3) > "09" && $1 != "psd" && $1 != "root" && $1 != "pronto" { print \"pkill -KILL -t \" $2}'` "
+#-- -----------------------------------------------------------------
+
+#echo "`who -u | awk 'substr($5,length($5)-4,length($5)-3) > "09" && $1 != "psd" && $1 != "root" && $1 != "pronto" { print \"pkill -KILL -t \" $1 " "$5}'` "
+#--   echo "pkill -KILL -t `who -u | awk 'substr($5,length($5)-4,length($5)-3) > 9 && $1 != "psd" && $1 != "root" && $1 != "pronto" { print $2}'` "
+#-- ------------------------------
+#-- ------------------------------
