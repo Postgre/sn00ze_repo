@@ -13,10 +13,11 @@
 //  Date	Who	Chg#	What
 //	28mar14	rmd	{4}		upgrade to 710
 ///////////////////////////////////////////////////////////////////////////////
+
+
+
 // promoprice.spl
 //when		ref		who	notes
-//18aug14	rmd		{5}	switch to p7branch imput during transition, switch back to p710branch
-//						once all stores are cut across
 //22Aug13		LG	Added New p7branch Promopricing file Location.
 //19jul10			rmd if routine runs in morning, can clear dates on last day of sale
 //02sep09	11914	rmd	add routine to clear data for expired promo
@@ -36,8 +37,7 @@ field
 object tmp-promo-price
 	type external
 	separator "|"
-	//file "/p710branch/Promo/promoPricing.txt"	//{5}
-	file "/p7branch/Promo/promoPricing.txt"   	//{5}
+	file "/p710branch/Promo/promoPricing.txt"
 	// Below Out due to it being used from Old Product Database - LG Aug2213
 	//file "/tmp/extract/promoPricing.txt"
 	record
@@ -71,8 +71,7 @@ procedure silent-process
 	//
 	open tmp-promo-price
 	        //file "/p7branch/Promo/promoPricing.txt" read-only
-	        //file "/p710branch/Promo/promoPricing.txt" read-only   //{5}
-	        file "/p7branch/Promo/promoPricing.txt" read-only		//{5}
+	        file "/p710branch/Promo/promoPricing.txt" read-only
 	        // Below Out due to it being used from Old Product Database  - LG Aug2213
 		//file "/tmp/extract/promoPricing.txt" read-only
 		on error

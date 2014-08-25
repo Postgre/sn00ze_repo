@@ -11,8 +11,6 @@
 //===========================================================================//
 //  Modification History
 //  Date	Who	Chg#	What
-//	18aug14	rmd	{19}	switch to p7branch imput during transition, switch back to p710branch
-//						once all stores are cut across
 //	26mar14	rmd	{18}	710 specific changes
 //	26mar14	rmd	{17}	suppress kits
 //	24mar14	rmd			progress
@@ -211,8 +209,7 @@ procedure main
 	on error
 		abort 'System not installed'
 	endon
-	//set ws-input-dir = "/p710branch/"	//{16}	//{19}
-	set ws-input-dir = "/p7branch/"	//{16}		//{19}
+	set ws-input-dir = "/p710branch/"	//{16}
 	set ws-price-region = uppercase(get-env("PRCREGION"))
 	//message concat("Price Region:" ws-price-region)
 	//determine state prefix
@@ -1229,7 +1226,6 @@ local field
 	//open ff-stock-master file "/rmddev/ff-stock-master.txt"
 	//open ff-stock-master file "/tmp/ff-stock-master.txt"
 	open ff-stock-master file strconcat(lf-directory "ff-stock-master.txt")
-		read-only
 	on error	//20dec12
 		print
 			"cannot open"
@@ -1406,7 +1402,6 @@ local field
 	//endon
 	//
 	open ff-cre-master file strconcat(lf-directory "ff-cre-master.txt")
-		read-only
 	on error	//20dec12
 		print
 			"cannot open"
@@ -1452,7 +1447,6 @@ local field
 	endon
 	//
 	open ff-stock-notes file strconcat(lf-directory "ff-stock-notes.txt")
-		read-only
 	on error	//20dec12
 		print
 			"cannot open"
