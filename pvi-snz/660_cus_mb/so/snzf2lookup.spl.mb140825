@@ -35,18 +35,16 @@ procedure main
 	//--
 	switch on lf-param1 //-- "-lookup"  "-verify"  "-default"
 	case "-default"
-		if lf-param3 = spaces
-			set lr-return-code = user-store-id
-		endif
+		set lr-return-code = user-store-id
 	case "-lookup"
 		//--
+		set i85codes-enq = YES
 		set sys-tbl-type = lf-param2 //"TC"
-		//set i85codes-enq = YES
-		//do m85-code-maint
-		do i85codes-table-help
-		if sys-tbl-code > SPACES
+		do m85-code-maint
+		//do i85codes-table-help
+		//if sys-tbl-code > SPACES
 			set lr-return-code = sys-tbl-code
-		endif
+		//endif
 		//reenter lr-return-code optional
 		//--
 	case "-verify"
