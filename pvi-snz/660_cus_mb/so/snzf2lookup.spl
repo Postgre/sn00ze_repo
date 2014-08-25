@@ -55,8 +55,9 @@ procedure main
 		on error
 			//if lf-param3 = SPACES
 			//else
-				message concat("Store '" strconcat(lf-param3) "' is not defined.")
+				message concat("Store '" strconcat(lf-param3) "' is not a valid Territory.")
 				//reenter ws-store
+				exit 1
 			//endif
 		//else
 		//	set lr-return-code = sys-tbl-code //user-store-id

@@ -29,3 +29,49 @@ screen purchase-orders
 		text = "P/O Enq"
 		}
 	}
+screen show-order
+	{
+accept
+	{
+	name = po-user-only-alpha4-1
+	suppress = false
+	coordinate = 9.00,36.00
+	helpline = "Territory Code"
+	default = "  "
+	picture = x(4)
+	#-- uppercase = true
+	}
+display
+	{
+	text = "Territory"
+	coordinate = 9.00,41.00
+	add = true
+	attributes = background,left,prompt
+	scale = 100
+	picture = x(12)
+	}
+trigger
+	{
+	trigger_point = on_help
+	name = po-user-only-alpha4-1
+	#screen i85codes-enquiry params 1) 2) -params 3) -e
+	run = "so/snzf2lookup" "-lookup" "TC" po-user-only-alpha4-1
+	type = pronto
+	}
+trigger
+	{
+	trigger_point = before_accept
+	name = po-user-only-alpha4-1
+	#run = "rmd/deb/verifyacct" po-user-only-alpha4-1
+	run = "so/snzf2lookup" "-default" "TC" po-user-only-alpha4-1
+	type = pronto
+	}
+trigger
+	{
+	trigger_point = after_accept
+	name = po-user-only-alpha4-1
+	#run = "rmd/deb/verifyacct" po-user-only-alpha4-1
+	run = "so/snzf2lookup" "-verify" "TC" po-user-only-alpha4-1
+	type = pronto
+	}
+	}
