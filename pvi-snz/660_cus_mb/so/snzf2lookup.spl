@@ -38,7 +38,8 @@ procedure main
 	switch on lf-param1 //-- "-lookup"  "-verify"  "-default"
 	case "-default"
 		if lf-param3 = spaces
-			set lr-return-code = user-store-id
+			set lf-param3			= user-store-id
+			set lr-return-code	= user-store-id
 		endif
 	case "-lookup"
 		//--
