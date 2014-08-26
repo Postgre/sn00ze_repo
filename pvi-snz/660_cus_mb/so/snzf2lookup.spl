@@ -7,6 +7,8 @@
 //			run = "$CUS/so/snzf2lookup" "-verify" "TC" po-user-only-alpha4-1
 //			run = "$CUS/so/snzf2lookup" "-default" "TC" po-user-only-alpha4-1
 //
+// future ref: cli shell command line to return current user login ip address :
+// $ who -m | awk '{print $5}' #-- get ip address of user current login
 //-------------------------------------------------------------------------
 version-number "snzf2Lookup 20140825"
 #include "../../../../bms/include/i85codes.spl"
