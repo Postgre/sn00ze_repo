@@ -29,7 +29,7 @@ procedure main
 		on index	user-id sys-comp-code
 		key is	login-id() sys-consolidation-division
 	//case "-user-store-id"
-	set lr-return-code = user-store-id
+	set lr-return-code = lf-param3 //user-store-id
 	//--
 	set lf-param1	= get-param(1) //-- eg. "-lookup"  "-verify"  "-default"
 	set lf-param2	= get-param(2) //-- eg. "TC" = territory lookup / verify
