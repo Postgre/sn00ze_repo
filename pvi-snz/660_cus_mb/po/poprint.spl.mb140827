@@ -11,11 +11,9 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//	20aug14	rmd	{3}		retrieve territory (store) code associated with PO to
-//						po-user-only-alpha4-1 allowing Territory address print
-//	07aug14	mb	{2}		fix issue where only option to exit is to say YES to update email address.
+//	07aug14	mb		{2}		fix issue where only option to exit is to say YES to update email address.
 //	08may13	rmd	{1}		increase email address to 60 char na-name + na-company
-//	26jul10	rmd	------	written
+//	26ul10	rmd	------	written
 ///////////////////////////////////////////////////////////////////////////////
 
 
@@ -107,7 +105,7 @@ local field
 	// < {2}
 	lf-temp-email					pic x(60)
 	lf-original-email				pic x(60)
-	lf-cre-accountcode				like cre-accountcode
+	lf-cre-accountcode			like cre-accountcode
 	// > {2}
 	lf-mode							pic x
 	lf-complete						pic x
@@ -117,8 +115,6 @@ local field
 	lf-update-email					pic x
 	lf-printer-name					pic x(15)
 	lf-printer-name2				pic x(15)
-	lf-territory					like territory	//{3}
-	lf-terr-method					pic x			//{3} method used to retrieve territory
 //window @14,55 to @20,110 title "Print, Spool or Email Purchase Order"	//{1}
 //box @14,55 to @19,110 title SPACES                                    //{1}
 window @14,33 to @20,110 title "Print or Email Purchase Order"          //{1}
@@ -144,60 +140,10 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 			exit
 		else
 			set lf-archived-po = TRUE
-			set lf-territory = po-user-only-alpha4-1	//{2}
 		endon
 	else
 		set lf-archived-po = FALSE
-		set lf-territory = po-user-only-alpha4-1	//{2}
 	endon
-	// < {3}
-	if lf-territory = SPACES
-		//1. test for linked order to obtain territory
-		do get-linked-so-terr
-			parameters
-				ws-order-no
-				ws-suffix
-			returning
-				lf-territory
-		if lf-territory != SPACES
-			set lf-terr-method = "L"	//territory from linked SO
-		endif
-	else
-		set lf-terr-method = "P"		//territory from PO
-	endif
-	if lf-territory = SPACES
-		//2. determine territory based on user-id
-		if num(substring(po-user-name,4,6)) > 0
-			set lf-territory = substring(po-user-name,4,6)
-			set lf-terr-method = "U"
-		endif
-	endif
-	display lf-terr-method	@15,63 background
-	accept lf-territory @15,57 title "Store:"
-		default lf-territory
-		uppercase
-		validation
-			//#| lookup helper and validation
-			if num(lf-territory) > 0
-				get purchase-order lock
-					on index po-order-no po-backorder-flag
-					key is ws-order-no ws-suffix
-				on error
-					get purchase-order-archive lock
-						on index po-order-no po-backorder-flag
-						key is ws-order-no ws-suffix
-					on error
-					else
-						set po-user-only-alpha4-1 = lf-territory
-						update purchase-order-archive
-					endon				
-				else
-					set po-user-only-alpha4-1 = lf-territory
-					update purchase-order				
-				endon
-			endif
-		endvalidation
-	// > {3}
 	if lf-mode = "E"
 		//retrieve recipient address, warn if none exists, allow override and update with new value
 		get name-and-address-master lock
@@ -383,8 +329,7 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		set lf-printer-name2 = getenv("POPRINT")
 		//display "Choose Printer:"	@16,61 background	//{1}
 		//accept lf-printer-name @16,77                 //{1}
-		//display "Choose Printer:"	@16,31 background   //{1}	//{3}
-		display "Printer:"	@16,38 background   				//{3}
+		display "Choose Printer:"	@16,31 background   //{1}
 		accept lf-printer-name @16,47                   //{1}
 			default lf-printer-name
 			//show-value
@@ -542,35 +487,3 @@ local field
 	//set tmp-prt-name = lf-all-printer
 	//insert tmp-printers
 endprocedure  // build-printers-list  ---------------------------------------
-
-// < {3}
-procedure get-linked-so-terr
-parameters
-	lp-po-order-no              like po-order-no      
-	lp-po-backorder-flag        like po-backorder-flag
-returning                        
-	lr-territory        		like territory        
-	extract sales-order-line-purchase
-		on index solp-po-order-no solp-backorder-flag solp-l-seq
-		key is lp-po-order-no lp-po-backorder-flag 0
-		next same solp-po-order-no solp-backorder-flag
-	detail
-		get sales-order
-			on index so-order-no so-bo-suffix
-		on error
-			get sales-order-archive
-				on index so-order-no so-bo-suffix
-			on error
-				continue
-			else
-				set lr-territory = so-territory-code
-				break
-			endon
-		else
-			set lr-territory = so-territory-code
-			break		
-		endon
-	endextract
-endprocedure // get-linked-so-terr --------------------------------------------
-
-// > {3}
