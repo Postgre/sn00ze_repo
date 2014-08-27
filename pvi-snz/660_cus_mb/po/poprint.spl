@@ -1,0 +1,489 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	poprint.spl
+//  Program Desc:	PO Print wrapper
+//  Requested By:	Lionel van Niekerk
+//  Request Date:	26jul10
+//===========================================================================//
+//  Copyright ProViewIT Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	07aug14	mb		{2}		fix issue where only option to exit is to say YES to update email address.
+//	08may13	rmd	{1}		increase email address to 60 char na-name + na-company
+//	26ul10	rmd	------	written
+///////////////////////////////////////////////////////////////////////////////
+
+
+mode select-mode
+	prompt "Select"
+	currency
+	help "Press [ENTER] to select sequence"
+
+object tmp-printers
+	type memory
+	record
+		tmp-prt-name		type string
+	endrecord
+	key is tmp-prt-name unique
+
+field
+	ws-order-no			like so-order-no
+	ws-suffix			pic xx // like so-bo-suffix
+	ws-order-type		pic x
+	ws-print-or-spool	pic x
+
+procedure main
+//parameters
+//	lp-po-order-no              like po-order-no
+//	lp-po-backorder-flag		like po-backorder-flag
+	//
+	if get-param(1) = "-s"
+		set ws-order-no				= num(get-param(2))
+		set ws-suffix				= get-param(3)
+		//
+		get purchase-order
+			on index po-order-no po-backorder-flag
+			key is ws-order-no ws-suffix
+		on error
+			get purchase-order-archive
+				on index po-order-no po-backorder-flag
+				key is ws-order-no ws-suffix
+			on error
+				message "Exiting, PO not found:"  ws-order-no ws-suffix
+				exit
+			endon
+		endon
+		do pse-po
+	else
+		//non standard PO call, pass parameters untouched to vanilla PO program
+		message strconcat("Non standard call (" get-param(1) ") reverting to po/m62custom.")
+		spl "po/m62custom"
+			parameters
+				get-param(1)
+				get-param(2)
+				get-param(3)
+				get-param(3)
+				get-param(4)
+				get-param(5)
+				get-param(6)
+				get-param(7)
+				get-param(8)
+				get-param(9)
+	endif
+endprocedure // main ----------------------------------------------------------
+
+// < {2}
+#define UPDATE_EMAIL_INIT(ACODE,BEMAIL) \
+	set accountcode = ACODE \
+	set na-type = "E" \
+	set na-name		= substring(BEMAIL,1,30) \
+	set na-company	= substring(BEMAIL,31,60) \
+//end-#define UPDATE_EMAIL_INIT
+
+//UPDATE_EMAIL(lf-cre-accountcode,lf-temp-email)
+#define UPDATE_EMAIL(ACODE,BEMAIL) \
+	get name-and-address-master \
+		on index accountcode na-type \
+		key is ACODE "E" \
+	on error \
+		UPDATE_EMAIL_INIT(ACODE,BEMAIL) \
+		insert name-and-address-master \
+	else \
+		UPDATE_EMAIL_INIT(ACODE,BEMAIL) \
+		update name-and-address-master \
+	endon //get name-and-address-master
+//end-#define UPDATE_EMAIL(ACODE,BEMAIL)
+// > {2}
+
+procedure pse-po
+local field
+	//lf-email-address				pic x(30)	//{1}
+	lf-email-address				pic x(60)   //{1}
+	// < {2}
+	lf-temp-email					pic x(60)
+	lf-original-email				pic x(60)
+	lf-cre-accountcode			like cre-accountcode
+	// > {2}
+	lf-mode							pic x
+	lf-complete						pic x
+	lf-faxmail-from					pic x(40)
+	lf-command						pic x(200)
+	lf-archived-po					type boolean
+	lf-update-email					pic x
+	lf-printer-name					pic x(15)
+	lf-printer-name2				pic x(15)
+//window @14,55 to @20,110 title "Print, Spool or Email Purchase Order"	//{1}
+//box @14,55 to @19,110 title SPACES                                    //{1}
+window @14,33 to @20,110 title "Print or Email Purchase Order"          //{1}
+box @14,33 to @19,110 title SPACES                                      //{1}
+	set lf-mode = "P"
+	//display concat(strconcat(cre-accountcode) " PO: " str(ws-order-no) strconcat(ws-suffix)) @15,80 background bold	//{1}
+	display concat(strconcat(cre-accountcode) " PO: " str(ws-order-no) strconcat(ws-suffix)) @15,50 background bold     //{1}
+	//accept lf-mode @15,77 title "Print or Email:"	//{1}
+	accept lf-mode @15,47 title "Print or Email:"   //{1}
+		default lf-mode
+		help "Print or Email this Purchse Order"
+		allowed "P" "S" "E"
+		uppercase
+	get purchase-order
+		on index po-order-no po-backorder-flag
+		key is ws-order-no ws-suffix
+	on error
+		get purchase-order-archive
+			on index po-order-no po-backorder-flag
+			key is ws-order-no ws-suffix
+		on error
+			message "Exiting, PO not found:"  ws-order-no ws-suffix
+			exit
+		else
+			set lf-archived-po = TRUE
+		endon
+	else
+		set lf-archived-po = FALSE
+	endon
+	if lf-mode = "E"
+		//retrieve recipient address, warn if none exists, allow override and update with new value
+		get name-and-address-master lock
+			on index accountcode na-type
+			key is cre-accountcode "E"
+		on error
+			set na-name = SPACES
+		endon
+		if na-name = SPACES or pattern(na-name, "@") = 0
+			message "No valid email address for " strconcat(cre-accountcode) ", please provide one"
+		endif
+		//<{1}
+		//set lf-email-address = na-name
+		if strlen(na-name) = 30
+			set lf-email-address = strconcat(na-name na-company)
+		else
+			set lf-email-address = na-name
+			set na-company = SPACES
+			update name-and-address-master
+		endif
+		//display "Email Address:"	@16,62 background   //{1}
+		//accept lf-email-address		@16,77          //{1}
+		set lf-temp-email			= spaces		//{2}
+	//-- --------------------------------------------------
+	//-- note : the following 'Update email? ' is important, otherwise the TITLE does not display further down :
+	//-- --------------------------------------------------
+		accept lf-update-email
+			@17,47 
+			title "Update email?:"
+			read-only
+	/*
+		display "Email Address:"	@16,32 background	//{1}
+		accept lf-email-address		@16,47              //{1}
+			default lf-email-address
+	*/
+	//-- --------------------------------------------------
+		accept lf-email-address
+			@16,47 
+			title "Email Address:"
+			default lf-email-address
+			help "Enter the email address to send the Purchase Order to."
+			//allowed "P" "S" "E"
+			//uppercase
+			validation
+				if pattern(lf-email-address, "@") = 0 or pattern(lf-email-address, ".") = 0 or pattern(strconcat(lf-email-address), " ") > 0 or pattern(lf-email-address, "\") > 0 or pattern(lf-email-address, "/") > 0
+					message "Email address is not valid:" lf-email-address
+					reenter lf-email-address
+				endif
+				//message "lf-email-address:" lf-email-address ":"
+				//message "na-name:" na-name ":"
+				//if lf-email-address != na-name                    	//{1}
+				if lf-email-address != strconcat(na-name na-company)    //{1}
+					// < {2}
+					set lf-original-email	= strconcat(na-name na-company)
+					set lf-temp-email			= spaces
+					// > {2}
+					//display "Update Email?:" 	@17,62 background   //{1}
+					//accept lf-update-email 		@17,77          //{1}
+				/*
+					display "Update Email?:" 	@17,32 background	//{1}
+					accept lf-update-email 		@17,47              //{1}
+				*/
+					accept lf-update-email
+						@17,47 
+						title "Update email?:"
+						//tle "Email Address:"
+						uppercase
+						allowed "Y" "N"
+						default "N"
+						help "Update supplier's email address with the entered email address?"
+					if lf-update-email = "Y"
+						get name-and-address-master
+							on index accountcode na-type
+							key is cre-accountcode "E"
+						on error
+							set accountcode = cre-accountcode
+							set na-type = "E"
+							//set na-name = lf-email-address                	//{1}
+							set na-name = substring(lf-email-address,1,30)      //{1}
+							set na-company = substring(lf-email-address,31,60)  //{1}
+							insert name-and-address-master
+						else
+							set accountcode = cre-accountcode
+							set na-type = "E"
+							//set na-name = lf-email-address                	//{1}
+							set na-name = substring(lf-email-address,1,30)      //{1}
+							set na-company = substring(lf-email-address,31,60)  //{1}
+							update name-and-address-master
+						endon
+					else
+						/* // {2} //-- fix issue where only option to exit is to say YES to update email address.
+						reenter lf-email-address
+						*/ // {2}
+					// < {2}
+						set lf-original-email	= strconcat(na-name na-company)
+						set lf-temp-email			= lf-email-address
+						set lf-cre-accountcode	= cre-accountcode
+						UPDATE_EMAIL(lf-cre-accountcode,lf-temp-email)
+					// > {2}
+					endif
+				endif
+			endvalidation
+		//inject 'from' address in PO header
+		get system-user-control
+			on index user-id
+			key is po-user-name
+		on error
+			set suc-user-email = strconcat("whse" po-whse-code "@snooze.com.au")
+		endon
+		//if login-id() = "robd"
+		//	message user-id
+		//endif
+		do build-faxmail-sender
+			parameters
+				suc-user-email
+			returning
+				lf-faxmail-from
+		//message lf-faxmail-from
+		//re-get po
+		set po-user-only-alpha20-1 = substring(lf-faxmail-from,1,20)
+		set po-user-only-alpha20-2 = substring(lf-faxmail-from,21,40)
+		if lf-archived-po
+			update purchase-order-archive
+		else
+			update purchase-order
+		endif
+		//on error
+		//	message "Cannot insert P/O 'From' Address"
+		//endon
+		//message po-user-only-alpha20-1
+		//message po-user-only-alpha20-2
+
+		//new $CUS/fm_ppo.sh
+		//#!/bin/sh
+		//#POPRINT=fm_ppo; export POPRINT;prospl po/m62custom -s $1 $2 -print
+		//if [ -z $2 ]
+		//then
+		//	POPRINT=tf_faxmail; export POPRINT;prospl po/m62custom -s $1 ' ' -print
+		//else
+		//	POPRINT=tf_faxmail; export POPRINT;prospl po/m62custom -s $1 $2 -print
+		//fi
+
+
+		//command "sh"
+		//	parameters
+		//		"-c"
+		//		//concat("set POPRINT=fm_ppo; export POPRINT;prospl po/m62custom -s " str(ws-order-no) " " "  " ws-suffix " " "-print")
+		//		concat("$CUS/fm_ppo.sh " str(ws-order-no) " " ws-suffix) //#!/bin/sh POPRINT=fm_ppo; export POPRINT;prospl po/m62custom -s $1 $2 -print
+		//		ws-order-no
+		//		ws-suffix
+		if ws-suffix = SPACES
+			set lf-command = concat("POPRINT=tf_faxmail; export POPRINT;prospl po/m62custom -s " str(ws-order-no) " " "'  '" " " "-print")
+		else
+			set lf-command = concat("POPRINT=tf_faxmail; export POPRINT;prospl po/m62custom -s " str(ws-order-no) " " ws-suffix " " "-print")
+		endif
+		command "sh"
+			parameters
+				"-c"
+				strconcat(lf-command)
+
+// < {2}
+		if lf-temp-email = spaces
+			//-- temp change of email address was not entered earlier.
+		else
+			//-- restore original email address.
+			UPDATE_EMAIL(lf-cre-accountcode,lf-original-email)
+		endif //lf-temp-email = spaces
+// > {2}
+		//display "Complete?:"     	@17,91 background 	//@17,66 background	//{1}
+		//accept lf-complete			@17,102 			//@17,77        //{1}
+		display "Complete?:"     	@18,36 background 	//@17,66 background //{1}
+		accept lf-complete			@18,47 			//@17,77                //{1}
+			uppercase
+			allowed "Y" "N"
+			default "Y"
+			help "Have you completed working with this spool file?"
+		if lf-complete = "N"
+			reenter lf-mode
+		endif
+	elseif lf-mode = "P"
+		do build-printers-list
+		set lf-printer-name = getenv("POPRINT")
+		set lf-printer-name2 = getenv("POPRINT")
+		//display "Choose Printer:"	@16,61 background	//{1}
+		//accept lf-printer-name @16,77                 //{1}
+		display "Choose Printer:"	@16,31 background   //{1}
+		accept lf-printer-name @16,47                   //{1}
+			default lf-printer-name
+			//show-value
+		on help-key
+			do get-printer
+				returning lf-printer-name2
+			set lf-printer-name = lf-printer-name2
+			refresh lf-printer-name
+			reenter optional
+		endon
+		validation
+			set lf-printer-name = lf-printer-name2
+			if lf-printer-name = SPACES
+				message "Please choose a printer"
+				reenter lf-printer-name
+			else
+				refresh lf-printer-name
+			endif
+		endvalidation
+		//set ws-env-printer = lf-printer-name
+		//set ws-spool-report = NO
+
+
+		if ws-suffix = SPACES
+			set lf-command = concat("POPRINT=" strconcat(lf-printer-name)"; export POPRINT;prospl po/m62custom -s " str(ws-order-no) " " "'  '" " " "-print")
+		else
+			set lf-command = concat("POPRINT=" strconcat(lf-printer-name)"; export POPRINT;prospl po/m62custom -s " str(ws-order-no) " " ws-suffix " " "-print")
+		endif
+		command "sh"
+			parameters
+				"-c"
+				strconcat(lf-command)
+		//display "Complete?:"     	@17,91 background 	//@17,66 background	//{1}
+		//accept lf-complete			@17,102 			//@17,77        //{1}
+		display "Complete?:"     	@18,61 background 	//@17,66 background //{1}
+		accept lf-complete			@18,72 			//@17,77                //{1}
+			uppercase
+			allowed "Y" "N"
+			default "Y"
+			help "Have you completed working with this spool file?"
+		if lf-complete = "N"
+			reenter lf-mode
+		endif
+	elseif lf-mode = "S"
+		spl
+			"po/m62custom"
+		parameters
+			"-s"
+			ws-order-no
+			ws-suffix
+			"-spool"
+		//display "Complete?:"     	@17,91 background 	//@17,66 background	//{1}
+		//accept lf-complete			@17,102 			//@17,77        //{1}
+		display "Complete?:"     	@18,61 background 	//@17,66 background //{1}
+		accept lf-complete			@18,72 			//@17,77                //{1}
+			uppercase
+			allowed "Y" "N"
+			default "Y"
+			help "Have you completed working with this spool file?"
+		if lf-complete = "N"
+			reenter lf-mode
+		endif
+	endif
+	if lf-complete = "Y"
+		exit
+	else
+		reenter lf-mode
+	endif
+endprocedure // pse-po --------------------------------------------------------
+
+procedure build-faxmail-sender
+parameter
+	lp-sender-email-address			pic x(60)
+returning
+	lr-faxmail-sender-email    		pic x(60)
+local field
+	i	type numeric
+	c	pic x
+	//message "build-faxmail-sender: " lp-sender-email-address
+	set lr-faxmail-sender-email = SPACES
+	for i = 1 to strlen(lp-sender-email-address)
+		set c = substring(lp-sender-email-address,i,i)
+		if c = "@"
+			//message c "!"
+			set lr-faxmail-sender-email = strconcat(lr-faxmail-sender-email "\@")
+			//message lr-faxmail-sender-email
+		else
+			//message c "x"
+			set lr-faxmail-sender-email = strconcat(lr-faxmail-sender-email c)
+		endif
+		//message lr-faxmail-sender-email
+	endfor
+	set lr-faxmail-sender-email = concat("@F111 " strconcat(lr-faxmail-sender-email) "@")
+	//if login-id() = "robd"
+	//	message lp-sender-email-address
+	//	message lr-faxmail-sender-email
+	//endif
+endprocedure // build-faxmail-sender ------------------------------------------
+
+//screen display-printers
+screen get-printer
+returning
+	lr-prnt-name				pic x(15) // type string
+	//
+	window @1,1 to @8,15
+		title "Printers"
+	//
+	primary tmp-printers
+		allowed select-mode search
+		datagrid occurs 5
+		review-from-start
+detail
+	display tmp-prt-name @2,1 pic x(15)
+		title "Printer"
+confirm auto
+confirmed
+	if screen-mode() = select-mode
+		set lr-prnt-name = strconcat(tmp-prt-name)
+		exit
+	endif
+endconfirm
+endscreen //get-printer  ---------------------------------------------
+
+procedure build-printers-list						//rcMay 07, 2009
+local field
+	lf-all-printer				pic x(300) //type string
+	j							type numeric
+	//
+	open tmp-printers truncate temporary
+	//
+	set lf-all-printer = getenv("PROPRINTERS")
+	//set lf-all-printer = 'ho_tfq_inv:31T_tfq_po:31T_tfqapn:31T_tfqinv:31Ttfqinvwh'
+	if lf-all-printer = SPACES
+		set lf-all-printer = "ho_tfq_inv:tf_faxmail"
+	endif
+	//
+	set j = pattern(lf-all-printer,':')
+	//
+	while j >= 1
+     	set j = pattern(lf-all-printer,':')
+        set tmp-prt-name = substring(lf-all-printer,1,j - 1)
+        //if pattern(tmp-prt-name,'tfq') and pattern(tmp-prt-name,'inv') 	//rmd23jul10
+        if pattern(tmp-prt-name,'inv')
+        	//we don't want inv printers!
+        else
+        	//could have duplicated printers in PROPRINTERS
+        	get tmp-printers
+        	on error
+        		insert tmp-printers
+        	endon
+        endif													//rmd23jul10
+        set lf-all-printer = substring(lf-all-printer,j + 1,strlen(lf-all-printer))
+        set j = pattern(lf-all-printer,':')
+    endwhile
+	//set tmp-prt-name = lf-all-printer
+	//insert tmp-printers
+endprocedure  // build-printers-list  ---------------------------------------
