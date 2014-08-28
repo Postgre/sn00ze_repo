@@ -1,0 +1,1463 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/stk/p7branch
+//  Program Desc:	Branch Stock Upload
+//  Requested By:	Chris Ward
+//  Request Date:	01nov12
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved rrp inc logic
+// 27oct. Unauthorised copying is prohibited
+//===========================================================================//
+//  Modification History
+//  Date	Who	Chg#	What
+//
+//	15oct13	rmd	{13}	preserve pre-existing creditor contact
+//	04sep13 LG	{12}	Insert options for Tasmania, case "T" and case "4" options to set ws-state
+//	21aug13	rmd	{11}	invoke keyword rebuild with -kwrebuild param
+//						prospl pvi-snz/stk/p7branch -kwrebuild
+//	20aug13	rmd	{10}	preserve pre-existing creditor terms and payment settings
+//	16aug13	rmd	{7}		set sup-unit-desc = tsm-stk-unit-desc (sup uom from base uom)
+//				{8}		missing first record even if it is not a header
+//				{9}		force descriptions to uppercase (per Lyn request)
+//	13aug13	rmd	{6}		if state is unknown, fall back to V
+//	20dec12	rmd			handle missing input file
+//	17dec12	rmd			input file dir variable
+//	14dec12	rmd			prices being sent are inc GST
+//						ensure stk-condition-code != "N"
+//						ensure cre-master is being updated if it already exists
+//	30nov12	rmd			cater for longer descriptions up to 6 30char lines
+//	14nov12	rmd			routines to read flat files into tmp
+//	10nov12	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+// which file to choose? store state prefix in sys-spare-alpha2 (N, S, V, W)
+
+
+//if file-exists(strconcat(getenv("POHMDIR"),"/workflow"),0)
+//
+//    set ws-wflow-program = strconcat(getenv("POHMDIR"),"/workflow")
+//
+//else
+//
+//    set ws-wflow-program = "workflow"   // Use PROPATH to find it.
+//
+//endif
+// #include "/pro/pronto/bmsxi3/bms/include/i4kwrdmnt.spl"
+
+//HDS files
+object ff-stock-master type external file "ff-stock-master"
+	record
+		fsm-field-array		pic x(40) occurs 42//38 //30nov12
+	endrecord
+
+object ff-bill-of-materials type external file "ff-bill-of-materials"
+	record
+		fbm-field-array		pic x(40) occurs 18
+	endrecord
+
+object ff-cre-master type external file "ff-cre-master"
+	record
+		fcm-field-array		pic x(40) occurs 27
+	endrecord
+
+object ff-stock-notes type external file "ff-stock-notes"
+	record
+		fsn-field-array		pic x(40) occurs 5
+	endrecord
+
+object tmp-stock-master
+	type memory
+	record
+		tsm-stock-code                      like stock-code                		//f01	A16	tsm-stock-code                  = fsm-field-array[02]
+		tsm-stock-group                     like stock-group               		//f02   A04	tsm-stock-group                 = fsm-field-array[03]
+		tsm-stk-abc-class 			        like stk-abc-class             		//f03   A01	tsm-stk-abc-class 			    = fsm-field-array[04]
+		tsm-stk-stock-status 			    like stk-stock-status          		//f04   A01	tsm-stk-stock-status 			= fsm-field-array[05]
+		tsm-stk-issue-control-code 	        like stk-issue-control-code    		//f05   A01	tsm-stk-issue-control-code 	    = fsm-field-array[06]
+		tsm-stk-condition-code	 	        like stk-condition-code        		//f06   A01	tsm-stk-condition-code	 	    = fsm-field-array[07]
+		tsm-stk-user-group-1 			    pic x(2)            				//f07  	A02	tsm-stk-user-group[1] 			= fsm-field-array[08]
+		tsm-stk-user-group-2 			    pic x(2)            				//f08  	A02	tsm-stk-user-group[2] 			= fsm-field-array[09]
+		tsm-stk-description                 like stk-description           		//f09   A30	tsm-stk-description             = fsm-field-array[10]
+		tsm-stk-desc-line-2 			    like stk-desc-line-2           		//f10   A30	tsm-stk-desc-line-2 			= fsm-field-array[11]
+		tsm-stk-desc-line-3 			    like stk-desc-line-3           		//f11   A30	tsm-stk-desc-line-3 			= fsm-field-array[12]
+		tsm-stk-desc-line-4 			    like stk-description           		//f12   A30	tsm-stk-desc-line-4 			= fsm-field-array[13] //30nov12
+		tsm-stk-desc-line-5 			    like stk-description           		//f13   A30	tsm-stk-desc-line-5 			= fsm-field-array[14] //30nov12
+		tsm-stk-desc-line-6 			    like stk-description           		//f14   A30	tsm-stk-desc-line-6 			= fsm-field-array[15] //30nov12
+		tsm-stk-unit-desc                   like stk-unit-desc             		//f15   A04	tsm-stk-unit-desc               = fsm-field-array[16]
+		tsm-stk-pack-weight 			    like stk-pack-weight           		//f16   N	tsm-stk-pack-weight 			= num(fsm-field-array[17])
+		tsm-stk-pack-desc                   like stk-pack-desc             		//f17   A04	tsm-stk-pack-desc               = fsm-field-array[18]
+		tsm-stk-pack-qty 				    like stk-pack-qty              		//f18   N	tsm-stk-pack-qty 				= num(fsm-field-array[19])
+		tsm-stk-apn-number 			        like stk-apn-number            		//f19   A20	tsm-stk-apn-number 			    = fsm-field-array[20]
+		tsm-stk-serialized-flag 		    like stk-serialized-flag       		//f20   A01	tsm-stk-serialized-flag 		= fsm-field-array[21]
+		tsm-stk-price-per 			        like stk-price-per             		//f21   N	tsm-stk-price-per 			    = num(fsm-field-array[22])
+		tsm-stk-sort-analysis-code 	        like stk-sort-analysis-code    		//f22   A08	tsm-stk-sort-analysis-code 	    = fsm-field-array[23]
+		tsm-prc-region-code			        like prc-region-code           		//f23   A02	tsm-prc-region-code			    = fsm-field-array[24]
+		tsm-prc-wholesale-price             like prc-wholesale-price       		//f24   N	tsm-prc-wholesale-price         = num(fsm-field-array[25])
+		tsm-prc-recommend-retail            like prc-recommend-retail      		//f25   N	tsm-prc-recommend-retail        = num(fsm-field-array[26])
+		tsm-prc-sales-tax-code              like prc-sales-tax-code        		//f26   N	tsm-prc-sales-tax-code          = num(fsm-field-array[27])
+		tsm-prc-airfreight-price	 	    like prc-airfreight-price      		//f27   N	tsm-prc-airfreight-price	 	= num(fsm-field-array[28])
+		tsm-cre-accountcode                 like cre-accountcode           		//f28   A10	tsm-cre-accountcode             = fsm-field-array[29]
+		tsm-sup-stock-code                  like sup-stock-code            		//f29   A20	tsm-sup-stock-code              = fsm-field-array[30]
+		tsm-sup-stk-description 		    like sup-stk-description       		//f30   A30	tsm-sup-stk-description 		= fsm-field-array[31]
+		tsm-sup-last-buy-price              like sup-last-buy-price        		//f31   N	tsm-sup-last-buy-price          = num(fsm-field-array[32])
+		tsm-sup-last-buy-discount 	        like sup-last-buy-discount     		//f32   N	tsm-sup-last-buy-discount 	    = num(fsm-field-array[33])
+		tsm-sup-unit-of-measure 		    like sup-unit-of-measure       		//f33   N	tsm-sup-unit-of-measure 		= num(fsm-field-array[34])
+		tsm-sup-pack-qty 				    like sup-pack-qty              		//f34   N	tsm-sup-pack-qty 				= num(fsm-field-array[35])
+		tsm-sup-new-buy-price 	 	        like sup-new-buy-price         		//f35   N	tsm-sup-new-buy-price 	 	    = num(fsm-field-array[36])
+		tsm-sup-new-buy-effective-date      like sup-new-buy-effective-date		//f36   D	tsm-sup-new-buy-effective-date  = date-to-julian(fsm-fild-array[37])
+		tsm-stk-sales-tax-paid-rate	        like stk-sales-tax-paid-rate   		//f37   N	tsm-stk-sales-tax-paid-rate	    = num(fsm-field-array[38])
+		tsm-sup-shipping-method-code	    like sup-shipping-method-code  		//f38   A02	tsm-sup-shipping-method-code	= fsm-field-array[39]
+		tsm-stk-alt-unit-desc			    like stk-alt-unit-desc         		//f39   A04	tsm-stk-alt-unit-desc			= fsm-field-array[40]
+		tsm-stk-conversion-factor			like stk-conversion-factor     		//f40	N	tsm-stk-conversion-factor		= num(fsm-field-array[41])
+	endrecord
+	key is tsm-stock-code
+
+object tmp-bill-of-materials
+	type memory
+	record
+		tbm-bom-def-whse					like bom-def-whse               	//f01	A04	tbm-bom-def-whse				= fbm-field-array[02]
+		tbm-bom-line-finish-date			like bom-line-finish-date           //f02   D	tbm-bom-line-finish-date	    = date-to-julian(fbm-field-array[03])
+		tbm-bom-line-link-code				like bom-line-link-code             //f03   A01	tbm-bom-line-link-code		    = fbm-field-array[04]
+		tbm-bom-line-qty-check				like bom-line-qty-check             //f04   A01	tbm-bom-line-qty-check		    = fbm-field-array[05]
+		tbm-bom-line-start-date				like bom-line-start-date            //f05   D	tbm-bom-line-start-date		    = date-to-julian(fbm-field-array[06])
+		tbm-bom-line-type					like bom-line-type                  //f06   A02	tbm-bom-line-type			    = fbm-field-array[07]
+		tbm-bom-overide-item-price			like bom-overide-item-price         //f07   N	tbm-bom-overide-item-price	    = num(fbm-field-array[08])
+		tbm-bom-parent-code					like bom-parent-code                //f08   A16	tbm-bom-parent-code			    = fbm-field-array[09]
+		tbm-bom-plan-percent				like bom-plan-percent               //f09   N	tbm-bom-plan-percent		    = num(fbm-field-array[10])
+		tbm-bom-plan-spread-factor			like bom-plan-spread-factor         //f10   N	tbm-bom-plan-spread-factor	    = num(fbm-field-array[11])
+		tbm-bom-quantity					like bom-quantity                   //f11   N	tbm-bom-quantity			    = num(fbm-field-array[12])
+		tbm-bom-seq-no						like bom-seq-no                     //f12   N	tbm-bom-seq-no				    = num(fbm-field-array[13])
+		tbm-bom-unit-desc					like bom-unit-desc                  //f13   A04	tbm-bom-unit-desc			    = fbm-field-array[14]
+		tbm-bom-wastage-per-cent			like bom-wastage-per-cent           //f14   N	tbm-bom-wastage-per-cent	    = num(fbm-field-array[15])
+		tbm-bom-x-quantity					like bom-x-quantity                 //f15   N	tbm-bom-x-quantity			    = num(fbm-field-array[16])
+		tbm-bom-y-quantity					like bom-y-quantity                 //f16   N	tbm-bom-y-quantity			    = num(fbm-field-array[17])
+		tbm-comp-code						like comp-code                      //f17   A16	tbm-comp-code				    = fbm-field-array[18]
+	endrecord
+	key is tbm-bom-parent-code tbm-comp-code
+
+object tmp-cre-master //stock-supplier
+	type memory
+	record
+		tcm-cre-accountcode					like cre-accountcode                //f01	A10	tcm-cre-accountcode				= fcm-field-array[02]
+		tcm-cr-pay-to-code 					like cr-pay-to-code                 //f02   A10	tcm-cr-pay-to-code 				= fcm-field-array[03]
+		tcm-cr-shortname 					like cr-shortname                   //f03   A30	tcm-cr-shortname 				= fcm-field-array[04]
+		tcm-cr-def-payment-terms 			like cr-def-payment-terms           //f04   A02	tcm-cr-def-payment-terms 		= fcm-field-array[05]
+		tcm-cr-payment-selection	 		like cr-payment-selection           //f05   A01	tcm-cr-payment-selection	 	= fcm-field-array[06]
+		tcm-cr-type 						like cr-type                        //f06   A04	tcm-cr-type 					= fcm-field-array[07]
+		tcm-cr-chq-or-bankdraft 			like cr-chq-or-bankdraft            //f07   A01	tcm-cr-chq-or-bankdraft 		= fcm-field-array[08]
+		tcm-cr-settlement-disc-code 		like cr-settlement-disc-code        //f08   A02	tcm-cr-settlement-disc-code 	= fcm-field-array[09]
+		tcm-cr-volume-disc-code 			like cr-volume-disc-code            //f09   A01	tcm-cr-volume-disc-code 		= fcm-field-array[10]
+		tcm-cr-disc-rate 					like cr-disc-rate                   //f10   N	tcm-cr-disc-rate 				= num(fcm-field-array[11])
+		tcm-cr-contact-name 				like cr-contact-name                //f11   A20	tcm-cr-contact-name 			= fcm-field-array[12]
+		tcm-cr-default-gl-accountcode 		like cr-default-gl-accountcode      //f12   A25	tcm-cr-default-gl-accountcode 	= fcm-field-array[13]
+		tcm-cr-curr-code 					like cr-curr-code                   //f13   A04	tcm-cr-curr-code 				= fcm-field-array[14]
+		tcm-cr-def-purchase-terms-days		like cr-def-purchase-terms-days     //f14   N	tcm-cr-def-purchase-terms-days	= num(fcm-field-array[15])
+		tcm-na-name 						like na-name                        //f15   A30	tcm-na-name 					= fcm-field-array[16]
+		tcm-na-company 						like na-company                     //f16   A30	tcm-na-company 					= fcm-field-array[17]
+		tcm-na-street 						like na-street                      //f17   A30	tcm-na-street 					= fcm-field-array[18]
+		tcm-na-suburb 						like na-suburb                      //f18   A30	tcm-na-suburb 					= fcm-field-array[19]
+		tcm-na-country 						like na-country                     //f19   A30	tcm-na-country 					= fcm-field-array[20]
+		tcm-postcode 						like postcode                       //f20   A10	tcm-postcode 					= fcm-field-array[21]
+		tcm-na-country-code 				like na-country-code                //f21   A03	tcm-na-country-code 			= fcm-field-array[22]
+		tcm-na-phone 						like na-phone                       //f22   A15	tcm-na-phone 					= fcm-field-array[23]
+		tcm-na-fax-no 						like na-fax-no                      //f23   A15	tcm-na-fax-no 					= fcm-field-array[24]
+		tcm-cr-clearing-flag				like cr-clearing-flag               //f24   A01	tcm-cr-clearing-flag			= fcm-field-array[25]
+		tcm-cr-tax-code						like cr-tax-code                    //f25   A02	tcm-cr-tax-code					= fcm-field-array[26]
+		tcm-e-na-company-id					like na-company-id                  //f26   A14	tcm-e-na-company-id				= fcm-field-array[27]
+	endrecord
+	key is tcm-cre-accountcode
+
+object tmp-stock-notes
+	type memory
+	record
+		tsn-stock-code						like stock-code                     //f01	A16	tsn-stock-code					= tsn-field-array[02]
+		tsn-stock-note-type 				like stock-note-type                //f02   A02	tsn-stock-note-type 	        = tsn-field-array[03]
+		tsn-stock-note-sequence 			like stock-note-sequence            //f03   N	tsn-stock-note-sequence         = num(tsn-field-array[04])
+		tsn-stock-note 						like stock-note                     //f04   A30	tsn-stock-note 			        = tsn-field-array[05]
+	endrecord
+	key is tsn-stock-code tsn-stock-note-type tsn-stock-note-sequence
+
+field
+	ws-branch-code							pic xxx
+	i 										type decimal
+	ws-file-name							type string pic x(40)
+	num-recs								type decimal
+	ws-spool-file-name						pic x(20)
+	ws-date-string							pic x(10) // dd/mm/yyyy
+	ws-price-region							pic x(20)
+	ws-results								pic x(80)
+	ws-rebuild-keywords						type boolean
+	ws-state								pic x //N,Q,S,V,W,T
+	ws-input-dir							pic x(200)	//17dec12
+
+mode md-process
+	prompt "Process"
+	help "Process Changes"
+
+
+procedure main
+	get system-control
+		first
+	on error
+		abort 'System not installed'
+	endon
+	set ws-input-dir = "/p7branch/"
+	set ws-price-region = uppercase(get-env("PRCREGION"))
+	//message concat("Price Region:" ws-price-region)
+	//determine state prefix
+	set ws-state = "X"
+	switch on substring(sys-consolidation-division,1,1)
+		case "1"
+			set ws-state = "N"
+		case "2"
+			set ws-state = "Q"
+		case "4"              	//{12}
+            set ws-state = "T"  //{12}
+		case "3"
+			set ws-state = "V"
+		case "6"
+			set ws-state = "W"
+		case "8"
+			set ws-state = "S"
+	endswitch
+	//state exceptions
+	if sys-consolidation-division = "OSB"
+		set ws-state = "W"
+	elseif sys-consolidation-division in {"TN1" "TN2" "ABK"}
+		set ws-state = "N"
+	elseif sys-consolidation-division = "VIC"
+		set ws-state = "V"
+	endif
+	//<{6}
+	if ws-state = "X"
+		set ws-state = "V"
+	endif
+	//>{6}
+	set ws-date-string = concat(zstr(day(today()),2,0) "/" zstr(month(today()),2,0) "/" zstr(year(today()),4,0))
+	set ws-branch-code = sys-consolidation-division
+	set ws-results = concat(ws-date-string ": Store:" ws-branch-code)
+	//<{{11}}
+	if get-param(1) = "-kwrebuild"
+		set ws-rebuild-keywords = TRUE
+	else
+		set ws-rebuild-keywords = FALSE
+	endif
+	//<{11}
+	//do load-store-files
+	do read-ff-to-tmp
+	//do dig-tmp-stock-master
+	//do dig-tmp-bill-of-materials
+	//do dig-tmp-cre-master
+	//do dig-tmp-stock-notes
+	//message "Now I'm about to load the items"
+	do load-store-files
+endprocedure // main ----------------------------------------------------------
+
+procedure load-store-files
+local field
+	lf-directory			pic x(100)
+	switch on ws-state
+		case "N"
+			//set lf-directory = "/data/common/branch-load/N/"
+			set lf-directory = strconcat(ws-input-dir "N/")
+		case "Q"
+			set lf-directory = strconcat(ws-input-dir "Q/")
+		case "S"
+			//set lf-directory = "/data/common/branch-load/S/"
+			set lf-directory = strconcat(ws-input-dir "S/")
+		case "T"												//{12}
+			//set lf-directory = "/data/common/branch-load/T/"  //{12}
+			set lf-directory = strconcat(ws-input-dir "T/")     //{12}
+		case "V"
+			//set lf-directory = "/data/common/branch-load/V/"
+			set lf-directory = strconcat(ws-input-dir "V/")
+		case "W"
+			//set lf-directory = "/data/common/branch-load/W/"
+			set lf-directory = strconcat(ws-input-dir "W/")
+	endswitch
+	report "P7 Branch Load From Head Office"	spool-only
+	set ws-spool-file-name = spool-file-name()
+	open tmp-stock-master
+	on error
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"Cannot open file"
+			strconcat(lf-directory "ff-stock-master")
+	else
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"processing"
+			strconcat(lf-directory "ff-stock-master")
+		do process-stock-master
+	endon
+	open tmp-bill-of-materials
+	on error
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"Cannot open file"
+			strconcat(lf-directory "ff-bill-of-materials")
+	else
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"processing"
+			strconcat(lf-directory "ff-bill-of-materials")
+		do process-bill-of-materials
+	endon
+	open tmp-cre-master
+	on error
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"Cannot open file"
+			strconcat(lf-directory "ff-cre-master")
+	else
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"processing"
+			strconcat(lf-directory "ff-cre-master")
+		do process-cre-master
+	endon
+	open tmp-stock-notes
+	on error
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"Cannot open file"
+			strconcat(lf-directory "ff-stock-notes")
+	else
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"processing"
+			strconcat(lf-directory "ff-stock-notes")
+		do process-stock-notes
+	endon
+	report finished
+endprocedure //load-store-files ---------------------------------------------
+
+procedure load-store-files-old // load breeze output files into price etc.
+local field
+	lf-directory								pic x(100)
+	lf-files-found								type boolean
+	switch on sys-spare-alpha2
+		//case "ME"
+		//	set lf-directory = "/data/common/stock-metro/"
+		//case "RE"
+		//	set lf-directory = "/data/common/stock-regional/"
+		//case "WA"
+		//	set lf-directory = "/data/common/stock-wa/"
+		//else
+		//	set lf-directory = "/data/common/stock-metro/"
+		case "N"
+			set lf-directory = "/data/common/branch-load/N/"
+		case "S"
+			set lf-directory = "/data/common/branch-load/S/"
+		case "W"
+			set lf-directory = "/data/common/branch-load/W/"
+		case "V"
+			set lf-directory = "/data/common/branch-load/V/"
+		case "T"                                            	//{12}
+			set lf-directory = "/data/common/branch-load/T/"    //{12}
+		else
+			set lf-directory = "/data/common/stock-metro/"
+	endswitch
+	report 'Branch Load From Head Office'	spool-only
+	set ws-spool-file-name = spool-file-name()
+	open tmp-stock-master file strconcat(lf-directory "tmp-stock-master")
+	on error
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"Cannot open file"
+			strconcat(lf-directory "tmp-stock-master")
+	else
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"processing"
+			strconcat(lf-directory "tmp-stock-master")
+		do process-stock-master
+	endon
+	open tmp-bill-of-materials file strconcat(lf-directory "tmp-bill-of-materials")
+	on error
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"Cannot open file"
+			strconcat(lf-directory "tmp-bill-of-materials")
+	else
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"processing"
+			strconcat(lf-directory "tmp-bill-of-materials")
+		do process-bill-of-materials
+	endon
+	open tmp-cre-master file strconcat(lf-directory "tmp-cre-master")
+	on error
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"Cannot open file"
+			strconcat(lf-directory "tmp-cre-master")
+	else
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"processing"
+			strconcat(lf-directory "tmp-cre-master")
+		do process-cre-master
+	endon
+	open tmp-stock-notes file strconcat(lf-directory "tmp-stock-notes")
+	on error
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"Cannot open file"
+			strconcat(lf-directory "tmp-stock-notes")
+	else
+		print
+			today()
+			tod()
+			login-id()		pic x(12)
+			"processing"
+			strconcat(lf-directory "tmp-stock-notes")
+		do process-stock-notes
+	endon
+	report finished
+endprocedure //load-store-files ---------------------------------------------
+
+procedure process-stock-master
+local field
+	lf-stock-desc					pic x(30) occurs 6	//30nov12
+	i								type numeric		//30nov12
+	open stock-master
+	open stock-price
+	open stock-supplier
+//	if not ws-background-processing									//09493may17
+//		clear
+//	endif															//09493may17
+	set num-recs = 0
+	print 132'-' col 1
+	skip 2
+	print 'NOW PROCESSING BRANCH :' col 1 bold underlined
+		ws-branch-code
+	skip 2
+	extract tmp-stock-master all
+	detail
+		set num-recs += 1
+		if tsm-stock-code = spaces
+//			if not wsnostopping										//09493may17
+//				message 'WARNING - Spaces stock code in file ' ws-file-name
+//			endif													//09493may17
+		endif
+		set stock-code = tsm-stock-code
+		set stk-user-only-alpha4-1 = "P7BR"
+		//set prc-region-code = tsm-prc-region-code					//jv 18nov94
+		set prc-region-code = spaces								//jv 18nov94
+		get stock-master lock
+		on error // new item
+			initialize stock-master leaving stock-code
+			insert stock-master
+			initialize stock-price leaving stock-code prc-region-code
+			set prc-sales-tax-code = 1								//24jun08
+			insert stock-price
+			on error
+				print
+					'Stock Price Insert Error #1'
+					stock-code
+					tsm-stk-description
+					prc-region-code
+			endon
+			get stock-master lock
+			print 'New Stock Item ' stock-code tsm-stk-description
+		endon
+		get stock-price lock
+		on error //allow for missing record							//sgr02oct
+			initialize stock-price leaving stock-code prc-region-code//sgr02oct
+			set prc-sales-tax-code = 1								//24jun08
+			insert stock-price										//sgr02oct
+		endon														//sgr02oct
+		set cre-accountcode = tsm-cre-accountcode						//07840dec22
+		if tsm-cre-accountcode != spaces								//07840dec22
+			get stock-supplier										//07840dec22
+			on error												//07840dec22
+				set sup-shipping-method-code = spaces				//07840dec22
+			endon													//07840dec22
+		endif														//07840dec22
+		set stock-group = tsm-stock-group
+		set stk-abc-class = tsm-stk-abc-class
+		if tsm-stk-stock-status not in {'I' 'S'}						//09252may31
+		or stk-stock-status not in {'I' 'S'}						//09252may31
+			set stk-stock-status 		= tsm-stk-stock-status
+		endif														//09252may31
+		set stk-issue-control-code 		= tsm-stk-issue-control-code
+		if tsm-stk-condition-code = "N"	//14dec12
+			set tsm-stk-condition-code = SPACES
+		endif
+		set stk-condition-code 			= tsm-stk-condition-code
+		//for i = 1 to 2
+		//	set stk-user-group[i] 		= tsm-stk-user-group[i]
+		//endfor
+		set stk-user-group[1] 			= tsm-stk-user-group-1
+		set stk-user-group[2] 			= tsm-stk-user-group-2
+		//<{9}
+		//set stk-description 			= tsm-stk-description
+		//set stk-desc-line-2 			= tsm-stk-desc-line-2
+		//set stk-desc-line-3 			= tsm-stk-desc-line-3
+		////30nov12 ----------------------------- start
+		//set lf-stock-desc[1]			= tsm-stk-description
+		//set lf-stock-desc[2]			= tsm-stk-desc-line-2
+		//set lf-stock-desc[3]			= tsm-stk-desc-line-3
+		//set lf-stock-desc[4]			= tsm-stk-desc-line-4
+		//set lf-stock-desc[5]			= tsm-stk-desc-line-5
+		//set lf-stock-desc[6]			= tsm-stk-desc-line-6
+		set stk-description 			= uppercase(tsm-stk-description)
+		set stk-desc-line-2 			= uppercase(tsm-stk-desc-line-2)
+		set stk-desc-line-3 			= uppercase(tsm-stk-desc-line-3)
+		//30nov12 ----------------------------- start
+		set lf-stock-desc[1]			= uppercase(tsm-stk-description)
+		set lf-stock-desc[2]			= uppercase(tsm-stk-desc-line-2)
+		set lf-stock-desc[3]			= uppercase(tsm-stk-desc-line-3)
+		set lf-stock-desc[4]			= uppercase(tsm-stk-desc-line-4)
+		set lf-stock-desc[5]			= uppercase(tsm-stk-desc-line-5)
+		set lf-stock-desc[6]			= uppercase(tsm-stk-desc-line-6)
+		//>{9}
+		for i = 1 to 6
+			if lf-stock-desc[i] != SPACES
+				set stock-code			=  tsm-stock-code
+			    set stock-note-type		=  "XD" //extended description
+				set stock-note-sequence	= i
+				get stock-notes
+				on error
+					set stock-note 			= lf-stock-desc[i]
+					insert stock-notes
+				else
+					set stock-note 			= lf-stock-desc[i]
+					update stock-notes
+				endon
+			endif
+		endfor
+		//30nov12 ------------------------------- end
+		set stk-unit-desc 				= tsm-stk-unit-desc
+		set stk-alt-unit-desc 			= tsm-stk-alt-unit-desc					//jv 17feb95
+		set stk-conversion-factor 		= tsm-stk-conversion-factor			//jv 17feb95
+		set stk-pack-weight 			= tsm-stk-pack-weight
+		set stk-pack-desc 				= tsm-stk-pack-desc
+		set stk-pack-qty 				= tsm-stk-pack-qty
+		set stk-apn-number 				= tsm-stk-apn-number
+		set stk-serialized-flag 		= tsm-stk-serialized-flag
+		set stk-price-per 				= 1 // tsm-stk-price-per   					// rmd 23apr08
+		set stk-sort-analysis-code 		= tsm-stk-sort-analysis-code
+		set stk-sales-tax-paid-rate 	= tsm-stk-sales-tax-paid-rate // 19aug94
+		set sup-shipping-method-code 	= tsm-sup-shipping-method-code	//07840dec23
+		if tsm-prc-sales-tax-code = 1	//14dec12
+			set tsm-prc-wholesale-price     = tsm-prc-wholesale-price  / 1.1
+		    set tsm-prc-recommend-retail	= tsm-prc-recommend-retail / 1.1
+		endif
+		if sup-shipping-method-code 	!= 'C'							//07840dec22
+		and prc-price-type-code = spaces
+			set prc-wholesale-price 	= tsm-prc-wholesale-price
+			set prc-recommend-retail 	= tsm-prc-recommend-retail
+			//27oct08
+			//set prc-sales-tax-code = 1 //tsm-prc-sales-tax-code
+			if tsm-prc-sales-tax-code in {1 0}
+				set prc-sales-tax-code 	= tsm-prc-sales-tax-code
+			else
+				set prc-sales-tax-code 	= 1
+			endif
+			//if tsm-prc-sales-tax-code = 0
+			//	message concat(strconcat(stock-code) ":" str(tsm-prc-sales-tax-code))
+			//endif
+			//27oct08
+			set prc-airfreight-price 	= tsm-prc-airfreight-price
+
+
+			//02apr09 new rrp inc logic
+			//// add entries to update the metro and regional inc pricing  // rmd 30apr08
+			//if prc-sales-tax-code = 1
+			//	set prc-break-price[3] = prc-wholesale-price * 1.1
+			//	set prc-break-price[4] = prc-recommend-retail * 1.1
+			//else
+			//	set prc-break-price[3] = prc-wholesale-price
+			//    set prc-break-price[4] = prc-recommend-retail
+			//endif
+
+			//// handle rrp inc gst
+			//if ws-price-region = "REGIONAL"
+			//	set prc-recommend-retail-inc-tax = prc-break-price[3]
+			//else
+			//	set prc-recommend-retail-inc-tax = prc-break-price[4]
+			//endif
+
+			// 02apr09 ensure both prices populated before attempting to build rrp inc
+			if prc-recommend-retail = 0 and prc-wholesale-price != 0
+				set prc-recommend-retail = prc-wholesale-price
+			endif
+			if prc-wholesale-price = 0 and prc-recommend-retail != 0
+				set prc-wholesale-price = prc-recommend-retail
+			endif
+
+			if ws-price-region = "REGIONAL"
+				if prc-sales-tax-code = 1
+					set prc-recommend-retail-inc-tax	= prc-wholesale-price * 1.1
+				else
+					set prc-recommend-retail-inc-tax	= prc-wholesale-price
+				endif
+			else
+				if prc-sales-tax-code = 1
+					set prc-recommend-retail-inc-tax	= prc-recommend-retail * 1.1
+				else
+					set prc-recommend-retail-inc-tax	= prc-recommend-retail
+				endif
+			endif
+			// clean up price confusing price break values
+			set prc-break-price[3] = 0
+			set prc-break-price[4] = 0
+			//02apr09
+
+			update stock-price
+			on error
+				print 'Error updating stock-price' stock-code
+			endon
+		endif														//07840dec22
+		set cre-accountcode = tsm-cre-accountcode
+		if tsm-cre-accountcode != spaces								//07472nov02
+			get stock-supplier lock
+			on error
+				initialize stock-supplier
+					leaving stock-code cre-accountcode
+				insert stock-supplier
+				get stock-supplier lock
+				print 'New Stock Supplier ' stock-code cre-accountcode
+				get cre-master
+				on error
+					initialize cre-master
+						leaving cre-accountcode
+				endon
+			endon
+			set sup-stock-code = tsm-sup-stock-code
+			set sup-unit-desc = tsm-stk-unit-desc	//{7}
+			set sup-stk-description = tsm-sup-stk-description
+			set sup-shipping-method-code = tsm-sup-shipping-method-code//7840dec23
+			if sup-shipping-method-code != 'C'						//07840dec22
+				set sup-last-buy-price = tsm-sup-last-buy-price
+				set sup-last-buy-discount = tsm-sup-last-buy-discount
+				set sup-unit-of-measure = tsm-sup-unit-of-measure
+				set sup-pack-qty = tsm-sup-pack-qty
+			endif													//07840dec22
+			set sup-tax-code = str(tsm-prc-sales-tax-code)				//08aug08 rmd
+			update stock-supplier
+			on error
+				print 'Error updating stock-supplier' stock-code
+			endon
+		endif
+		update stock-master
+		on error
+			print 'Error updating stock-master' stock-code
+		else
+			if ws-rebuild-keywords
+				//message "dbg: -kwbuild"
+				//extract stock-key-words lock
+				//	on index stock-code
+				//	key stock-code
+				//	next same stock-code
+				//detail
+				//	delete stock-key-words
+				//endextract
+				// do 14kwrdmnt-maintain-stock-key-words
+				//start ------------------------------------------------//08694feb13
+				spl
+					"rmd/stk/stkkwupd"
+				parameters
+					stock-code
+					stk-description
+					stk-desc-line-2
+					stk-desc-line-3
+				extract stock-unit-conversion
+					on index stock-code suc-unit-desc
+					key stock-code spaces
+					next same stock-code
+				detail
+					get stock-unit-conversion current lock
+					delete stock-unit-conversion
+				endextract
+				set suc-unit-desc = stk-unit-desc
+				set suc-unit-conversion = 1
+				insert stock-unit-conversion
+				on error
+				endon
+				set suc-unit-desc = stk-alt-unit-desc
+				set suc-unit-conversion = stk-conversion-factor
+				insert stock-unit-conversion
+				on error
+				endon
+			endif
+			//end   ------------------------------------------------//08694feb13
+		endon
+		print stock-code stk-description prc-wholesale-price
+			prc-recommend-retail sup-last-buy-price ' Updated'
+	end-extract
+	print '***************'
+	print num-recs ' processed'
+	print "records updated in stock-master"
+
+	set ws-results = concat(strconcat(ws-results) " " str(num-recs)	" records updated in stock-master")
+	close tmp-stock-master
+	close stock-master
+	close stock-price
+	close stock-supplier
+endprocedure //process-stock-master -------------------------------------------
+
+procedure process-bill-of-materials
+	set num-recs = 0
+	extract tmp-bill-of-materials all
+	before tbm-bom-parent-code
+		if tbm-bom-parent-code != spaces
+			save tmp-bill-of-materials
+			extract bill-of-materials-detail
+				on index bom-parent-code bom-seq-no comp-code
+				key tbm-bom-parent-code 0 spaces
+				next same bom-parent-code
+			detail
+				get bill-of-materials-detail lock
+				delete bill-of-materials-detail
+			endextract
+			restore tmp-bill-of-materials
+		endif
+	detail
+		//if tbm-bom-parent-code != spaces
+		if tbm-bom-parent-code not in {SPACES tbm-comp-code}
+			set num-recs 				+= 1
+			set bom-def-whse 			= tbm-bom-def-whse
+			set bom-line-finish-date 	= tbm-bom-line-finish-date
+			set bom-line-link-code 		= tbm-bom-line-link-code
+			set bom-line-qty-check 		= tbm-bom-line-qty-check
+			set bom-line-start-date 	= tbm-bom-line-start-date
+			set bom-line-type 			= tbm-bom-line-type
+			set bom-overide-item-price 	= tbm-bom-overide-item-price
+			set bom-parent-code 		= tbm-bom-parent-code
+			set bom-plan-percent 		= tbm-bom-plan-percent
+			set bom-plan-spread-factor 	= tbm-bom-plan-spread-factor
+			set bom-quantity 			= tbm-bom-quantity
+			set bom-seq-no 				= tbm-bom-seq-no
+			set bom-unit-desc 			= tbm-bom-unit-desc
+			set bom-wastage-per-cent 	= tbm-bom-wastage-per-cent
+			set bom-x-quantity 			= tbm-bom-x-quantity
+			set bom-y-quantity 			= tbm-bom-y-quantity
+			set comp-code 				= tbm-comp-code
+			insert bill-of-materials-detail
+		endif
+	endextract
+	print num-recs ' processed'
+	print "records updated in bill-of-materials"
+endprocedure //process-bill-of-materials -------------------------------------
+
+procedure process-cre-master//stock-supplier
+	//open z-stock-supplier											//06824sep07
+	open cre-master
+	open name-and-address-master
+	clear
+	set num-recs = 0
+	//open z-stock-supplier											//06824sep07
+	//on error														//06824sep07
+	//else															//06824sep07
+		extract tmp-cre-master all
+		detail
+			set cre-accountcode 			= tcm-cre-accountcode
+			initialize cre-master
+				leaving cre-accountcode
+			initialize name-and-address-master
+			set accountcode 				= cre-accountcode
+			set na-type 					= 'C'
+			set cr-pay-to-code 				= tcm-cr-pay-to-code
+			set cr-shortname				= tcm-cr-shortname
+			set cr-def-payment-terms 		= tcm-cr-def-payment-terms
+			set cr-payment-selection 		= tcm-cr-payment-selection
+			set cr-auto-rq-flag 			= 'Y'
+			set cr-type 					= tcm-cr-type
+			set cr-chq-or-bankdraft 		= tcm-cr-chq-or-bankdraft
+			set cr-settlement-disc-code 	= tcm-cr-settlement-disc-code
+			set cr-volume-disc-code 		= tcm-cr-volume-disc-code
+			set cr-disc-rate 				= tcm-cr-disc-rate
+			set cr-contact-name 			= tcm-cr-contact-name
+			set cr-default-gl-accountcode 	= tcm-cr-default-gl-accountcode
+			set cr-curr-code 				= tcm-cr-curr-code
+			set cr-def-purchase-terms-days 	= tcm-cr-def-purchase-terms-days
+			set cr-date-last-changed 		= today()
+			set cr-date-created 			= today()
+			set na-name 					= tcm-na-name
+			set na-company 					= tcm-na-company
+			set na-street 					= tcm-na-street
+			set na-suburb 					= tcm-na-suburb
+			set na-country 					= tcm-na-country
+			set postcode 					= tcm-postcode
+			set na-country-code 			= tcm-na-country-code
+			set na-phone 					= tcm-na-phone
+			set na-fax-no 					= tcm-na-fax-no
+			set cr-clearing-flag 			= tcm-cr-clearing-flag				//12129nov17
+			set cr-tax-code 				= tcm-cr-tax-code							//rmd19may10
+			insert cre-master
+			on error
+				//start --------------------------------------------//10381aug18
+				get cre-master lock
+					on index cre-accountcode
+					key is cre-accountcode
+				on error
+				else
+					set cr-shortname = tcm-cr-shortname
+					//set cr-pay-to-code = tcm-cr-pay-to-code			//12129nov21
+					//14dec12 -------------------------------------- start
+					set cr-pay-to-code 				= tcm-cr-pay-to-code
+					set cr-shortname				= tcm-cr-shortname
+					//<{10}
+					//set cr-def-payment-terms 		= tcm-cr-def-payment-terms
+					//set cr-payment-selection 		= tcm-cr-payment-selection
+					//set cr-auto-rq-flag 			= 'Y'
+					//set cr-type 					= tcm-cr-type
+					//set cr-chq-or-bankdraft 		= tcm-cr-chq-or-bankdraft
+					//set cr-settlement-disc-code 	= tcm-cr-settlement-disc-code
+					//set cr-volume-disc-code 		= tcm-cr-volume-disc-code
+					//set cr-disc-rate 				= tcm-cr-disc-rate
+					//>{10}
+					//set cr-contact-name 			= tcm-cr-contact-name	//{13}
+					//<{10}
+					//set cr-default-gl-accountcode 	= tcm-cr-default-gl-accountcode
+					//set cr-curr-code 				= tcm-cr-curr-code
+					//set cr-def-purchase-terms-days 	= tcm-cr-def-purchase-terms-days
+					//>{10}
+					//14dec12 ---------------------------------------- end
+					update cre-master
+				endon
+				//end   --------------------------------------------//10381aug18
+			else
+				set num-recs += 1
+				print 'New Creditor ' cre-accountcode cr-shortname
+			endon
+			save name-and-address-master							//10381aug18
+			insert name-and-address-master
+			on error
+				//start --------------------------------------------//10381aug18
+				get name-and-address-master lock
+					on index accountcode na-type
+					key is cre-accountcode 'C'
+				on error
+				else
+					restore name-and-address-master
+					update name-and-address-master
+				endon
+				//end   --------------------------------------------//10381aug18
+			endon
+			//rmd19may10 ------------------------------------------------- start
+			//quickfix
+			if substring(cre-accountcode,1,3) = "SOP"
+				set tcm-e-na-company-id = "90 006 505 684"
+			endif
+			get name-and-address-master lock
+				on index accountcode na-type
+				key is cre-accountcode "E"
+			on error
+				set accountcode		= cre-accountcode
+				set na-type			= "E"
+				set na-company-id	= tcm-e-na-company-id
+				insert name-and-address-master
+			else
+				if tcm-e-na-company-id != SPACES
+					set na-company-id	= tcm-e-na-company-id
+					update name-and-address-master
+				endif
+			endon
+			//rmd19may10 --------------------------------------------------- end
+		endextract
+		close tmp-cre-master										//06824sep07
+	print num-recs
+		"records added to cre-master"
+	close cre-master
+	close name-and-address-master
+endprocedure //process-stock-supplier -----------------------------------------
+
+procedure process-stock-notes
+	set num-recs = 0
+	extract tmp-stock-notes all
+	detail
+		set stock-note-type 	= tsn-stock-note-type
+		set stock-note-sequence = tsn-stock-note-sequence
+		set stock-note 			= tsn-stock-note
+		set stock-code 			= tsn-stock-code
+		set stock-note-key 		= tsn-stock-code
+		if stock-note-type 		= 'Z'
+			insert stock-supplier-notes
+			//start---------------------------------------------//06425sep21
+			on error
+				save stock-supplier-notes
+				get stock-supplier-notes lock
+				on error
+					message 'Error inserting supplier-notes - ' file-status()
+				else
+					restore stock-supplier-notes
+					update stock-supplier-notes
+					on error
+						message 'Error updating supplier-notes - ' file-status()
+					endon
+				endon
+			endon
+			//end-----------------------------------------------//06425sep21
+		//start-------------------------------------------------//06425sep14
+		elseif stock-note-type = 'Y'
+			set cre-accountcode = stock-code
+			set cen-type 		= spaces
+			set cen-seq-no 		= stock-note-sequence
+			set cen-text 		= stock-note
+			set cen-date 		= today()
+			insert cre-extra-notes
+			on error
+				save cre-extra-notes
+				get cre-extra-notes lock
+				on error
+					message 'Error inserting cre notes - '
+							file-status()
+				else
+					restore cre-extra-notes
+					update cre-extra-notes
+					on error
+						message 'Error updating cre notes - '
+								file-status()
+					endon
+				endon
+			endon
+		//end---------------------------------------------------//06425sep14
+		//start-------------------------------------------------//06425sep28
+		elseif tsn-stock-note-type = 'X'
+			set sys-message-type = 'SX'
+			set sys-message-code = stock-code
+			set sys-message-line = tsn-stock-note-sequence
+			if fraction(tsn-stock-note-sequence * 10) = 0.1
+				get system-messages lock
+					on index sys-message-type sys-message-code sys-message-line
+				on error
+				else
+					string sys-message-text replacing tsn-stock-note at 31
+					update system-messages
+					on error
+						message 'Error updating system messages 2 - '
+								file-status()
+					endon
+				endon
+			else
+				get system-messages lock
+					on index sys-message-type sys-message-code sys-message-line
+				on error
+					set sys-message-text = tsn-stock-note
+					insert system-messages
+					on error
+						message 'Error inserting system messages - '
+							file-status()
+					endon
+				else
+					set sys-message-text = tsn-stock-note
+					update system-messages
+					on error
+						message 'Error updating system messages - '
+							file-status()
+					endon
+				endon
+			endif
+		//end---------------------------------------------------//06425sep28
+		else
+			insert stock-notes
+			//start---------------------------------------------//06425sep21
+			on error
+				save stock-notes
+				get stock-notes lock
+				on error
+					message 'Error inserting stock-notes - ' file-status()
+				else
+					restore stock-notes
+					update stock-notes
+					on error
+						message 'Error updating stock-notes - ' file-status()
+					endon
+				endon
+			endon
+			//end   --------------------------------------------//06425sep21
+		endif
+		set num-recs += 1
+	endextract
+	//endon															//07472dec16
+	print num-recs "records added to stock/supplier/creditor notes"
+endprocedure //process-stock-notes --------------------------------------------
+
+procedure read-ff-to-tmp	//14nov12
+local field
+	lf-directory			pic x(100)
+	report "p7 read ff"
+		spool-only
+	print
+		"load p7branch"
+		sys-consolidation-division
+		dir()
+		company-name
+		today()
+		tod()
+		login-id()
+	switch on ws-state
+		case "N"
+			//set lf-directory = "/data/common/branch-load/N/"
+			set lf-directory = strconcat(ws-input-dir "N/")
+		case "Q"
+			//set lf-directory = "/data/common/branch-load/Q/"
+			set lf-directory = strconcat(ws-input-dir "Q/")
+		case "S"
+			//set lf-directory = "/data/common/branch-load/S/"
+			set lf-directory = strconcat(ws-input-dir "S/")
+		case "T"												//{12}
+			//set lf-directory = "/data/common/branch-load/T/"  //{12}
+			set lf-directory = strconcat(ws-input-dir "T/")     //{12}
+		case "V"
+			//set lf-directory = "/data/common/branch-load/V/"
+			set lf-directory = strconcat(ws-input-dir "V/")
+		case "W"
+			//set lf-directory = "/data/common/branch-load/W/"
+			set lf-directory = strconcat(ws-input-dir "W/")
+	endswitch
+	print
+		"input dir:"
+		ws-input-dir
+	print
+		"state:"
+		ws-state
+	print
+		"full path:"
+		lf-directory
+	open tmp-stock-master truncate temporary
+	open tmp-bill-of-materials truncate temporary
+	open tmp-cre-master truncate temporary
+	open tmp-stock-notes truncate temporary
+	//open ff-stock-master file "/rmddev/ff-stock-master.txt"
+	//open ff-stock-master file "/tmp/ff-stock-master.txt"
+	open ff-stock-master file strconcat(lf-directory "ff-stock-master.txt")
+	on error	//20dec12
+		print
+			"cannot open"
+			strconcat(lf-directory "ff-stock-master.txt")
+	else
+		print
+			"opening"
+			strconcat(lf-directory "ff-stock-master.txt")
+		extract ff-stock-master
+		detail
+			//fsm-field-array
+			//if fsm-field-array[01] != "D" //{8}
+			if fsm-field-array[01] in {"H"}	//{8}
+				continue
+			endif
+			//set tsm-stock-code                  = fsm-field-array[02]
+			//set tsm-stock-group                 = fsm-field-array[03]
+			//set tsm-stk-abc-class 			    = fsm-field-array[04]
+			//set tsm-stk-stock-status 			= fsm-field-array[05]
+			//set tsm-stk-issue-control-code 	    = fsm-field-array[06]
+			//set tsm-stk-condition-code	 	    = fsm-field-array[07]
+			//set tsm-stk-user-group-1 			= fsm-field-array[08]
+			//set tsm-stk-user-group-2 			= fsm-field-array[09]
+			//set tsm-stk-description             = fsm-field-array[10]
+			//set tsm-stk-desc-line-2 			= fsm-field-array[11]
+			//set tsm-stk-desc-line-3 			= fsm-field-array[12]
+			//set tsm-stk-unit-desc               = fsm-field-array[13]
+			//set tsm-stk-pack-weight 			= num(fsm-field-array[14])
+			//set tsm-stk-pack-desc               = fsm-field-array[15]
+			//set tsm-stk-pack-qty 				= num(fsm-field-array[16])
+			//set tsm-stk-apn-number 			    = fsm-field-array[17]
+			//set tsm-stk-serialized-flag 		= fsm-field-array[18]
+			//set tsm-stk-price-per 			    = num(fsm-field-array[19])
+			//set tsm-stk-sort-analysis-code 	    = fsm-field-array[20]
+			//set tsm-prc-region-code			    = fsm-field-array[21]
+			//set tsm-prc-wholesale-price         = num(fsm-field-array[22])
+			//set tsm-prc-recommend-retail        = num(fsm-field-array[23])
+			//set tsm-prc-sales-tax-code          = num(fsm-field-array[24])
+			//set tsm-prc-airfreight-price	 	= num(fsm-field-array[25])
+			//set tsm-cre-accountcode             = fsm-field-array[26]
+			//set tsm-sup-stock-code              = fsm-field-array[27]
+			//set tsm-sup-stk-description 		= fsm-field-array[28]
+			//set tsm-sup-last-buy-price          = num(fsm-field-array[29])
+			//set tsm-sup-last-buy-discount 	    = num(fsm-field-array[20])
+			//set tsm-sup-unit-of-measure 		= num(fsm-field-array[31])
+			//set tsm-sup-pack-qty 				= num(fsm-field-array[32])
+			//set tsm-sup-new-buy-price 	 	    = num(fsm-field-array[33])
+			//set tsm-sup-new-buy-effective-date  = date-to-julian(fsm-field-array[34])
+			//set tsm-stk-sales-tax-paid-rate	    = num(fsm-field-array[35])
+			//set tsm-sup-shipping-method-code	= fsm-field-array[36]
+			//set tsm-stk-alt-unit-desc			= fsm-field-array[37]
+			//set tsm-stk-conversion-factor		= num(fsm-field-array[38])
+			//
+			//set tsm-stock-code                  = fsm-field-array[02]
+			//set tsm-stock-group                 = fsm-field-array[03]
+			//set tsm-stk-abc-class 			    = fsm-field-array[04]
+			//set tsm-stk-stock-status 			= fsm-field-array[05]
+			//set tsm-stk-issue-control-code 	    = fsm-field-array[06]
+			//set tsm-stk-condition-code	 	    = fsm-field-array[07]
+			//set tsm-stk-user-group-1  			= fsm-field-array[08]
+			//set tsm-stk-user-group-2  			= fsm-field-array[09]
+			//set tsm-stk-description             = fsm-field-array[10]
+			//set tsm-stk-desc-line-2 			= fsm-field-array[11]
+			//set tsm-stk-desc-line-3 			= fsm-field-array[12]
+			//set tsm-stk-desc-line-4 			= fsm-field-array[13]
+			//set tsm-stk-desc-line-5 			= fsm-field-array[14]
+			//set tsm-stk-desc-line-6 			= fsm-field-array[15]
+			//set tsm-stk-unit-desc               = fsm-field-array[16]
+			//set tsm-stk-pack-weight 			= num(fsm-field-array[17])
+			//set tsm-stk-pack-desc               = fsm-field-array[18]
+			//set tsm-stk-pack-qty 				= num(fsm-field-array[19])
+			//set tsm-stk-apn-number 			    = fsm-field-array[20]
+			//set tsm-stk-serialized-flag 		= fsm-field-array[21]
+			//set tsm-stk-price-per 			    = num(fsm-field-array[22])
+			//set tsm-stk-sort-analysis-code 	    = fsm-field-array[23]
+			//set tsm-prc-region-code			    = fsm-field-array[24]
+			//set tsm-prc-wholesale-price         = num(fsm-field-array[25])
+			//set tsm-prc-recommend-retail        = num(fsm-field-array[26])
+			//set tsm-prc-sales-tax-code          = num(fsm-field-array[27])
+			//set tsm-prc-airfreight-price	 	= num(fsm-field-array[28])
+			//set tsm-cre-accountcode             = fsm-field-array[29]
+			//set tsm-sup-stock-code              = fsm-field-array[30]
+			//set tsm-sup-stk-description 		= fsm-field-array[31]
+			//set tsm-sup-last-buy-price          = num(fsm-field-array[32])
+			//set tsm-sup-last-buy-discount 	    = num(fsm-field-array[33])
+			//set tsm-sup-unit-of-measure 		= num(fsm-field-array[34])
+			//set tsm-sup-pack-qty 				= num(fsm-field-array[35])
+			//set tsm-sup-new-buy-price 	 	    = num(fsm-field-array[36])
+			//set tsm-sup-new-buy-effective-date  = date-to-julian(fsm-field-array[37])
+			//set tsm-stk-sales-tax-paid-rate	    = num(fsm-field-array[38])
+			//set tsm-sup-shipping-method-code	= fsm-field-array[39]
+			//set tsm-stk-alt-unit-desc			= fsm-field-array[40]
+			//set tsm-stk-conversion-factor		= num(fsm-field-array[41])
+			//02 is now the SQL ID
+			set tsm-stock-code                  = fsm-field-array[03]
+			set tsm-stock-group                 = fsm-field-array[04]
+			set tsm-stk-abc-class 			    = fsm-field-array[05]
+			set tsm-stk-stock-status 			= fsm-field-array[06]
+			set tsm-stk-issue-control-code 	    = fsm-field-array[07]
+			set tsm-stk-condition-code	 	    = fsm-field-array[08]
+			set tsm-stk-user-group-1  			= fsm-field-array[09]
+			set tsm-stk-user-group-2  			= fsm-field-array[10]
+			set tsm-stk-description             = fsm-field-array[11]
+			set tsm-stk-desc-line-2 			= fsm-field-array[12]
+			set tsm-stk-desc-line-3 			= fsm-field-array[13]
+			set tsm-stk-desc-line-4 			= fsm-field-array[14]
+			set tsm-stk-desc-line-5 			= fsm-field-array[15]
+			set tsm-stk-desc-line-6 			= fsm-field-array[16]
+			set tsm-stk-unit-desc               = fsm-field-array[17]
+			set tsm-stk-pack-weight 			= num(fsm-field-array[18])
+			set tsm-stk-pack-desc               = fsm-field-array[19]
+			set tsm-stk-pack-qty 				= num(fsm-field-array[20])
+			set tsm-stk-apn-number 			    = fsm-field-array[21]
+			set tsm-stk-serialized-flag 		= fsm-field-array[22]
+			set tsm-stk-price-per 			    = num(fsm-field-array[23])
+			set tsm-stk-sort-analysis-code 	    = fsm-field-array[24]
+			set tsm-prc-region-code			    = fsm-field-array[25]
+			set tsm-prc-wholesale-price         = num(fsm-field-array[26])
+			set tsm-prc-recommend-retail        = num(fsm-field-array[27])
+			set tsm-prc-sales-tax-code          = num(fsm-field-array[28])
+			set tsm-prc-airfreight-price	 	= num(fsm-field-array[29])
+			set tsm-cre-accountcode             = fsm-field-array[30]
+			set tsm-sup-stock-code              = fsm-field-array[31]
+			set tsm-sup-stk-description 		= fsm-field-array[32]
+			set tsm-sup-last-buy-price          = num(fsm-field-array[33])
+			set tsm-sup-last-buy-discount 	    = num(fsm-field-array[34])
+			set tsm-sup-unit-of-measure 		= num(fsm-field-array[35])
+			set tsm-sup-pack-qty 				= num(fsm-field-array[36])
+			set tsm-sup-new-buy-price 	 	    = num(fsm-field-array[37])
+			set tsm-sup-new-buy-effective-date  = date-to-julian(fsm-field-array[38])
+			set tsm-stk-sales-tax-paid-rate	    = num(fsm-field-array[39])
+			set tsm-sup-shipping-method-code	= fsm-field-array[40]
+			set tsm-stk-alt-unit-desc			= fsm-field-array[41]
+			set tsm-stk-conversion-factor		= num(fsm-field-array[42])
+			insert tmp-stock-master
+		endextract
+	endon
+	//
+	open ff-bill-of-materials file strconcat(lf-directory "ff-bill-of-materials.txt")
+	on error	//20dec12
+		print
+			"cannot open"
+			strconcat(lf-directory "ff-bill-of-materials.txt")
+	else
+		print
+			"opening"
+			strconcat(lf-directory "ff-bill-of-materials.txt")
+		extract ff-bill-of-materials
+		detail
+			//fsm-field-array
+			if fbm-field-array[01] != "D"
+				continue
+			endif
+			set tbm-bom-def-whse				= fbm-field-array[02]
+			set tbm-bom-line-finish-date		= date-to-julian(fbm-field-array[03])
+			set tbm-bom-line-link-code			= fbm-field-array[04]
+			set tbm-bom-line-qty-check			= fbm-field-array[05]
+			set tbm-bom-line-start-date			= date-to-julian(fbm-field-array[06])
+			set tbm-bom-line-type				= fbm-field-array[07]
+			set tbm-bom-overide-item-price		= num(fbm-field-array[08])
+			set tbm-bom-parent-code				= fbm-field-array[09]
+			set tbm-bom-plan-percent			= num(fbm-field-array[10])
+			set tbm-bom-plan-spread-factor		= num(fbm-field-array[11])
+			set tbm-bom-quantity				= num(fbm-field-array[12])
+			set tbm-bom-seq-no					= num(fbm-field-array[13])
+			set tbm-bom-unit-desc				= fbm-field-array[14]
+			set tbm-bom-wastage-per-cent		= num(fbm-field-array[15])
+			set tbm-bom-x-quantity				= num(fbm-field-array[16])
+			set tbm-bom-y-quantity				= num(fbm-field-array[17])
+			set tbm-comp-code					= fbm-field-array[18]
+			insert tmp-bill-of-materials
+		endextract
+	endon
+	//
+	open ff-cre-master file strconcat(lf-directory "ff-cre-master.txt")
+	on error	//20dec12
+		print
+			"cannot open"
+			strconcat(lf-directory "ff-cre-master.txt")
+	else
+		print
+			"opening"
+			strconcat(lf-directory "ff-cre-master.txt")
+		extract ff-cre-master
+		detail
+			//fsm-field-array
+			if fcm-field-array[01] != "D"
+				continue
+			endif
+			set tcm-cre-accountcode				= fcm-field-array[02]
+			set tcm-cr-pay-to-code 				= fcm-field-array[03]
+			set tcm-cr-shortname 				= fcm-field-array[04]
+			set tcm-cr-def-payment-terms 		= fcm-field-array[05]
+			set tcm-cr-payment-selection	 	= fcm-field-array[06]
+			set tcm-cr-type 					= fcm-field-array[07]
+			set tcm-cr-chq-or-bankdraft 		= fcm-field-array[08]
+			set tcm-cr-settlement-disc-code 	= fcm-field-array[09]
+			set tcm-cr-volume-disc-code 		= fcm-field-array[10]
+			set tcm-cr-disc-rate 				= num(fcm-field-array[11])
+			set tcm-cr-contact-name 			= fcm-field-array[12]
+			set tcm-cr-default-gl-accountcode 	= fcm-field-array[13]
+			set tcm-cr-curr-code 				= fcm-field-array[14]
+			set tcm-cr-def-purchase-terms-days	= num(fcm-field-array[15])
+			set tcm-na-name 					= fcm-field-array[16]
+			set tcm-na-company 					= fcm-field-array[17]
+			set tcm-na-street 					= fcm-field-array[18]
+			set tcm-na-suburb 					= fcm-field-array[19]
+			set tcm-na-country 					= fcm-field-array[20]
+			set tcm-postcode 					= fcm-field-array[21]
+			set tcm-na-country-code 			= fcm-field-array[22]
+			set tcm-na-phone 					= fcm-field-array[23]
+			set tcm-na-fax-no 					= fcm-field-array[24]
+			set tcm-cr-clearing-flag			= fcm-field-array[25]
+			set tcm-cr-tax-code					= fcm-field-array[26]
+			set tcm-e-na-company-id				= fcm-field-array[27]
+			insert tmp-cre-master
+		endextract
+	endon
+	//
+	open ff-stock-notes file strconcat(lf-directory "ff-stock-notes.txt")
+	on error	//20dec12
+		print
+			"cannot open"
+			strconcat(lf-directory "ff-stock-notes.txt")
+	else
+		print
+			"opening"
+			strconcat(lf-directory "ff-stock-notes.txt")
+		extract ff-stock-notes
+		detail
+			//fsm-field-array
+			if fsn-field-array[01] != "D"
+				continue
+			endif
+			set tsn-stock-code					= fsn-field-array[02]
+			set tsn-stock-note-type 	        = fsn-field-array[03]
+			set tsn-stock-note-sequence         = num(fsn-field-array[04])
+			set tsn-stock-note 			        = fsn-field-array[05]
+			insert tmp-stock-notes
+		endextract
+	endon
+	report finished
+endprocedure // read-ff-to-tmp ------------------------------------------------
+
+screen dig-tmp-stock-master
+	window @1,1 to @24,90
+		title concat("dig-tmp-stock-master")
+		primary tmp-stock-master
+		datagrid occurs 20
+	allowed md-process search //md-mode
+	review-from-start
+detail
+	display tsm-stock-code                  	@1,004 title "tsm-stock-code"
+	display tsm-stock-group                     @1,008 title "tsm-stock-group"
+	display tsm-stk-abc-class 			        @1,012 title "tsm-stk-abc-class"
+	display tsm-stk-stock-status 			    @1,016 title "tsm-stk-stock-status"
+	display tsm-stk-issue-control-code 	        @1,020 title "tsm-stk-issue-control-code"
+	display tsm-stk-condition-code	 	        @1,024 title "tsm-stk-condition-code"
+	display tsm-stk-user-group-1 			    @1,028 title "tsm-stk-user-group-1"
+	display tsm-stk-user-group-2 			    @1,032 title "tsm-stk-user-group-2"
+	display tsm-stk-description                 @1,036 title "tsm-stk-description"
+	display tsm-stk-desc-line-2 			    @1,040 title "tsm-stk-desc-line-2"
+	display tsm-stk-desc-line-3 			    @1,044 title "tsm-stk-desc-line-3"
+	display tsm-stk-unit-desc                   @1,048 title "tsm-stk-unit-desc"
+	display tsm-stk-pack-weight 			    @1,052 title "tsm-stk-pack-weight"
+	display tsm-stk-pack-desc                   @1,056 title "tsm-stk-pack-desc"
+	display tsm-stk-pack-qty 				    @1,060 title "tsm-stk-pack-qty"
+	display tsm-stk-apn-number 			        @1,064 title "tsm-stk-apn-number"
+	display tsm-stk-serialized-flag 		    @1,068 title "tsm-stk-serialized-flag"
+	display tsm-stk-price-per 			        @1,072 title "tsm-stk-price-per"
+	display tsm-stk-sort-analysis-code 	        @1,076 title "tsm-stk-sort-analysis-code"
+	display tsm-prc-region-code			        @1,080 title "tsm-prc-region-code"
+	display tsm-prc-wholesale-price             @1,084 title "tsm-prc-wholesale-price"
+	display tsm-prc-recommend-retail            @1,088 title "tsm-prc-recommend-retail"
+	display tsm-prc-sales-tax-code              @1,092 title "tsm-prc-sales-tax-code"
+	display tsm-prc-airfreight-price	 	    @1,104 title "tsm-prc-airfreight-price"
+	display tsm-cre-accountcode                 @1,108 title "tsm-cre-accountcode"
+	display tsm-sup-stock-code                  @1,112 title "tsm-sup-stock-code"
+	display tsm-sup-stk-description 		    @1,116 title "tsm-sup-stk-description"
+	display tsm-sup-last-buy-price              @1,120 title "tsm-sup-last-buy-price"
+	display tsm-sup-last-buy-discount 	        @1,124 title "tsm-sup-last-buy-discount"
+	display tsm-sup-unit-of-measure 		    @1,128 title "tsm-sup-unit-of-measure"
+	display tsm-sup-pack-qty 				    @1,132 title "tsm-sup-pack-qty"
+	display tsm-sup-new-buy-price 	 	        @1,136 title "tsm-sup-new-buy-price"
+	display tsm-sup-new-buy-effective-date      @1,140 title "tsm-sup-new-buy-effective-date"
+	display tsm-stk-sales-tax-paid-rate	        @1,144 title "tsm-stk-sales-tax-paid-rate"
+	display tsm-sup-shipping-method-code	    @1,148 title "tsm-sup-shipping-method-code"
+	display tsm-stk-alt-unit-desc			    @1,152 title "tsm-stk-alt-unit-desc"
+	display tsm-stk-conversion-factor		    @1,156 title "tsm-stk-conversion-factor"
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // dig-tmp-stock-master ---------------------------------------------
+
+screen dig-tmp-bill-of-materials
+	window @1,1 to @24,90
+		title concat("dig-tmp-bill-of-materials")
+		primary tmp-bill-of-materials
+		datagrid occurs 20
+	allowed md-process search //md-mode
+	review-from-start
+detail
+	display tbm-bom-def-whse				@1,004 title "tbm-bom-def-whse"
+	display tbm-bom-line-finish-date		@1,008 title "tbm-bom-line-finish-date"
+	display tbm-bom-line-link-code			@1,012 title "tbm-bom-line-link-code"
+	display tbm-bom-line-qty-check			@1,016 title "tbm-bom-line-qty-check"
+	display tbm-bom-line-start-date			@1,020 title "tbm-bom-line-start-date"
+	display tbm-bom-line-type				@1,024 title "tbm-bom-line-type"
+	display tbm-bom-overide-item-price		@1,028 title "tbm-bom-overide-item-price"
+	display tbm-bom-parent-code				@1,032 title "tbm-bom-parent-code"
+	display tbm-bom-plan-percent			@1,036 title "tbm-bom-plan-percent"
+	display tbm-bom-plan-spread-factor		@1,040 title "tbm-bom-plan-spread-factor"
+	display tbm-bom-quantity				@1,044 title "tbm-bom-quantity"
+	display tbm-bom-seq-no					@1,048 title "tbm-bom-seq-no"
+	display tbm-bom-unit-desc				@1,052 title "tbm-bom-unit-desc"
+	display tbm-bom-wastage-per-cent		@1,056 title "tbm-bom-wastage-per-cent"
+	display tbm-bom-x-quantity				@1,060 title "tbm-bom-x-quantity"
+	display tbm-bom-y-quantity				@1,064 title "tbm-bom-y-quantity"
+	display tbm-comp-code					@1,068 title "tbm-comp-code"
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // dig-tmp-bill-of-materials ----------------------------------------
+
+
+screen dig-tmp-cre-master
+	window @1,1 to @24,90
+		title concat("dig-tmp-cre-master")
+		primary tmp-cre-master
+		datagrid occurs 20
+	allowed md-process search //md-mode
+	review-from-start
+detail
+	display tcm-cre-accountcode					@1,004 title "tcm-cre-accountcode"
+	display tcm-cr-pay-to-code 					@1,008 title "tcm-cr-pay-to-code"
+	display tcm-cr-shortname 					@1,012 title "tcm-cr-shortname"
+	display tcm-cr-def-payment-terms 			@1,016 title "tcm-cr-def-payment-terms"
+	display tcm-cr-payment-selection	 		@1,020 title "tcm-cr-payment-selection"
+	display tcm-cr-type 						@1,024 title "tcm-cr-type"
+	display tcm-cr-chq-or-bankdraft 			@1,028 title "tcm-cr-chq-or-bankdraft"
+	display tcm-cr-settlement-disc-code 		@1,032 title "tcm-cr-settlement-disc-code"
+	display tcm-cr-volume-disc-code 			@1,036 title "tcm-cr-volume-disc-code"
+	display tcm-cr-disc-rate 					@1,040 title "tcm-cr-disc-rate"
+	display tcm-cr-contact-name 				@1,044 title "tcm-cr-contact-name"
+	display tcm-cr-default-gl-accountcode 		@1,048 title "tcm-cr-default-gl-accountcode"
+	display tcm-cr-curr-code 					@1,052 title "tcm-cr-curr-code"
+	display tcm-cr-def-purchase-terms-days		@1,056 title "tcm-cr-def-purchase-terms-days"
+	display tcm-na-name 						@1,060 title "tcm-na-name"
+	display tcm-na-company 						@1,064 title "tcm-na-company"
+	display tcm-na-street 						@1,068 title "tcm-na-street"
+	display tcm-na-suburb 						@1,072 title "tcm-na-suburb"
+	display tcm-na-country 						@1,076 title "tcm-na-country"
+	display tcm-postcode 						@1,080 title "tcm-postcode"
+	display tcm-na-country-code 				@1,084 title "tcm-na-country-code"
+	display tcm-na-phone 						@1,088 title "tcm-na-phone"
+	display tcm-na-fax-no 						@1,092 title "tcm-na-fax-no"
+	display tcm-cr-clearing-flag				@1,104 title "tcm-cr-clearing-flag"
+	display tcm-cr-tax-code						@1,108 title "tcm-cr-tax-code"
+	display tcm-e-na-company-id					@1,112 title "tcm-e-na-company-id"
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // dig-tmp-cre-master -----------------------------------------------
+
+
+screen dig-tmp-stock-notes
+	window @1,1 to @24,90
+		title concat("dig-tmp-stock-notes")
+		primary tmp-stock-notes
+		datagrid occurs 20
+	allowed md-process search //md-mode
+	review-from-start
+detail
+	display tsn-stock-code			       		@1,004 title "tsn-stock-code"
+	display tsn-stock-note-type 	       		@1,008 title "tsn-stock-note-type"
+	display tsn-stock-note-sequence     		@1,012 title "tsn-stock-note-sequence"
+	display tsn-stock-note 			          	@1,016 title "tsn-stock-note"
+confirm
+	auto
+confirmed
+	//switch on screen-mode()
+	//	case md-mode
+	//		do stuff
+	//endswitch
+endconfirm
+endscreen // dig-tmp-stock-notes ----------------------------------------------
+
+
+
+//EOF p7branch.spl ------------------------------------------------------------

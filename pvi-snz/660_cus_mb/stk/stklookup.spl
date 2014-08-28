@@ -1,0 +1,2429 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/stk/stklookup
+//  Program Desc:	custom Stock Lookup screen
+//  Requested By:
+//  Request Date:	01dec07
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	12dec12	rmd 		cloned from rmd/stk/stklookup add custom bed mode
+// 	15may09	rmd			if no WH DRP = C, set main whse to DRP C
+//						increase warehouse count show wh costs against each item
+// 	07may09	rmd 		HD10181:51 base active stock on 12 months movements
+// 	01may09	rmd			allow match on multiple partial keywords
+// 	23apr09	rmd 		HD10181:36 allow external call to display availibility results
+// 	17apr09	rmd			allow external keyword call returning a stock-code
+// 	14apr09	rmd 		keyword search on like KW% and return all items show columns
+//						from normal "Active Stock" screen and obsolete condition column
+// 						force keyword search to only return items from non-obsolete stock list
+// 	10oct08	rmd			do stock-price fixes during SSM rebuild
+// 	11feb08	rmd 		add UOM column
+// 	18dec07	rmd			utilize custom object snooze-stock-master
+// 	06dec07	rmd			if multi keyword search for stock-codes with matches on all words
+
+#include "../../../../bms/include/i85codes.spl"
+
+mode kw-search
+	prompt 'Keyword'
+
+mode select-item
+	prompt 'Select'
+	currency
+
+mode review-item
+	prompt 'Review'
+	currency
+
+mode md-enquiry
+	prompt "Enquiry"
+	currency
+
+mode md-exit //exit-item
+	prompt 'Exit'
+
+mode md-rebuild-obsolete
+	//prompt "Rebuild OBS Flag." // 10oct10
+	prompt "Rebuild SSM"
+	//security 8
+	help "Rebuild Snooze Stock Master"
+
+mode md-print
+	prompt "Print"
+
+mode md-custom-bed	//12dec12
+	prompt "Custom Bed"
+	help "Create Custom Bed"
+
+object tmp-stock-found
+	type is memory
+	record
+		tsf-stock-code			like stock-code
+	endrecord
+	key is tsf-stock-code unique
+
+object tmp-stock-master
+	//type is memory
+	type is isam
+	file is "tmp-stock-master"
+	record
+		tsm-stock-code			like stock-code
+		// tsm-whse-code			like whse-code
+		tsm-stk-description     like stk-description
+		tsm-activity-date		like stk-date-last-change // whse-stock-last-sale //like stk-user-only-date1
+		tsm-regional-rrp-inc	like prc-wholesale-price
+		tsm-metro-rrp-inc		like prc-recommend-retail
+		tsm-avail-qty			like whse-qty-on-hand occurs 10 //  - whse-current-orders
+		tsm-whse-avg-cost		like whse-avg-cost occurs 10
+	endrecord
+	key is tsm-stock-code unique
+
+object tmp-key-word
+	type is memory
+	//type is isam
+	//file is "tmp-key-word"
+	record
+		tmp-stock-key-word		like stock-key-word
+		tmp-stock-code			like stock-code
+		//tmp-stk-description		like stk-description
+		tmp-stk-description		pic x(80) // desc lines 1 and 2 combined
+		tmp-skw-whse			like skw-whse
+		tmp-iteration			type numeric
+		tmp-stk-unit-desc		like stk-unit-desc
+		tmp-condition			pic x(16) // e.g. OBSOLETE
+		tmp-activity-date		like stk-date-last-change // whse-stock-last-sale //like stk-user-only-date1
+		tmp-regional-rrp-inc	like prc-wholesale-price
+		tmp-metro-rrp-inc		like prc-recommend-retail
+		tmp-avail-qty			like whse-qty-on-hand occurs 10 //  - whse-current-orders
+		tmp-whse-avg-cost		like whse-avg-cost occurs 10
+		//tmp-whse-avg-cost		like whse-avg-cost
+	endrecord
+	//key is tmp-stock-key-word
+	key is tmp-stock-code tmp-iteration
+	//key is tmp-stock-code
+
+
+object tmp-inc-key-word
+	//type is memory
+	type is isam
+	file is "tmp-inc-key-word"
+	record
+		tic-stock-code			like stock-code
+		tic-stock-key-word		like stock-key-word occurs 4
+	endrecord
+	key is tic-stock-code unique
+
+field
+	ws-stock-code			like stock-code
+	// ws-so-order-no			like so-order-no
+	ws-stock-key-word		like stk-description // stock-key-word
+	ws-record-count			type numeric
+	ws-whse-count			type numeric
+	ws-whse-code			like whse-code occurs 10
+	ws-whse-desc			like sys-description occurs 10
+	ws-whse-avg-cost		like whse-avg-cost occurs 10
+	ws-multi-word			like stock-key-word
+	ws-levels-searched		type numeric
+	ws-interactive-rebuild	type boolean
+	ws-kw-search-inc-obs	type boolean
+	//$STKKWOBS="TRUE"
+	ws-external-kw			like stock-key-word
+
+	//23apr09
+	ws-start-whse			pic x(4)
+	ws-end-whse             pic x(4)
+	ws-start-stockcode      pic x(16)
+	ws-end-stockcode        pic x(16)
+	ws-start-group-code     pic x(4)
+	ws-end-group-code       pic x(4)
+	ws-start-size           pic x(4)
+	ws-end-size             pic x(4)
+	ws-start-retail         type numeric
+	ws-end-retail           type numeric
+	ws-screen-title			pic x(100)
+	ws-so-order-no          like so-order-no 	//12dec12
+	ws-so-bo-suffix         like so-bo-suffix   //12dec12
+	ws-sol-line-seq			like sol-line-seq   //12dec12
+	//23apr09
+
+/*
+	ws-whse-1				like whse-code
+	ws-whse-2				like whse-code
+	ws-whse-3				like whse-code
+	ws-whse-4				like whse-code
+	ws-whse-5				like whse-code
+	ws-whse-6				like whse-code
+*/
+
+procedure main
+returning
+	lr-stock-code			like stock-code
+
+	get system-control first
+
+	//14apr09
+	if get-env("STKKWOBS") in {"1" "TRUE" "YES"}
+		set ws-kw-search-inc-obs = TRUE
+	endif
+	//$STKKWOBS="TRUE"
+
+
+	set ws-record-count = 0
+
+	if get-param(1) = "-rebuild"
+		//message "Rebuilding stocklookup"
+		do rebuild-obsolete-flag
+		exit
+	else
+		set ws-so-order-no  	= num(get-param(1))
+		set ws-so-bo-suffix 	= get-param(2)
+		set ws-sol-line-seq		= num(get-param(3))
+	endif
+
+//	set whse-code = get-param(1)
+
+	do determine-whse-count
+
+	open snooze-stock-master // tmp-stock-master
+	on error
+		message "Have to build.."
+		open snooze-stock-master create permanent
+		do build-active-stock
+	else
+		// message "Did not have to build"
+	endon
+
+
+
+	// message concat("SDW:" sys-default-whse)
+	get system-control first
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+	if user-store-id = SPACES
+		//message concat("No Store defined for user: " login-id())
+		//exit
+		//set ws-cash-account = "CASH"
+	else
+	endif
+
+mode md-custom-bed	//12dec12
+	prompt "Custom Bed"
+	help "Create Custom Bed"
+	when get-param(1) = "-simplify"
+	if get-param(1) = "-simplify"
+		set ws-so-order-no  = num(get-param(2))
+		set ws-so-bo-suffix = get-param(3)
+		set ws-sol-line-seq	= num(get-param(4))
+	endif
+
+	if get-param(1) = "-availability"
+		set ws-screen-title =  concat("Stock Availability")
+	elseif get-param(1) = "-showroom"
+		set ws-screen-title =  concat("Showroom " user-store-id " Stocklist")
+	else
+		set ws-screen-title = concat("Keyword Results " ws-stock-key-word)
+	endif
+
+	// 17apr09
+	if get-param(1) = "-keyword"
+		set ws-stock-key-word = strconcat(get-param(2))
+		if ws-stock-key-word != SPACES
+			if pattern(strconcat(ws-stock-key-word)," ")
+				//multi keywords
+				//message "Debug: Multi"
+				// 01may09
+				//do build-data-set-multi-inclusive
+				do build-data-set-multi-partial
+			else
+				do build-data-set
+			endif
+			if ws-record-count > 0
+				do build-extended-search-data
+				do display-kw-grid
+				set lr-stock-code = ws-stock-code
+				exit
+			else
+				//message concat("'" strconcat(ws-stock-key-word) "' not found") //@9,13 background
+				//set lr-stock-code = strconcat(get-param(2))
+				exit
+			endif
+		else
+			exit
+		endif
+	elseif get-param(1) = "-availability"     //23apr09
+
+		do get-user-input-availability
+		exit
+		//set ws-start-whse		    = get-param(2)
+		//set ws-end-whse             = get-param(3)
+		//set ws-start-stockcode      = get-param(4)
+		//set ws-end-stockcode        = get-param(5)
+		//set ws-start-group-code     = get-param(6)
+		//set ws-end-group-code       = get-param(7)
+		//set ws-start-size           = get-param(8)
+		//set ws-end-size             = get-param(9)
+		//set ws-start-retail         = num(get-param(10))
+		//set ws-end-retail       	= num(get-param(11))
+	elseif get-param(1) = "-showroom"
+		do get-user-input-showroom-stock
+		exit
+	endif
+	// 17apr09
+
+	if get-param(1) = "-prefetch"
+		exit
+	else
+		do display-sm-grid
+		set lr-stock-code = ws-stock-code
+		exit
+	endif
+
+endprocedure // main ----------------------------------------------------------
+
+
+procedure get-user-input-availability
+	window @4,5 to @14,78 title is "Available Stock"
+	box @4,5 to @13,78
+
+	get system-control first
+
+	//accept ws-start-whse			@5,25 title is "Start Whse:"
+	//	uppercase
+	//	default SPACES
+	//accept ws-end-whse				@5,60 title is "End Whse:"
+	//	uppercase
+	//	default "~~~~"
+	//accept ws-start-stockcode		@6,25 title is "Start Stock Code:"
+	//	uppercase
+	//	default SPACES
+	//accept ws-end-stockcode			@6,60 title is "End Stock Code:"
+	//	uppercase
+	//	default "~~~~"
+	//accept ws-start-group-code		@7,25 title is "Start Stock Group:"
+	//	uppercase
+	//	default SPACES
+	//accept ws-end-group-code		@7,60 title is "End Stock Group:"
+	//	uppercase
+	//	default "~~~~"
+	//accept ws-start-size			@8,25 title is "Start Size Code:"
+	//	uppercase
+	//	default SPACES
+	//accept ws-end-size				@8,60 title is "End Size Code:"
+	//	uppercase
+	//	default "~~~~"
+	//accept ws-start-retail			@9,25 pic zzzzzz9.99 title is "Start Retail Price:"
+	//	default 0
+	//accept ws-end-retail			@9,60 pic zzzzzz9.99 title is "End Retail Price:"
+	//	default 9999999.99
+	//accept ws-blank-lines			@10,60 title is "Blank line between each stock code?:"
+	//	uppercase
+	//	allowed "Y" "N"
+	//	default "Y"
+
+	//accept ws-start-whse			@5,25 title is "Start Whse:"
+	//	uppercase
+	//	default SPACES
+	//	on help-key
+	//		set sys-tbl-type = "WH"
+    //        do i85codes-table-help
+    //        set ws-start-whse = sys-tbl-code
+	//		//set lf-stock-group-description = sys-description //right-justify(sys-description,20)
+    //        reenter optional
+    //    endon
+	//accept ws-end-whse				@6,25 title is "End Whse:"
+	//	uppercase
+	//	default "~~~~"
+	//	on help-key
+	//		set sys-tbl-type = "WH"
+    //        do i85codes-table-help
+    //        set ws-end-whse = sys-tbl-code
+    //        reenter optional
+    //    endon
+    set ws-start-whse 	= SPACES
+    set ws-end-whse 	= "~~~~"
+	accept ws-start-stockcode		@5,25 title is "Start Stock Code:"
+		uppercase
+		default SPACES
+		on help-key
+			spl
+				"rmd/stk/stklookup6"
+			returning
+				ws-start-stockcode
+			reenter ws-start-stockcode optional
+		endon
+	accept ws-end-stockcode			@6,25 title is "End Stock Code:"
+		uppercase
+		default "~~~~"
+		on help-key
+			spl
+				"rmd/stk/stklookup6"
+			returning
+				ws-end-stockcode
+			reenter ws-end-stockcode optional
+		endon
+	accept ws-start-group-code		@8,25 title is "Start Stock Group:"
+		uppercase
+		default SPACES
+		on help-key
+			set sys-tbl-type = "PG"
+            do i85codes-table-help
+            set ws-start-group-code = sys-tbl-code
+            reenter optional
+        endon
+	accept ws-end-group-code		@9,25 title is "End Stock Group:"
+		uppercase
+		default "~~~~"
+		on help-key
+			set sys-tbl-type = "PG"
+            do i85codes-table-help
+            set ws-end-group-code = sys-tbl-code
+            reenter optional
+        endon
+	accept ws-start-size			@5,65 title is "Start Size Code:"
+		uppercase
+		default SPACES
+		on help-key
+			set sys-tbl-type = "UM"
+            do i85codes-table-help
+            set ws-start-size = sys-tbl-code
+            reenter optional
+        endon
+	accept ws-end-size				@6,65 title is "End Size Code:"
+		uppercase
+		default "~~~~"
+		on help-key
+			set sys-tbl-type = "UM"
+            do i85codes-table-help
+            set ws-end-size = sys-tbl-code
+            reenter optional
+        endon
+	accept ws-start-retail			@8,65 pic zzzzzz9.99 title is "Start Retail Price:"
+		default 0
+	accept ws-end-retail			@9,65 pic zzzzzz9.99 title is "End Retail Price:"
+		default 9999999.99
+	//accept ws-blank-lines			@12,65 title is "Line between each item?:"
+	//	uppercase
+	//	allowed "Y" "N"
+	//	default "Y"
+	//set ws-blank-lines = "Y"
+	display "Searching for matching items" @11,25 background
+	//command
+	//	"prosql"
+	//
+	//parameters
+	//	"-n"
+	//	//"-f"
+	//	"rjbstavgpaP.enq"
+	//	ws-start-whse
+	//	ws-end-whse
+	//	ws-start-stockcode
+	//	ws-end-stockcode
+	//	ws-start-group-code
+	//	ws-end-group-code
+	//	ws-start-size
+	//	ws-end-size
+	//	ws-start-retail
+	//	ws-end-retail
+	//	ws-blank-lines
+		//message "DB: a2r avail"
+		do build-data-set-availability
+		//message "DB: a2r ext"
+		do build-extended-search-data
+		//message "DB: a2r grid"
+		do display-kw-grid
+		//exit
+
+	//spl
+	//	"rmd/stk/stklookup6"
+	//
+	//parameters
+	//	"-availability"
+	//	ws-start-whse
+	//	ws-end-whse
+	//	ws-start-stockcode
+	//	ws-end-stockcode
+	//	ws-start-group-code
+	//	ws-end-group-code
+	//	ws-start-size
+	//	ws-end-size
+	//	ws-start-retail
+	//	ws-end-retail
+	//	//ws-blank-lines
+
+	//"prosql"
+	//
+	//parameters
+	//	"-n"
+	//	//"-f"
+	//	"rjbstavgpa.enq"
+	//	ws-start-whse
+	//	ws-end-whse
+	//	ws-start-stockcode
+	//	ws-end-stockcode
+	//	ws-start-group-code
+	//	ws-end-group-code
+	//	ws-start-size
+	//	ws-end-size
+	//	str(ws-start-retail)
+	//	str(ws-end-retail)
+	//	ws-blank-lines
+endprocedure // get-user-input-availability -----------------------------------
+
+procedure get-user-input-showroom-stock
+local field
+	lf-accept				pic x
+
+	window @4,6 to @7,38 title is "Showroom Stock"
+	box @4,6 to @7,37
+
+	get system-control first
+	get system-user
+	on index user-id sys-comp-code
+	key is login-id() sys-consolidation-division
+	if user-store-id = SPACES
+		message concat("No Store defined for user: " login-id())
+		exit
+		//set ws-cash-account = "CASH"
+	else
+	endif
+    set ws-start-whse 	= user-store-id
+    set ws-end-whse 	= user-store-id
+	accept lf-accept @5,33 title is "Create Showroom Stock List?"
+		uppercase
+		allowed "Y" "N"
+		default "Y"
+	if lf-accept = "N"
+		exit
+	endif
+	do build-data-set-showroom
+	//do build-extended-search-data
+	do display-showroom-grid
+endprocedure // get-user-input-showroom-stock ---------------------------------
+
+procedure determine-whse-count
+local field
+	lf-drp-exists					type boolean
+
+	set ws-whse-count = 1
+
+	get snooze-stock-master first
+	on error
+
+	else
+
+	endon
+	//15may09 if no DRP set to C set main whse to C
+	set lf-drp-exists = FALSE
+	extract system-table
+	on index sys-tbl-type sys-tbl-code
+	key is "WH" SPACES
+	next same sys-tbl-type
+	detail
+		if sys-tbl-alpha-4[1] = "C"
+			set lf-drp-exists = TRUE
+		endif
+	endextract
+
+	if not lf-drp-exists
+		get system-control first
+		get system-table lock
+			on index sys-tbl-type sys-tbl-code
+			key is "WH" sys-consolidation-division
+		on error
+			message "Cannot setup DRP warehouse, please contact System Administrator"
+		else
+			set sys-tbl-alpha-4[1] = "C"
+			update system-table
+			//message "DRP set for whse:" sys-consolidation-division
+		endon
+	endif
+
+// build warehouse set for columns
+	extract system-table
+	on index sys-tbl-type sys-tbl-code
+	key is "WH" SPACES
+	next same sys-tbl-type
+	detail
+		if sys-tbl-alpha-4[1] = "C"
+			set ws-whse-code[ws-whse-count] = sys-tbl-code
+			set ws-whse-desc[ws-whse-count] = sys-description
+			set ws-whse-count += 1
+		endif
+	endextract
+
+	// message concat("Found " str(ws-whse-count - 1) " warehouses")
+
+endprocedure // determine-whse-count ------------------------------------------
+
+
+
+
+procedure build-active-stock
+local field
+	lf-counter-1					type numeric
+	lf-counter-2					type numeric
+
+	set lf-counter-1 = 0
+	set lf-counter-2 = 0
+
+
+
+
+
+
+//open tmp-stock-master create permanent
+
+
+	extract stock-master
+	on index stk-sort-analysis-code stock-group stock-code
+	key is SPACES SPACES SPACES
+	finish when stk-sort-analysis-code > "YZZZZZZZ"
+	detail
+
+	// if stk-condition-code not in {'O'}
+	// check if price record exists before adding to output
+		get stock-price
+		on error
+		else
+			set tsm-stock-code = stock-code
+			set tsm-stk-description = stk-description
+			set tsm-regional-rrp-inc = prc-wholesale-price * 1.1
+			set tsm-metro-rrp-inc = prc-recommend-retail * 1.1
+			set tsm-activity-date = stk-date-last-change
+
+
+
+			extract stock-warehouse-detail
+			on index stock-code whse-code
+			key is tsm-stock-code spaces
+			next same stock-code
+			detail
+				for lf-counter-1 = 1 to ws-whse-count
+					if ws-whse-code[lf-counter-1] = whse-code
+						set tsm-avail-qty[lf-counter-1] = whse-qty-on-hand - whse-current-orders
+						set tsm-whse-avg-cost[lf-counter-1] = whse-avg-cost
+					endif
+				endfor
+			endextract
+			insert tmp-stock-master
+		endon
+	// endif
+	endextract
+	// message concat("Collected:" str(lf-counter-1) " from " str(lf-counter-2))
+endprocedure // build-active-stock
+
+
+procedure rebuild-obsolete-flag
+local field
+	lf-cutoff-date				type date
+	lf-last-sale				type date
+	lf-stock-code				like stock-code
+	i							type numeric
+	j							type numeric
+	set lf-cutoff-date = today() - 365 // 1095
+	set lf-last-sale = 1
+	// reset Z flag
+	extract stock-master lock
+	//on index stock-code
+	//key is "SOP2771"
+	//next same stock-code
+	detail
+		if substring(stk-sort-analysis-code,1,1) = "Z"
+			set stk-sort-analysis-code = stk-desc-line-3
+		endif
+		set stk-spare-1 = SPACES
+		set stk-user-only-alpha4-4 = SPACES
+		update stock-master
+		if ws-interactive-rebuild
+			display "Resetting:" 	@22,9
+			display stock-code		@22,20
+		endif
+	endextract
+	extract stock-master
+	//on index stock-code
+	//key is "SOP2771"
+	//next same stock-code
+	detail
+		//if stock-code = "SOP2771"
+		//	message stk-date-last-change
+		//	message lf-cutoff-date
+		//endif
+		if stk-date-last-change > lf-cutoff-date
+			// this one is safe..
+			//set stk-user-only-date1 = stk-date-last-change
+			//update stock-master
+			//message strconcat(str(stk-date-last-change) " later than " str(lf-cutoff-date))
+		else
+			//message strconcat(str(stk-date-last-change) " not later than " str(lf-cutoff-date))
+			// unsure - check sale date in all warehouses
+			set lf-stock-code = stock-code
+			extract stock-warehouse-detail
+			on index stock-code whse-code
+			key is lf-stock-code spaces
+			next same stock-code
+			detail
+				if whse-stock-last-sale > stk-date-last-change
+					// have had sales since the cutoff, update last change date in stock-master
+					get stock-master lock
+					on index stock-code
+					key is lf-stock-code
+					on error
+					else
+						set stk-date-last-change = whse-stock-last-sale
+						update stock-master
+					endon
+				else
+					// no sales within period
+					get stock-master lock
+					on index stock-code
+					key is lf-stock-code
+					on error
+					else
+						if ws-interactive-rebuild
+							display "Set Obsolete:" @22,6
+							display stock-code		@22,20
+						endif
+						set stk-user-only-alpha4-4 = "OBS"
+						// set stk-user-only-date1 = 1
+						// set stk-user-only-date2 = 2
+						update stock-master
+					endon
+				endif
+			endextract
+		endif
+	endextract
+	// retest
+	//extract stock-master lock
+	//detail
+	//	if stk-date-last-change > lf-cutoff-date
+	//		// this one is truly safe..
+	//		//set stk-user-only-date1 = stk-date-last-change
+	//		//update stock-master
+	//	else
+	//		//if substring(stk-sort-analysis-code,1,1) = "Z"
+	//		//else
+	//			set stk-desc-line-3 = stk-sort-analysis-code
+	//			set stk-sort-analysis-code = concat("Z" strconcat(stk-sort-analysis-code))
+	//			update stock-master
+	//		//endif
+	//	endif
+	//endextract
+	if ws-interactive-rebuild
+		display "Delete:" 				@22,12
+		display "snooze-stock-master"	@22,20
+	endif
+	extract snooze-stock-master
+	detail
+		delete snooze-stock-master
+	endextract
+	do determine-whse-count
+	open snooze-stock-master
+	//extract stock-master
+	//on index stk-sort-analysis-code stock-group stock-code
+	//key is SPACES SPACES SPACES
+	//finish when stk-sort-analysis-code > "YZZZZZZZ"
+	select * from stock-master
+	where stk-user-only-alpha4-4 != "OBS"
+	detail
+	if ws-interactive-rebuild
+		display "Inserting:" 			@22,9
+		display stock-code				@22,20
+	endif
+	// if stk-condition-code not in {'O'}
+	// check if price record exists before adding to output
+		get stock-price
+		on error
+			set prc-wholesale-price		= 0
+			set prc-recommend-retail	= 0
+			set prc-sales-tax-code		= 0
+		else
+		endon
+		initialise snooze-stock-master
+		set ssm-stock-code = stock-code
+		set ssm-stk-description = stk-description
+		if prc-sales-tax-code = 1
+			set ssm-regional-rrp-inc = prc-wholesale-price * 1.1
+			set ssm-metro-rrp-inc = prc-recommend-retail * 1.1
+		else
+			set ssm-regional-rrp-inc = prc-wholesale-price
+			set ssm-metro-rrp-inc = prc-recommend-retail
+		endif
+		set ssm-activity-date = stk-date-last-change
+		extract stock-warehouse-detail
+		on index stock-code whse-code
+		key is ssm-stock-code spaces
+		next same stock-code
+		detail
+			for i = 1 to ws-whse-count
+				if ws-whse-code[i] = whse-code
+					set ssm-avail-qty[i] = whse-qty-on-hand - whse-current-orders
+					set ssm-avail-qty-whse[i] = whse-code
+				endif
+			endfor
+		endextract
+		insert snooze-stock-master
+		set j += 1
+	// endif
+	endselect
+	if ws-interactive-rebuild
+		message concat(str(j) " items inserted into SSM")
+	endif
+endprocedure // rebuild-obsolete-flag -----------------------------------------
+
+
+screen active-stock-lookup
+title concat('Keyword Search')
+	allowed entry
+	window @5,5 to @11,48
+	//detail
+		box @6,5 to @8,47 title is 'Keyword Search'
+		// display 'Keyword Search' @6,17 bold
+		accept ws-stock-key-word @7,14 title is 'Search:'
+		uppercase
+confirm auto
+confirmed
+
+	if strlen(ws-stock-key-word) > 0
+		if pattern(strconcat(ws-stock-key-word)," ")
+			// message "Found a space"
+			//message strlen(ws-stock-key-word)
+
+			set ws-stock-key-word = strconcat(ws-stock-key-word)
+			//message strlen(ws-stock-key-word)
+			// do build-data-set-desc
+			do build-data-set-multi
+		else
+			do build-data-set
+		endif
+		if ws-record-count > 0
+			do build-extended-search-data
+			do display-kw-grid
+			exit
+		else
+			display concat("'" strconcat(ws-stock-key-word) "' not found") @9,13 background
+		endif
+	endif
+	// exit
+endconfirm
+	// exit
+endscreen // active-stock-lookup -------------------------------------------
+
+procedure build-extended-search-data
+local field
+	lf-counter-1					type numeric
+	lf-counter-2					type numeric
+
+	set lf-counter-1 = 0
+	set lf-counter-2 = 0
+
+	extract tmp-key-word
+	detail
+	// if stk-condition-code not in {'O'}
+	// check if price record exists before adding to output
+		get stock-master
+		on index stock-code
+		key is tmp-stock-code
+		on error
+		else
+			set tmp-stk-unit-desc = stk-unit-desc
+			get stock-price
+			on error
+				set tmp-regional-rrp-inc = 0
+				set tmp-metro-rrp-inc = 0
+			else
+			endon
+			//set tsm-stock-code = stock-code
+			//set tsm-stk-description = stk-description
+			if prc-sales-tax-code = 1
+				set tmp-regional-rrp-inc = prc-wholesale-price * 1.1
+				set tmp-metro-rrp-inc = prc-recommend-retail * 1.1
+			else
+				set tmp-regional-rrp-inc = prc-wholesale-price
+				set tmp-metro-rrp-inc = prc-recommend-retail
+			endif
+			set tmp-activity-date = stk-date-last-change
+
+			extract stock-warehouse-detail
+			on index stock-code whse-code
+			key is tmp-stock-code spaces
+			next same stock-code
+			detail
+				for lf-counter-1 = 1 to ws-whse-count
+					if ws-whse-code[lf-counter-1] = whse-code
+						set tmp-whse-avg-cost[lf-counter-1] = whse-avg-cost
+						set tmp-avail-qty[lf-counter-1] = whse-qty-on-hand - whse-current-orders
+					endif
+				endfor
+			endextract
+			update tmp-key-word
+		endon
+	// endif
+	endextract
+	// message concat("Collected:" str(lf-counter-1) " from " str(lf-counter-2))
+
+
+
+		//tmp-stock-key-word		like stock-key-word
+		//tmp-stock-code			like stock-code
+		//tmp-stk-description		like stk-description
+		//tmp-skw-whse			like skw-whse
+		//tmp-iteration			type numeric
+		//tmp-condition			pic x(16) // e.g. OBSOLETE
+		//tmp-activity-date		like stk-date-last-change // whse-stock-last-sale //like stk-user-only-date1
+		//tmp-regional-rrp-inc	like prc-wholesale-price
+		//tmp-metro-rrp-inc		like prc-recommend-retail
+		//tmp-avail-qty			like whse-qty-on-hand occurs 6 //  - whse-current-orders
+endprocedure // build-extended-search-data ------------------------------------
+
+
+procedure build-data-set-multi
+open tmp-stock-found truncate temporary
+
+
+
+local field
+	lf-word-count				type numeric
+	lf-str-to-split				pic x(50)
+	lf-str-1					pic x(51)
+	lf-str-2					pic x(51)
+	lf-str-3					pic x(51)
+	lf-str-4					pic x(51)
+	p							type numeric
+	l							type numeric
+
+
+//	t 							pic x
+//	i							type numeric
+//	j							type numeric
+//	lf-stock-code				like stock-code
+//
+//
+//	set lf-str-to-split = ws-stock-key-word
+//
+//	set j = 4
+//
+//	for i = strlen(lf-str-to-split) down to 1
+//		set t = substring(lf-str-to-split,i,i)
+//		if t = SPACES
+//			set j -= 1
+//        else
+//			if j = 1
+//				set lf-str-1 = concat(t strconcat(lf-str-1))
+//			elseif j = 2
+//				set lf-str-2 = concat(t strconcat(lf-str-2))
+//			elseif j = 3
+//				set lf-str-3 = concat(t strconcat(lf-str-3))
+//			elseif j = 4
+//				set lf-str-4 = concat(t strconcat(lf-str-4))
+//			endif
+//
+//		endif
+//	endfor
+
+	set lf-str-to-split = ws-stock-key-word
+	set p = 0
+	set l = strlen(lf-str-to-split)
+	//message concat(str(l) ":" lf-str-to-split)
+
+	// pass 1
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-1 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	// pass 2
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-2 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	// pass 3
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-3 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	// pass 4
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-4 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	//message concat("1:" lf-str-1 "2:" lf-str-2)
+	//message concat("3:" lf-str-3 "4:" lf-str-4)
+
+
+
+
+
+//tsf-stock-code
+//tmp-stock-found
+
+
+	set ws-levels-searched = 0
+	// pass 1 - result from kw search has to exist in non obsolete stock list
+	if lf-str-1 = SPACES
+	else
+		// message "L1"
+		initialise tmp-key-word
+		open tmp-key-word truncate temporary
+		set ws-record-count = 0
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-1 spaces spaces
+		next same stock-key-word
+		detail
+			get snooze-stock-master
+			on index ssm-stock-code
+			key is stock-code
+			on error
+				// no match in non-obsolete set, discard
+				// or..
+				// 14apr09
+				//if ws-kw-search-inc-obs
+					get stock-master
+					on error
+					else
+						set tmp-stock-key-word = ws-stock-key-word // stock-key-word
+						set tmp-stock-code = stock-code
+						//set tmp-stk-description = stk-description
+						set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+						set tmp-iteration = 1
+						// set tsf-stock-code = tsm-stock-code
+						// insert tmp-stock-found
+						if stk-user-only-alpha4-4 = "OBS"
+							set tmp-condition = "OBSOLETE"
+						endif
+						insert tmp-key-word
+						set ws-record-count += 1
+					endon
+				//endif
+			else
+				get stock-master
+				on error
+				else
+					set tmp-stock-key-word = ws-stock-key-word // stock-key-word
+					set tmp-stock-code = stock-code
+					//set tmp-stk-description = stk-description
+					set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+					set tmp-iteration = 1
+					// set tsf-stock-code = tsm-stock-code
+					// insert tmp-stock-found
+					insert tmp-key-word
+					set ws-record-count += 1
+				endon
+			endon
+		endextract
+		set ws-levels-searched += 1
+	endif
+
+	// pass 2 - result from kw search has to exist in items found previously
+	if lf-str-2 = SPACES
+	else
+		// message "L2"
+		initialise tmp-key-word
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-2 spaces spaces
+		next same stock-key-word
+		detail
+			get tmp-key-word
+			on index tmp-stock-code tmp-iteration
+			key is stock-code 1
+			on error
+				// no match in codes already found, ignore
+				// or..
+				// 14apr09
+				//if ws-kw-search-inc-obs
+					get stock-master
+					on error
+					else
+						set tmp-stock-key-word = ws-stock-key-word // stock-key-word
+						set tmp-stock-code = stock-code
+						//set tmp-stk-description = stk-description
+						set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+						set tmp-iteration = 2
+						// set tsf-stock-code = tsm-stock-code
+						// insert tmp-stock-found
+						if stk-user-only-alpha4-4 = "OBS"
+							set tmp-condition = "OBSOLETE"
+						endif
+						insert tmp-key-word
+						set ws-record-count += 1
+					endon
+				//endif
+			else
+				get stock-master
+				on error
+				else
+					set tmp-stock-key-word = ws-stock-key-word // stock-key-word
+					set tmp-stock-code = stock-code
+					//set tmp-stk-description = stk-description
+					set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+					set tmp-iteration = 2
+					// set tsf-stock-code = stock-code
+					// insert tmp-stock-found
+					insert tmp-key-word
+					set ws-record-count += 1
+				endon
+			endon
+		endextract
+		set ws-levels-searched += 1
+    endif
+
+
+	// pass 3 - result from kw search has to exist in items found previously
+	if lf-str-3 = SPACES
+	else
+		// message "L3"
+		initialise tmp-key-word
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-3 spaces spaces
+		next same stock-key-word
+		detail
+			get tmp-key-word
+			on index tmp-stock-code tmp-iteration
+			key is stock-code 2
+			on error
+				// no match in codes already found, ignore
+				// or..
+				// 14apr09
+				//if ws-kw-search-inc-obs
+					get stock-master
+					on error
+					else
+						set tmp-stock-key-word = ws-stock-key-word // stock-key-word
+						set tmp-stock-code = stock-code
+						//set tmp-stk-description = stk-description
+						set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+						set tmp-iteration = 3
+						// set tsf-stock-code = tsm-stock-code
+						// insert tmp-stock-found
+						if stk-user-only-alpha4-4 = "OBS"
+							set tmp-condition = "OBSOLETE"
+						endif
+						insert tmp-key-word
+						set ws-record-count += 1
+					endon
+				//endif
+			else
+				get stock-master
+				on error
+				else
+					set tmp-stock-key-word = ws-stock-key-word // stock-key-word
+					set tmp-stock-code = stock-code
+					//set tmp-stk-description = stk-description
+					set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+					set tmp-iteration = 3
+					// set tsf-stock-code = tsm-stock-code
+					// insert tmp-stock-found
+					insert tmp-key-word
+					set ws-record-count += 1
+				endon
+			endon
+		endextract
+		set ws-levels-searched += 1
+    endif
+
+	// pass 4 - result from kw search has to exist in items found previously
+	if lf-str-4 = SPACES
+    else
+    	// message "L4"
+    	initialise tmp-key-word
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-4 spaces spaces
+		next same stock-key-word
+		detail
+			get tmp-key-word
+			on index tmp-stock-code tmp-iteration
+			key is stock-code 3
+			on error
+				// no match in codes already found, ignore
+				// or..
+				// 14apr09
+				//if ws-kw-search-inc-obs
+					get stock-master
+					on error
+					else
+						set tmp-stock-key-word = ws-stock-key-word // stock-key-word
+						set tmp-stock-code = stock-code
+						//set tmp-stk-description = stk-description
+						set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+						set tmp-iteration = 4
+						// set tsf-stock-code = tsm-stock-code
+						// insert tmp-stock-found
+						if stk-user-only-alpha4-4 = "OBS"
+							set tmp-condition = "OBSOLETE"
+						endif
+						insert tmp-key-word
+						set ws-record-count += 1
+					endon
+				//endif
+			else
+				get stock-master
+				on error
+				else
+					set tmp-stock-key-word = ws-stock-key-word // stock-key-word
+					set tmp-stock-code = stock-code
+					//set tmp-stk-description = stk-description
+					set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+					set tmp-iteration = 4
+					// set tsf-stock-code = tsm-stock-code
+					// insert tmp-stock-found
+					insert tmp-key-word
+					set ws-record-count += 1
+				endon
+			endon
+		endextract
+		set ws-levels-searched += 1
+	endif
+
+	//message str(ws-levels-searched)
+
+	// remove all items except those from the last pass
+
+	extract tmp-key-word
+	detail
+		if tmp-iteration != ws-levels-searched
+			delete tmp-key-word
+		endif
+	endextract
+/*
+
+	set ws-levels-searched += 1
+
+	if lf-str-2 = SPACES
+		exit
+	endif
+	// pass 2 - previous found list is discarded
+	// open tmp-key-word truncate temporary
+	// set ws-record-count = 0
+	extract stock-key-words
+	on index stock-key-word stock-code skw-whse
+	key is lf-str-2 spaces spaces
+	next same stock-key-word
+	detail
+
+		get tmp-stock-found
+		on index tsf-stock-code
+		key is stock-code
+		on error
+			// no match in existing list, delete from results
+			get tmp-key-word
+			on index tmp-stock-code
+			key is lf-str-2
+				delete tmp-key-word
+				set ws-record-count -= 1
+		else
+
+		endon
+	endextract
+
+
+	if lf-str-3 = SPACES
+		exit
+	endif
+	// pass 3
+	open tmp-key-word truncate temporary
+	set ws-record-count = 0
+	extract stock-key-words
+	on index stock-key-word stock-code skw-whse
+	key is lf-str-3 spaces spaces
+	next same stock-key-word
+	detail
+
+		get tmp-stock-found
+		on index tsf-stock-code
+		key is stock-code
+		on error
+			// no match in existing list, delete from results
+			get tmp-key-word
+			on index tmp-stock-code
+			key is stock-code
+				delete tmp-key-word
+				set ws-record-count -= 1
+		else
+		endon
+	endextract
+
+	if lf-str-4 = SPACES
+		exit
+	endif
+	// pass 4
+	open tmp-key-word truncate temporary
+	set ws-record-count = 0
+	extract stock-key-words
+	on index stock-key-word stock-code skw-whse
+	key is lf-str-4 spaces spaces
+	next same stock-key-word
+	detail
+
+		get tmp-stock-found
+		on index tsf-stock-code
+		key is stock-code
+		on error
+			// no match in existing list, delete from results
+			get tmp-key-word
+			on index tmp-stock-code
+			key is stock-code
+				delete tmp-key-word
+				set ws-record-count -= 1
+		else
+		endon
+	endextract
+*/
+
+
+endprocedure // build-data-set-multi ------------------------------------------
+
+procedure build-data-set-multi-inclusive
+local field
+	lf-word-count				type numeric
+	lf-str-to-split				pic x(50)
+	lf-str-1					pic x(51)
+	lf-str-2					pic x(51)
+	lf-str-3					pic x(51)
+	lf-str-4					pic x(51)
+	p							type numeric
+	l							type numeric
+	k							type numeric
+	lf-include-item				type boolean
+
+	open tmp-stock-found truncate temporary
+	open tmp-inc-key-word truncate temporary
+
+
+	set lf-str-to-split = ws-stock-key-word
+	set p = 0
+	set l = strlen(lf-str-to-split)
+	//message concat(str(l) ":" lf-str-to-split)
+
+	// pass 1
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-1 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	// pass 2
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-2 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	// pass 3
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-3 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	// pass 4
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-4 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	//message concat("1:" lf-str-1 "2:" lf-str-2)
+	//message concat("3:" lf-str-3 "4:" lf-str-4)
+
+
+
+
+
+//tsf-stock-code
+//tmp-stock-found
+
+
+	set ws-levels-searched = 0
+	// pass 1
+	if lf-str-1 = SPACES
+	else
+		set ws-levels-searched += 1
+		//message concat("L1" lf-str-1)
+		//set k = 0
+		//initialise tmp-inc-key-word
+		initialise stock-key-words
+		//set ws-record-count = 0
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-1 spaces spaces
+		next same stock-key-word
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[1]	= stock-key-word
+			get tmp-inc-key-word
+			on index tic-stock-code
+			key is stock-code
+			on error
+				insert tmp-inc-key-word
+			else
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+
+	if lf-str-2 = SPACES
+	else
+		set ws-levels-searched += 1
+		initialise stock-key-words
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-2 spaces spaces
+		next same stock-key-word
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[2]	= stock-key-word
+			get tmp-inc-key-word
+			on index tic-stock-code
+			key is stock-code
+			on error
+				set tic-stock-key-word[2]	= stock-key-word
+				insert tmp-inc-key-word
+			else
+				set tic-stock-key-word[2]	= stock-key-word
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+
+	if lf-str-3 = SPACES
+	else
+		set ws-levels-searched += 1
+		initialise stock-key-words
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-3 spaces spaces
+		next same stock-key-word
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[3]	= stock-key-word
+			get tmp-inc-key-word
+			on index tic-stock-code
+			key is stock-code
+			on error
+				set tic-stock-key-word[3]	= stock-key-word
+				insert tmp-inc-key-word
+			else
+				set tic-stock-key-word[3]	= stock-key-word
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+
+	if lf-str-4 = SPACES
+	else
+		set ws-levels-searched += 1
+		initialise stock-key-words
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-4 spaces spaces
+		next same stock-key-word
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[4]	= stock-key-word
+			get tmp-inc-key-word
+			on index tic-stock-code
+			key is stock-code
+			on error
+				set tic-stock-key-word[4]	= stock-key-word
+				insert tmp-inc-key-word
+			else
+				//if stock-code = "310AUL0004"
+				//	message concat("tic-stock-key-word[2]:" tic-stock-key-word[2])
+				//endif
+				set tic-stock-key-word[4]	= stock-key-word
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+
+
+/*
+	if lf-str-3 = SPACES
+	else
+		set ws-levels-searched += 1
+		//message "L3"
+		//initialise tmp-inc-key-word
+		initialise stock-key-words
+		//open tmp-key-word truncate temporary
+		//set ws-record-count = 0
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-3 spaces spaces
+		next same stock-key-word
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[3]	= stock-key-word
+			get tmp-inc-key-word
+			on error
+				insert tmp-inc-key-word
+				//set ws-record-count += 1
+			else
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+
+	if lf-str-4 = SPACES
+	else
+		set ws-levels-searched += 1
+		//message "L4"
+		//initialise tmp-inc-key-word
+		initialise stock-key-words
+		//open tmp-key-word truncate temporary
+		//set ws-record-count = 0
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-4 spaces spaces
+		next same stock-key-word
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[4]	= stock-key-word
+			get tmp-inc-key-word
+			on error
+				insert tmp-inc-key-word
+				//set ws-record-count += 1
+			else
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+*/
+
+    open tmp-key-word truncate temporary
+
+
+    // review temp findings
+    //do display-kw-tmp
+
+    //message concat("Levels:" str(ws-levels-searched))
+	extract tmp-inc-key-word
+	detail
+		set lf-include-item = TRUE
+		//if tic-stock-key-word[1] != SPACES and tic-stock-key-word[2] != SPACES and tic-stock-key-word[3] != SPACES and tic-stock-key-word[4] != SPACES
+		for k = 1 to ws-levels-searched
+			if tic-stock-key-word[k] = SPACES
+				// not all keywords satisfied - don't include this stock-code
+				set lf-include-item = FALSE
+			endif
+		endfor
+		if lf-include-item
+			get stock-master
+			on index stock-code
+			key is tic-stock-code
+			on error
+				//message concat("No match for tic-stock-code:" tic-stock-code)
+			else
+				set tmp-stock-key-word = ws-stock-key-word // stock-key-word
+				set tmp-stock-code = stock-code
+				//set tmp-stk-description = stk-description
+				set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+				set tmp-iteration = 1
+				// set tsf-stock-code = tsm-stock-code
+				// insert tmp-stock-found
+				//if stk-user-only-alpha4-4 = "OBS"
+				//	set tmp-condition = "OBSOLETE"
+				//endif
+				insert tmp-key-word
+				set ws-record-count += 1
+			endon
+		endif
+	endextract
+endprocedure // build-data-set-multi-inclusive --------------------------------
+
+// 01may09
+procedure build-data-set-multi-partial
+local field
+	lf-word-count				type numeric
+	lf-str-to-split				pic x(50)
+	lf-str-1					pic x(51)
+	lf-str-2					pic x(51)
+	lf-str-3					pic x(51)
+	lf-str-4					pic x(51)
+	p							type numeric
+	l							type numeric
+	k							type numeric
+	lf-include-item				type boolean
+
+	open tmp-stock-found truncate temporary
+	open tmp-inc-key-word truncate temporary
+
+
+	set lf-str-to-split = ws-stock-key-word
+	set p = 0
+	set l = strlen(lf-str-to-split)
+	//message concat(str(l) ":" lf-str-to-split)
+
+	// pass 1
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-1 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	// pass 2
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-2 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	// pass 3
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-3 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	// pass 4
+	if l > p
+		set p = pattern(lf-str-to-split," ")
+		set lf-str-4 = substring(lf-str-to-split,1,p - 1)
+		set lf-str-to-split = substring(lf-str-to-split,p + 1,strlen(lf-str-to-split))
+	endif
+
+	//message concat("1:" lf-str-1 "2:" lf-str-2)
+	//message concat("3:" lf-str-3 "4:" lf-str-4)
+
+
+
+
+
+//tsf-stock-code
+//tmp-stock-found
+
+
+	set ws-levels-searched = 0
+	// pass 1
+	if lf-str-1 = SPACES
+	else
+		set ws-levels-searched += 1
+		//message concat("L1" lf-str-1)
+		//set k = 0
+		//initialise tmp-inc-key-word
+		initialise stock-key-words
+		//set ws-record-count = 0
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-1 spaces spaces
+		//next same stock-key-word
+		finish when stock-key-word > strconcat(lf-str-1 "~")
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[1]	= stock-key-word
+			get tmp-inc-key-word
+			on index tic-stock-code
+			key is stock-code
+			on error
+				insert tmp-inc-key-word
+			else
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+
+	if lf-str-2 = SPACES
+	else
+		set ws-levels-searched += 1
+		initialise stock-key-words
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-2 spaces spaces
+		//next same stock-key-word
+		finish when stock-key-word > strconcat(lf-str-2 "~")
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[2]	= stock-key-word
+			get tmp-inc-key-word
+			on index tic-stock-code
+			key is stock-code
+			on error
+				set tic-stock-key-word[2]	= stock-key-word
+				insert tmp-inc-key-word
+			else
+				set tic-stock-key-word[2]	= stock-key-word
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+
+	if lf-str-3 = SPACES
+	else
+		set ws-levels-searched += 1
+		initialise stock-key-words
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-3 spaces spaces
+		//next same stock-key-word
+		finish when stock-key-word > strconcat(lf-str-3 "~")
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[3]	= stock-key-word
+			get tmp-inc-key-word
+			on index tic-stock-code
+			key is stock-code
+			on error
+				set tic-stock-key-word[3]	= stock-key-word
+				insert tmp-inc-key-word
+			else
+				set tic-stock-key-word[3]	= stock-key-word
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+
+	if lf-str-4 = SPACES
+	else
+		set ws-levels-searched += 1
+		initialise stock-key-words
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-4 spaces spaces
+		//next same stock-key-word
+		finish when stock-key-word > strconcat(lf-str-4 "~")
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[4]	= stock-key-word
+			get tmp-inc-key-word
+			on index tic-stock-code
+			key is stock-code
+			on error
+				set tic-stock-key-word[4]	= stock-key-word
+				insert tmp-inc-key-word
+			else
+				//if stock-code = "310AUL0004"
+				//	message concat("tic-stock-key-word[2]:" tic-stock-key-word[2])
+				//endif
+				set tic-stock-key-word[4]	= stock-key-word
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+
+
+/*
+	if lf-str-3 = SPACES
+	else
+		set ws-levels-searched += 1
+		//message "L3"
+		//initialise tmp-inc-key-word
+		initialise stock-key-words
+		//open tmp-key-word truncate temporary
+		//set ws-record-count = 0
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-3 spaces spaces
+		next same stock-key-word
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[3]	= stock-key-word
+			get tmp-inc-key-word
+			on error
+				insert tmp-inc-key-word
+				//set ws-record-count += 1
+			else
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+
+	if lf-str-4 = SPACES
+	else
+		set ws-levels-searched += 1
+		//message "L4"
+		//initialise tmp-inc-key-word
+		initialise stock-key-words
+		//open tmp-key-word truncate temporary
+		//set ws-record-count = 0
+		extract stock-key-words
+		on index stock-key-word stock-code skw-whse
+		key is lf-str-4 spaces spaces
+		next same stock-key-word
+		detail
+			initialise tmp-inc-key-word
+			set tic-stock-code			= stock-code
+			set tic-stock-key-word[4]	= stock-key-word
+			get tmp-inc-key-word
+			on error
+				insert tmp-inc-key-word
+				//set ws-record-count += 1
+			else
+				update tmp-inc-key-word
+			endon
+		endextract
+	endif
+*/
+
+    open tmp-key-word truncate temporary
+
+
+    // review temp findings
+    //do display-kw-tmp
+
+    //message concat("Levels:" str(ws-levels-searched))
+	extract tmp-inc-key-word
+	detail
+		set lf-include-item = TRUE
+		//if tic-stock-key-word[1] != SPACES and tic-stock-key-word[2] != SPACES and tic-stock-key-word[3] != SPACES and tic-stock-key-word[4] != SPACES
+		for k = 1 to ws-levels-searched
+			if tic-stock-key-word[k] = SPACES
+				// not all keywords satisfied - don't include this stock-code
+				set lf-include-item = FALSE
+			endif
+		endfor
+		if lf-include-item
+			get stock-master
+			on index stock-code
+			key is tic-stock-code
+			on error
+				//message concat("No match for tic-stock-code:" tic-stock-code)
+			else
+				set tmp-stock-key-word = ws-stock-key-word // stock-key-word
+				set tmp-stock-code = stock-code
+				//set tmp-stk-description = stk-description
+				set tmp-stk-description = concat(strconcat(stk-description) " " stk-desc-line-2)
+				set tmp-iteration = 1
+				// set tsf-stock-code = tsm-stock-code
+				// insert tmp-stock-found
+				//if stk-user-only-alpha4-4 = "OBS"
+				//	set tmp-condition = "OBSOLETE"
+				//endif
+				insert tmp-key-word
+				set ws-record-count += 1
+			endon
+		endif
+	endextract
+endprocedure // build-data-set-multi-partial ----------------------------------
+
+
+procedure build-data-set
+open tmp-key-word truncate temporary
+	set ws-record-count = 0
+	extract stock-key-words
+	on index stock-key-word stock-code skw-whse
+	key is ws-stock-key-word spaces spaces
+	finish when stock-key-word > strconcat(ws-stock-key-word "~")
+
+	detail
+		//message stock-code
+		initialise tmp-key-word
+		get snooze-stock-master
+		on index ssm-stock-code
+		key is stock-code
+		on error
+			// no match in non-obsolete set, discard
+			// 14apr09
+
+			//if ws-kw-search-inc-obs
+				get stock-master
+				on error
+				else
+					set tmp-stock-key-word = ws-stock-key-word // stock-key-word
+					set tmp-stock-code = stock-code
+					//set tmp-stk-description = stk-description
+					set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+					set tmp-iteration = 1
+					// set tsf-stock-code = tsm-stock-code
+					// insert tmp-stock-found
+					if stk-user-only-alpha4-4 = "OBS"
+						set tmp-condition = "OBSOLETE"
+					endif
+					insert tmp-key-word
+					set ws-record-count += 1
+				endon
+			//endif
+		else
+			//15may09
+			get stock-master
+				on error
+					initialise stock-master
+					leaving stock-code
+				endon
+			set tmp-stock-key-word = stock-key-word
+			set tmp-stock-code = ssm-stock-code
+			//set tmp-stk-description = ssm-stk-description
+			set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+			insert tmp-key-word
+			set ws-record-count += 1
+		endon
+	endextract
+	//endselect
+endprocedure // build-data-set ------------------------------------------------
+
+procedure build-data-set-availability
+//window @12,1 to @15,40 title is "Searching"
+local field
+	lf-price-test				type boolean
+	lf-whse-test				type boolean
+
+open tmp-key-word truncate temporary
+	set ws-record-count = 0
+	//box @12,1 to @15,39 title is "Progress"
+
+		//set ws-start-whse		    = get-param(2)
+		//set ws-end-whse             = get-param(3)
+		//set ws-start-stockcode      = get-param(4)
+		//set ws-end-stockcode        = get-param(5)
+		//set ws-start-group-code     = get-param(6)
+		//set ws-end-group-code       = get-param(7)
+		//set ws-start-size           = get-param(8)
+		//set ws-end-size             = get-param(9)
+		//set ws-start-retail         = num(get-param(10))
+		//set ws-end-retail       	= num(get-param(11))
+
+
+	initialise tmp-key-word
+	select *
+	from
+		stock-master
+	where
+		stock-code between ws-start-stockcode and ws-end-stockcode
+		and stock-group between ws-start-group-code and ws-end-group-code
+		and stk-pack-desc between ws-start-size and ws-end-size
+	detail
+
+
+		// price test
+		set lf-price-test = FALSE
+		set lf-whse-test = FALSE
+		get stock-price
+		on error
+		else
+			// neutered to behave the same as printed report.
+			// uncomment if RRP inc tax would be a better measure
+			//if prc-recommend-retail-inc-tax = 0
+				if prc-recommend-retail between ws-start-retail and ws-end-retail
+					set lf-price-test = TRUE
+				endif
+			//elseif prc-recommend-retail-inc-tax between ws-start-retail and ws-end-retail
+			//	set lf-price-test = TRUE
+			//endif
+		endon
+
+		// dropping the whse range because this returns an array of whses
+		// there's no reduction in record count
+		////whse-code between ws-start-whse and ws-end-whse
+		extract stock-warehouse-detail
+		on index stock-code whse-code
+		key is stock-code spaces
+		next same stock-code
+		detail
+			//set ws-stock-avail = whse-qty-on-hand - whse-current-orders
+			if (whse-qty-on-hand - whse-current-orders) > 0
+				set lf-whse-test = TRUE
+			endif
+		endextract
+		//finish when whse-code > ws-end-whse
+		//detial
+		//
+		//endextract
+
+
+		if lf-price-test and lf-whse-test
+			display "Now At:" @12,25 background
+			display stock-code @12,33 background
+
+			set tmp-stock-code = stock-code
+			//set tmp-stk-description = stk-description
+			set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+			insert tmp-key-word
+		    set ws-record-count += 1
+		endif
+	endselect
+
+endprocedure // build-data-set-availability -----------------------------------
+
+procedure build-data-set-showroom
+//window @12,1 to @15,40 title is "Searching"
+local field
+	lf-price-test				type boolean
+	lf-whse-test				type boolean
+
+open tmp-key-word truncate temporary
+	set ws-record-count = 0
+
+
+
+	initialise tmp-key-word
+	select *
+	from
+		stock-master
+	//where
+	//	stock-code between ws-start-stockcode and ws-end-stockcode
+	//	and stock-group between ws-start-group-code and ws-end-group-code
+	//	and stk-pack-desc between ws-start-size and ws-end-size
+	detail
+
+
+		get stock-warehouse-detail
+		on index stock-code whse-code
+		key is stock-code ws-end-whse
+		on error
+		else
+			//set ws-stock-avail = whse-qty-on-hand - whse-current-orders
+			if (whse-qty-on-hand - whse-current-orders) > 0
+				//set lf-whse-test = TRUE
+				set tmp-stock-code = stock-code
+				set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+				set tmp-stk-unit-desc = stk-unit-desc
+				get stock-price
+				on error
+					set tmp-regional-rrp-inc = 0
+					set tmp-metro-rrp-inc = 0
+				else
+				endon
+				//set tsm-stock-code = stock-code
+				//set tsm-stk-description = stk-description
+				if prc-sales-tax-code = 1
+					set tmp-regional-rrp-inc = prc-wholesale-price * 1.1
+					set tmp-metro-rrp-inc = prc-recommend-retail * 1.1
+				else
+					set tmp-regional-rrp-inc = prc-wholesale-price
+					set tmp-metro-rrp-inc = prc-recommend-retail
+				endif
+				set tmp-activity-date = stk-date-last-change
+				set tmp-avail-qty[1] = whse-qty-on-hand - whse-current-orders
+				set tmp-whse-avg-cost = whse-avg-cost
+				set ws-record-count += 1
+				display stock-code @6,12
+				insert tmp-key-word
+			endif
+		endon
+	endselect
+endprocedure // build-data-set-showroom ---------------------------------------
+
+
+
+procedure build-data-set-desc
+open tmp-key-word truncate temporary
+	set ws-record-count = 0
+	//message concat("Multi KW:" str(strlen(ws-stock-key-word)) ws-stock-key-word)
+	extract tmp-stock-master
+	detail //ws-stock-key-word
+		/*
+		message concat("SKU:" tsm-stock-code "KW:" ws-stock-key-word)
+		if pattern(tsm-stk-description,ws-stock-key-word) > 0
+			set tmp-stock-key-word = ws-stock-key-word
+			set tmp-stock-code = tsm-stock-code
+			//set tmp-stk-description = tsm-stk-description
+			set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+			insert tmp-key-word
+			set ws-record-count += 1
+		endif
+		*/
+		// message concat("SKU:" tsm-stock-code "Desc:" tsm-stk-description "KW:" ws-stock-key-word str(pattern(tsm-stk-description,ws-stock-key-word)))
+
+		// if tsm-stk-description like concat( "%" ws-stock-key-word "%")
+		if pattern(tsm-stk-description,ws-stock-key-word) > 0
+			set tmp-stock-key-word = ws-stock-key-word
+			set tmp-stock-code = tsm-stock-code
+			//set tmp-stk-description = tsm-stk-description
+			set tmp-stk-description = concat(stk-description " " stk-desc-line-2)
+			insert tmp-key-word
+			set ws-record-count += 1
+		endif
+
+	endextract
+endprocedure // build-data-set
+
+
+screen display-kw-grid
+local field
+	i							type numeric
+
+	window @1,1 to @24,105
+		title ws-screen-title
+		primary tmp-key-word
+		// where tmp-iteration = ws-levels-searched
+		datagrid occurs 19
+	allowed select-item md-enquiry md-print search // md-exit
+	//allowed search select-item // md-exit
+	review-from-start
+mode md-print when get-param(1) = "-availability"
+mode select-item when get-param(1) != "-availability"
+//before
+	//message "ws-whse-count:" ws-whse-count
+detail
+
+		display tmp-stock-code			@1,2 title is 'Stock Code'
+		display tmp-stk-description		@1,4 title is 'Description'
+        display tmp-metro-rrp-inc		@1,10 title is "Metro" pic is zzz,zz9.99
+        display tmp-regional-rrp-inc 	@1,12 title is "Regional" pic is zzz,zz9.99
+		display tmp-stk-unit-desc		@1,14 title is "UOM"
+
+
+
+		display tmp-avail-qty[1]		@1,16 title is concat(ws-whse-desc[1]) pic ------z
+		display tmp-avail-qty[2]		@1,18 title is concat(ws-whse-desc[2]) pic ------z
+		display tmp-avail-qty[3]		@1,20 title is concat(ws-whse-desc[3]) pic ------z
+		display tmp-avail-qty[4]		@1,22 title is concat(ws-whse-desc[4]) pic ------z
+		display tmp-avail-qty[5]		@1,24 title is concat(ws-whse-desc[5]) pic ------z
+		display tmp-avail-qty[6]		@1,26 title is concat(ws-whse-desc[6]) pic ------z
+		display tmp-avail-qty[7]		@1,28 title is concat(ws-whse-desc[7]) pic ------z
+		display tmp-avail-qty[8]		@1,30 title is concat(ws-whse-desc[8]) pic ------z
+		//	display tsm-avail-qty[9]		@1,32 title is concat(ws-whse-desc[9]) pic ------z
+		//	display tsm-avail-qty[10]		@1,34 title is concat(ws-whse-desc[10]) pic ------z
+
+
+
+		//if ws-whse-count > 0
+		//	display tmp-avail-qty[1]		@1,16 title is concat(ws-whse-desc[1]) pic ------z
+		//endif
+		//if ws-whse-count > 1
+		//	display tmp-avail-qty[2]		@1,18 title is concat(ws-whse-desc[2]) pic ------z
+		//endif
+		//if ws-whse-count > 2
+		//	display tmp-avail-qty[3]		@1,20 title is concat(ws-whse-desc[3]) pic ------z
+		//endif
+		//if ws-whse-count > 3
+		//	display tmp-avail-qty[4]		@1,22 title is concat(ws-whse-desc[4]) pic ------z
+		//endif
+		//if ws-whse-count > 4
+		//	display tsm-avail-qty[5]		@1,24 title is concat(ws-whse-desc[5]) pic ------z
+		//endif
+		//if ws-whse-count > 5
+		//	display tsm-avail-qty[6]		@1,26 title is concat(ws-whse-desc[6]) pic ------z
+		//endif
+		//if ws-whse-count > 6
+		//	display tsm-avail-qty[7]		@1,28 title is concat(ws-whse-desc[7]) pic ------z
+		//endif
+		//if ws-whse-count > 7
+		//	display tsm-avail-qty[8]		@1,30 title is concat(ws-whse-desc[8]) pic ------z
+		//endif
+		//if ws-whse-count > 8
+		//	display tsm-avail-qty[9]		@1,32 title is concat(ws-whse-desc[9]) pic ------z
+		//endif
+		//if ws-whse-count > 9
+		//	display tsm-avail-qty[10]		@1,34 title is concat(ws-whse-desc[10]) pic ------z
+		//endif
+
+
+		////display tmp-condition			@1,24 title is "Condition"
+
+		//for i = 1 to ws-whse-count
+		//	display tmp-avail-qty[i]	@1,14 + (i * 2) title is concat(ws-whse-desc[i]) pic ------z
+		//endfor
+
+
+
+		// 15may09 footer cost display's
+	box @19,1 to @23,104 title is "Warehouse Costs"
+		if ws-whse-desc[1] != SPACES
+			//display concat(right-justify(ws-whse-desc[1],20) ":" fstr(tmp-whse-avg-cost[1],5,2)) @20,1 background
+			//display right-justify(ws-whse-desc[1],20)		@20,1  background
+			//display fstr(tmp-whse-avg-cost[1],5,2)	 		@20,22 background
+			display tmp-whse-avg-cost[1]						@20,22 pic ------9.99 title is substring(ws-whse-desc[1],1,20)
+		endif
+		if ws-whse-desc[2] != SPACES
+			//display concat(ws-whse-desc[2] fstr(tmp-whse-avg-cost[2],5,2)) @21,1 background
+			//display concat(right-justify(ws-whse-desc[2],20) ":" fstr(tmp-whse-avg-cost[2],5,2)) @21,1 background
+			//display right-justify(ws-whse-desc[2],20)		@21,1  background
+			//display fstr(tmp-whse-avg-cost[2],5,2)			@21,22 background
+			display tmp-whse-avg-cost[2]						@21,22 pic ------9.99 title is substring(ws-whse-desc[2],1,20)
+		endif
+		if ws-whse-desc[3] != SPACES
+			//display concat(ws-whse-desc[3] fstr(tmp-whse-avg-cost[3],5,2)) @22,1 background
+			//display concat(right-justify(ws-whse-desc[3],20) ":" fstr(tmp-whse-avg-cost[3],5,2)) @22,1 background
+			display tmp-whse-avg-cost[3]						@22,22 pic ------9.99 title is substring(ws-whse-desc[3],1,20)
+		endif
+		if ws-whse-desc[4] != SPACES
+			//display concat(ws-whse-desc[4] fstr(tmp-whse-avg-cost[4],5,2)) @20,31 background
+			//display concat(right-justify(ws-whse-desc[4],20) ":" fstr(tmp-whse-avg-cost[4],5,2)) @20,31 background
+			display tmp-whse-avg-cost[4]						@20,55 pic ------9.99 title is substring(ws-whse-desc[4],1,20)
+		endif
+		if ws-whse-desc[5] != SPACES
+			//display concat(ws-whse-desc[5] fstr(tmp-whse-avg-cost[5],5,2)) @21,31 background
+			//display concat(right-justify(ws-whse-desc[5],20) ":" fstr(tmp-whse-avg-cost[5],5,2)) @21,31 background
+			display tmp-whse-avg-cost[5]						@21,55 pic ------9.99 title is substring(ws-whse-desc[5],1,20)
+		endif
+		if ws-whse-desc[6] != SPACES
+			//display concat(ws-whse-desc[6] fstr(tmp-whse-avg-cost[6],5,2)) @24,31 background
+			//display concat(right-justify(ws-whse-desc[6],20) ":" fstr(tmp-whse-avg-cost[6],5,2)) @22,31 background
+			display tmp-whse-avg-cost[6]						@22,55 pic ------9.99 title is substring(ws-whse-desc[6],1,20)
+		endif
+		if ws-whse-desc[7] != SPACES
+			//display concat(ws-whse-desc[7] fstr(tmp-whse-avg-cost[7],5,2)) @20,61 background
+		endif
+		if ws-whse-desc[8] != SPACES
+			//display concat(ws-whse-desc[8] fstr(tmp-whse-avg-cost[8],5,2)) @21,61 background
+		endif
+		if ws-whse-desc[9] != SPACES
+			//display concat(ws-whse-desc[9] fstr(tmp-whse-avg-cost[9],5,2)) @22,61 background
+		endif
+
+confirm auto
+confirmed
+	if screen-mode = select-item
+		set ws-stock-code = tmp-stock-code
+		exit
+	elseif screen-mode() = md-exit
+		exit
+	elseif screen-mode() = md-enquiry
+		spl "stk/m4stkmaint" parameters are "-drill" tmp-stock-code
+	elseif screen-mode() = md-print
+		command
+			"prosql"
+		parameters
+			"-n"
+			//"-f"
+			"rjbstavgpaP.enq"
+			ws-start-whse
+			ws-end-whse
+			ws-start-stockcode
+			ws-end-stockcode
+			ws-start-group-code
+			ws-end-group-code
+			ws-start-size
+			ws-end-size
+			ws-start-retail
+			ws-end-retail
+			"Y" // ws-blank-lines
+	endif
+	//exit
+endconfirm
+
+endscreen // display-kw-grid --------------------------------------------------
+
+screen display-showroom-grid
+	window @1,1 to @24,105
+		title ws-screen-title
+		primary tmp-key-word
+		// where tmp-iteration = ws-levels-searched
+		datagrid occurs 20
+	//allowed find select-item md-print search // md-exit
+	//allowed search select-item // md-exit
+	allowed search
+	review-from-start
+//mode md-print when get-param(1) = "-availability"
+//mode select-item when get-param(1) != "-availability"
+
+detail
+
+		display tmp-stock-code			@1,2 title is 'Stock Code'
+		display tmp-stk-description		@1,4 title is 'Description'
+        display tmp-metro-rrp-inc		@1,10 title is "Metro Inc GST" pic is zzz,zz9.99
+        display tmp-regional-rrp-inc 	@1,12 title is "Regional Inc GST" pic is zzz,zz9.99
+		display tmp-stk-unit-desc		@1,14 title is "UOM"
+		display tmp-avail-qty[1]		@1,16 title is concat(ws-end-whse " Qty")
+		display tmp-whse-avg-cost[1]	@1,18 title is concat(ws-end-whse " Avg Cost")
+confirm auto
+confirmed
+endconfirm
+
+endscreen // display-showroom-grid --------------------------------------------
+
+screen display-kw-tmp
+	window @1,1 to @24,105
+		title concat('Temp Keyword Results ' ws-stock-key-word)
+		primary tmp-inc-key-word
+		// where tmp-iteration = ws-levels-searched
+		datagrid occurs 20
+	allowed review-item search // md-exit
+	review-from-start
+detail
+
+		display tic-stock-code			@1,2 title is 'Stock Code'
+		display tic-stock-key-word[1]	@1,4 title is 'KW 1'
+		display tic-stock-key-word[2]	@1,6 title is 'KW 2'
+		display tic-stock-key-word[3]	@1,8 title is 'KW 3'
+		display tic-stock-key-word[4]	@1,10 title is 'KW 4'
+
+confirm auto
+confirmed
+	if screen-mode() = review-item
+		spl
+			"stk/m4stkmaint"
+		parameters
+			"-drill"
+			tic-stock-code
+	endif
+endconfirm
+
+endscreen // display-kw-tmp ---------------------------------------------------
+
+
+screen stock-review
+	window @1,1 to @14,55
+		title concat('Stock Review')
+		primary stock-master
+		when stock-code = ws-stock-code
+		allowed search md-exit
+
+detail
+	get stock-price
+	on error
+	else
+	endon
+	extract stock-supplier
+	on index stock-code cre-accountcode
+	key is ws-stock-code spaces
+	next same stock-code
+		detail
+			if cre-accountcode = SPACES
+				set sup-last-buy-price = 0
+			endif
+	endextract
+
+	display stock-code		@3,20 title is 'Stock Code:'
+	display stk-description	@4,20 title is 'Description:'
+	// display "RRP's inc GST" @5,10 bold background
+	if prc-sales-tax-code = 1
+		display prc-wholesale-price * 1.1 	@6,20 title is 'Regional:' pic is zzz,zz9.99
+		display prc-recommend-retail * 1.1 	@7,20 title is 'Metro:' pic is zzz,zz9.99
+		display prc-prom-price * 1.1 		@8,20 title is 'Promo:' pic is zzz,zz9.99
+	else
+		display prc-wholesale-price 		@6,20 title is 'Regional:' pic is zzz,zz9.99
+		display prc-recommend-retail 		@7,20 title is 'Metro:' pic is zzz,zz9.99
+		display prc-prom-price 				@8,20 title is 'Promo:' pic is zzz,zz9.99
+	endif
+	display cre-accountcode @10,20 title is 'Supplier:'
+	display sup-last-buy-price @11,20 title is 'Supplier Cost:' pic is zzz,zz9.99
+
+
+
+
+
+confirm auto
+confirmed
+	if screen-mode = md-exit
+		exit
+	endif
+endconfirm
+endscreen // stock-review -----------------------------------------------------
+
+
+screen display-sm-grid
+	window @1,1 to @24,105
+		title concat('Active Stock')
+		primary snooze-stock-master
+		datagrid occurs 20
+	// allowed select-item md-enquiry review-item kw-search md-rebuild-obsolete search exit-item
+	// allowed select-item md-enquiry kw-search md-rebuild-obsolete search exit-item
+	// md-enquiry - calling prog closes when stkmaint is closed
+	allowed select-item kw-search md-custom-bed md-rebuild-obsolete search md-exit
+
+	review-from-start
+
+local field
+	i									type numeric
+
+before
+	get snooze-stock-master first
+	on error
+		message "No data in ssm"
+	else
+
+	endon
+		for i = 1 to 6
+			get system-table
+			on index sys-tbl-type sys-tbl-code
+			key is "WH" ws-whse-code[i]
+			on error
+			else
+				set ws-whse-desc[i] = sys-description
+			endon
+		endfor
+
+detail
+
+		get stock-master
+		on index stock-code
+		key is ssm-stock-code
+		on error
+			initialise stock-master
+		else
+		endon
+
+		//display ssm-stock-code			@1,2 title is 'Stock Code'
+		accept ssm-stock-code			@1,2 title is 'Stock Code'
+			uppercase
+		display ssm-stk-description		@1,4 title is 'Description'
+		// display tsm-whse-code			@1,6 title is "Whse"
+		// display tsm-avail-qty	 		@1,8 title is "Available"
+        display ssm-metro-rrp-inc		@1,10 title is "Metro" pic is zzz,zz9.99
+        display ssm-regional-rrp-inc 	@1,12 title is "Regional" pic is zzz,zz9.99
+		//display tsm-activity-date 		@1,12 title is "Activity Date"
+		display stk-unit-desc			@1,14 title is "UOM"
+		display ssm-avail-qty[1]		@1,16 title is concat(ws-whse-desc[1]) pic ------z
+		display ssm-avail-qty[2]		@1,18 title is concat(ws-whse-desc[2]) pic ------z
+		display ssm-avail-qty[3]		@1,20 title is concat(ws-whse-desc[3]) pic ------z
+		display ssm-avail-qty[4]		@1,22 title is concat(ws-whse-desc[4]) pic ------z
+		//display tsm-avail-qty[5]		@1,24 title is concat(ws-whse-desc[5]) pic ------z
+		//display tsm-avail-qty[6]		@1,26 title is concat(ws-whse-desc[6]) pic ------z
+
+
+after
+	//want user to stay here until they enter 0 into ws-stock-code
+		back-to-detail
+
+confirm auto
+confirmed
+	if screen-mode = select-item
+		set ws-stock-code = ssm-stock-code
+		exit
+	elseif screen-mode = review-item
+		set ws-stock-code = ssm-stock-code
+		do stock-review
+		// exit
+	elseif screen-mode = kw-search
+		do active-stock-lookup
+		exit
+	elseif screen-mode() = md-rebuild-obsolete
+		set ws-interactive-rebuild = TRUE
+		do rebuild-obsolete-flag
+	elseif screen-mode() = md-enquiry
+		//spl "stk/m4stkmaint"
+		//parameters
+		//	"-drill"
+		//	tsm-stock-code
+		// dropping out of this prog after enq screen closes
+
+		// el
+		// back-to-detail
+
+		spl "stk/m4stkmaint" parameters are "-drill" ssm-stock-code
+	elseif screen-mode() = md-custom-bed
+		spl "pvi-snz/stk/smpprdsel"
+			parameters
+				"-stklookup"
+				ws-so-order-no
+				ws-so-bo-suffix
+				ws-sol-line-seq
+			returning
+				ws-stock-code
+			if ws-stock-code != SPACES
+				exit
+			endif
+	elseif screen-mode() = md-exit
+		exit
+	endif
+	//exit
+endconfirm
+endscreen // display-sm-grid ------------------------------------------------
+
+//stklookup6.spl
