@@ -1,0 +1,53 @@
+select 
+  so-order-date 
+  so-delivery-date 
+  so-actual-delivery-date 
+  so-dl-user-only-alpha30-2
+  sales-order-archive.so-order-no //so-order-no
+  sales-order-archive.so-bo-suffix //so-bo-suffix
+  //so-order-status 
+  sales-order-archive.so-cust-code //so-cust-code 
+  so-invoice-no 
+  //so-dl-text[1] 
+  so-dl-text[5] 
+  shortname 
+  //so-cust-reference 
+  //so-user-only-alpha20-1 
+  company-name
+  ddate = 
+    input date help "Start date"
+    prompt "Enter a starting date (eg. 13/7/2014) : "
+from 
+  sales-order-archive OUTER sales-order-delivery-archive OUTER deb-master 
+  system-control
+where
+  sales-order-archive.so-order-no = sales-order-delivery-archive.so-order-no and
+
+  sales-order-archive.so-bo-suffix = sales-order-delivery-archive.so-bo-suffix and
+  //accountcode = so-cust-code and
+  accountcode = sales-order-archive.so-cust-code and 
+  so-order-date >= ddate and
+  so-text-type in { "DI" } and
+  so-dl-user-only-alpha30-2 != spaces
+
+//order by
+//  so-order-no so-bo-suffix
+
+format is lst
+
+suppress company-name 
+suppress ddate
+
+report width is 300
+
+field title of so-dl-user-only-alpha30-2 is "Truck"
+display pic of so-dl-user-only-alpha30-2 is x(12)
+field title of so-order-no is "s/o #"
+display pic of so-order-no is z(10)
+field title of so-bo-suffix is "suffix"
+display pic of so-bo-suffix is x(11)
+//display pic of so-order-status is x(6)
+
+title line 1 is company-name
+title line 2 is " --  test delivery report  " today()
+title line 3 is " --  where so-order-date is on or past " ddate // 13/7/2014
