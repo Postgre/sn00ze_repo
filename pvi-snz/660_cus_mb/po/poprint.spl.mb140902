@@ -11,9 +11,6 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//	03sep14	mb	{4}		default printer for Kim of Geelong 
-//								+ skip ACCEPT for territory store name is "P" for printing.
-//								+ default email to user email address if email is blank.
 //	20aug14	rmd	{3}		retrieve territory (store) code associated with PO to
 //						po-user-only-alpha4-1 allowing Territory address print
 //	07aug14	mb	{2}		fix issue where only option to exit is to say YES to update email address.
@@ -177,13 +174,6 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 	endif
 	display lf-terr-method	@15,63 background
 	accept lf-territory @15,57 title "Store:"
-// < {4}
-		when lf-mode != "E"
-		default lf-territory
-		read-only
-	accept lf-territory @15,57 title "Store:"
-		when lf-mode = "E"
-// > {4}
 		default lf-territory
 		uppercase
 		validation
@@ -244,18 +234,6 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 			default lf-email-address
 	*/
 	//-- --------------------------------------------------
-// < {4}
-		if lf-email-address = spaces
-			get system-user-control
-				on index user-id
-				key is getenv("LOGNAME")
-			on error
-			endon //get system-user-control
-			//--
-			set lf-email-address = suc-user-email //-- pronto login user email address . . .
-			//--
-		endif //-- if lf-email-address = spaces
-// > {4}
 		accept lf-email-address
 			@16,47 
 			title "Email Address:"
@@ -403,28 +381,11 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		do build-printers-list
 		set lf-printer-name = getenv("POPRINT")
 		set lf-printer-name2 = getenv("POPRINT")
-//		set lf-printer-name = getenv("POPRINT")
 		//display "Choose Printer:"	@16,61 background	//{1}
 		//accept lf-printer-name @16,77                 //{1}
 		//display "Choose Printer:"	@16,31 background   //{1}	//{3}
-// < {4}
-		do get-default-printer
-			returning lf-printer-name
-//zzz zaz zzxzx
-// > {4}
 		display "Printer:"	@16,38 background   				//{3}
-// < {4}
-/*
 		accept lf-printer-name @16,47                   //{1}
-		when lf-printer-name != spaces
-		default lf-printer-name
-		read-only
-*/
-// > {4}
-		accept lf-printer-name @16,47                   //{1}
-/*
-			when lf-printer-name = spaces
-*/
 			default lf-printer-name
 			//show-value
 		on help-key
@@ -434,7 +395,6 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 			refresh lf-printer-name
 			reenter optional
 		endon
-		/*
 		validation
 			set lf-printer-name = lf-printer-name2
 			if lf-printer-name = SPACES
@@ -444,7 +404,6 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 				refresh lf-printer-name
 			endif
 		endvalidation
-		*/
 		//set ws-env-printer = lf-printer-name
 		//set ws-spool-report = NO
 
@@ -495,48 +454,6 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		reenter lf-mode
 	endif
 endprocedure // pse-po --------------------------------------------------------
-
-// < {4}
-//zzz zaz zzxzx
-//-- ------------------------------
-procedure get-default-printer
-	returning lr-printer-name pic x(15)
-//-- ------------------------------
-	set lr-printer-name = spaces
-	//-- -----------------------
-	/*
-	get system-user-control
-		on index user-id
-		key is getenv("LOGNAME")
-	on error
-	endon //get system-user-control
-	*/
-	set user-id = getenv("LOGNAME")
-	//suc-user-email //-- pronto login user email address . . .
-	//message "zaz: user-id = " user-id ", po-user-name = " po-user-name
-	switch on user-id
-	case "gee365l3"
-		set lr-printer-name = "365_tfq_po"
-	case "mladenb"
-		set lr-printer-name = "ho_finlaser"
-	else
-		set lr-printer-name = spaces
-//object tmp-printers
-//	record
-//		tmp-prt-name		type string
-		get tmp-printers
-			first
-		on error
-		else
-			set lr-printer-name = tmp-prt-name
-		endon //get tmp-printers
-		//--
-		set lr-printer-name = getenv("POPRINT")
-		//--
-	endswitch //on user-id
-endprocedure //get-default-printer
-//-- ------------------------------
-// > {4}
 
 procedure build-faxmail-sender
 parameter

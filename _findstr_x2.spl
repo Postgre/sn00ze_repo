@@ -1,0 +1,25 @@
+t:\  findstr /s /i "system-user-control" > _findstr_x2.spl 
+
+pvi-snz\660_cus_mb\po\poprint.spl:		get system-user-control
+pvi-snz\660_cus_mb\rmd-po\poprint.spl:		get system-user-control
+pvi-snz\660_cus_mb\so\snzinvprnt.spl:	get system-user-control
+pvi-snz\deb\bankaudit-ho.spl:			//get system-user-control
+pvi-snz\deb\bankaudit-ho.spl:			//get system-user-control
+pvi-snz\deb\bankaudit-ho.spl:			get system-user-control
+pvi-snz\deb\bankaudit-ho.spl:			//get system-user-control
+pvi-snz\deb\bankaudit-ho.spl:			//get system-user-control
+pvi-snz\deb\bankaudit-ho.spl:			get system-user-control
+pvi-snz\deb\bankaudit-ho.spl:			get system-user-control
+pvi-snz\deb\bankaudit-ho.spl:			get system-user-control
+pvi-snz\deb\bankaudit.spl:			//get system-user-control
+pvi-snz\deb\bankaudit.spl:			//get system-user-control
+pvi-snz\deb\bankaudit.spl:			get system-user-control
+pvi-snz\deb\bankaudit.spl:			//get system-user-control
+pvi-snz\deb\bankaudit.spl:			//get system-user-control
+pvi-snz\deb\bankaudit.spl:			get system-user-control
+pvi-snz\menu\sysadmin.spl:	primary system-user-control
+pvi-snz\po\poprint.spl:		get system-user-control
+pvi-snz\so\Copy of snzinvprnt.spl:	get system-user-control
+pvi-snz\so\snzinvprnt - Copy.spl:	get system-user-control
+pvi-snz\so\snzinvprnt.spl:	get system-user-control
+rmd\po\poprint.spl:		get system-user-control

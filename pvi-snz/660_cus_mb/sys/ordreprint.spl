@@ -1,5 +1,6 @@
 // ordreprint.spl
-//	12aug14	mb		{2}	fix to restore original email if say NO to update email address in snzinvprnt.spl
+//	20aug14	rmd	{7}	use pvi-snz/po/poprint instead of rmd/po/poprint
+//	12aug14	mb	{2}	fix to restore original email if say NO to update email address in snzinvprnt.spl
 //	25nov13	rmd	{5)	K mode to call pvi-snz/so/snzinvprnt-kit
 //	26jul12	rmd	{4} moved to pvi-snz/sys/ordreprint
 //					and calls pvi-snz/so/snzinvprnt
@@ -182,7 +183,8 @@ local field
 				TRUE
 		elseif ws-order-type = "P"
 			//if login-id() = "robd"
-				spl "rmd/po/poprint"
+				//spl "rmd/po/poprint"  	//{7}
+				spl "pvi-snz/po/poprint"	//{7}
 					parameters
 						"-s"
 						ws-order-no

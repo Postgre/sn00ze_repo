@@ -22,12 +22,7 @@
 //
 // Modifcations
 //	When	Who		ChangeID	Changes
-//	03sep14	mb	{4}		default printer for Kim of Geelong 
-//								+ skip ACCEPT for territory store name is "P" for printing.
-//								+ default email to user email address if email is blank.
 //	07aug14	mb		{2}		fix issue where only option to exit is to say YES to update email address.
-//									-- see also pvi-snz/sys/ordreprint.spl  (for second part of required changes)
-//
 //	26apr13	rmd		{14}		modify printers found in get-printer (F2 lookup)
 //	26jul12	rmd		{13}		cater for 60 char email address
 //								e.g. peterpercivalpattersonspetpig@gmail.com (39 char)
@@ -524,18 +519,6 @@ detail
 			//		endon
 			//	endif
 			//endvalidation
-// < {4}
-		if lf-email-address = spaces
-			get system-user-control
-				on index user-id
-				key is getenv("LOGNAME")
-			on error
-			endon //get system-user-control
-			//--
-			set lf-email-address = suc-user-email //-- pronto login user email address . . .
-			//--
-		endif //-- if lf-email-address = spaces
-// > {4}
 			accept lf-email-address		@16,72
 				default lf-email-address
 			validation
@@ -644,29 +627,9 @@ message 'zaz aa: lf-original-email = ' lf-original-email
 	elseif lf-print-or-email = "P"
 		set lf-printer-name = getenv("INVOICES")
 		set lf-printer-name2 = getenv("INVOICES")
-// < {4}
-		do get-default-printer
-			returning lf-printer-name
-//zzz zaz zzxzx
-// > {4}
 		display "Choose Printer:"	@16,56 background
-		/*
 		accept lf-printer-name @16,72
 			default lf-printer-name
-		*/
-// < {4}
-/*
-		accept lf-printer-name @16,72
-		when lf-printer-name != spaces
-		default lf-printer-name
-		read-only
-*/
-// > {4}
-		accept lf-printer-name @16,72
-/*
-			when lf-printer-name = spaces
-*/
-		default lf-printer-name
 			//show-value
 		on help-key
 			do get-printer
@@ -675,7 +638,6 @@ message 'zaz aa: lf-original-email = ' lf-original-email
 			refresh lf-printer-name
 			reenter optional
 		endon
-		/*
 		validation
 			set lf-printer-name = lf-printer-name2
 			if lf-printer-name = SPACES
@@ -685,7 +647,6 @@ message 'zaz aa: lf-original-email = ' lf-original-email
 				refresh lf-printer-name
 			endif
 		endvalidation
-		*/
 		set ws-env-printer = lf-printer-name
 		set ws-spool-report = NO
 		display 'Number of Copies :' @17,53 background
@@ -779,47 +740,6 @@ confirmed
 endconfirm
 endscreen //get-printer  ---------------------------------------------
 
-// < {4}
-//zzz zaz zzxzx
-//-- ------------------------------
-procedure get-default-printer
-	returning lr-printer-name pic x(15)
-//-- ------------------------------
-	set lr-printer-name = spaces
-	//-- -----------------------
-	/*
-	get system-user-control
-		on index user-id
-		key is getenv("LOGNAME")
-	on error
-	endon //get system-user-control
-	*/
-	set user-id = getenv("LOGNAME")
-	//suc-user-email //-- pronto login user email address . . .
-	//message "zaz: user-id = " user-id ", po-user-name = " po-user-name
-	switch on user-id
-	//case "gee365l3"
-	//	set lr-printer-name = "365_tfq_po"
-	//case "mladenb"
-	//	set lr-printer-name = "ho_finlaser"
-	else
-		set lr-printer-name = spaces
-//object tmp-printers
-//	record
-//		tmp-prt-name		type string
-		get tmp-printers
-			first
-		on error
-		else
-			set lr-printer-name = tmp-prt-name
-		endon //get tmp-printers
-		//--
-		set lr-printer-name = getenv("INVOICES")
-		//--
-	endswitch //on user-id
-endprocedure //get-default-printer
-//-- ------------------------------
-// > {4}
 procedure build-printers-list						//rcMay 07, 2009
 local field
 	lf-all-printer				pic x(300) //type string
