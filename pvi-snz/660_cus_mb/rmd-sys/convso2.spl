@@ -1,0 +1,1683 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	convso.spl
+//  Program Desc:	Convert SO
+//  Requested By:
+//  Request Date:	09jun11
+//===========================================================================//
+//  Copyright (C) ProView IT Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	16jul14	rmd	{5}		update invoice # and deb-trans fields referring to invoice
+//						*sales-order: so-invoice-no
+//						*sales-order-archive: so-invoice-no
+//						deb-trans: tr-sort-key trans-ref dr-tr-order-no
+//						deb-trans-archive: trans-ref dr-tr-order-no
+//	18oct12	rmd			option to use addition of a number or a prefix
+//	14jun11	rmd			add gl-trans convert within stock-movements proc
+//	12jun11	rmd			add mod for stock-movements ref1 and ref3
+//	10jun11	rmd			add stock-movements and deb-trans conversion
+//	09jun11	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+//sales-order-line-purchase
+//so-order-no
+
+//tables requiring conversion
+
+/*   19661AA
+   19661AA
+   19661
+
+Not Reqd
+branch-comms-sale-order.so-order-no
+branch-comms-sale-order-lines.so-order-no
+branch-sales-order.so-order-no
+branch-sales-order-lines.so-order-no
+pos-coupon-sales-order.pcso-order-no
+      pos-coupon-sales-order.pcso-bo-suffix
+pos-layby-storage.pls-so-order-no
+      pos-layby-storage.pls-so-bo-suffix
+purchase-order-rf-goods-rec.porgr-so-order-no
+sales-history-detail-trans.shd-so-order-no
+      sales-history-detail-trans.shd-so-bo-suffix
+sales-lost-orders.so-order-no (barely in use - and no keys so dupes won't error anyway)
+      sales-lost-orders.so-bo-suffix
+sales-order-branch-split.so-order-no
+      sales-order-branch-split.so-bo-suffix
+sales-order-container-details.so-order-no
+      sales-order-container-details.so-bo-suffix
+sales-order-export-orders.so-order-no (barely in use - and no keys so dupes won't error anyway)
+      sales-order-export-orders.so-bo-suffix
+sales-order-extra-keys.so-order-no
+      sales-order-extra-keys.so-bo-suffix
+sales-order-gl-coding.so-order-no
+      sales-order-gl-coding.so-bo-suffix
+sales-order-line-pkg-lots.so-order-no
+      sales-order-line-pkg-lots.so-bo-suffix
+sales-order-line-response.so-order-no
+      sales-order-line-response.so-bo-suffix
+sales-order-line-retail-promo.so-order-no
+      sales-order-line-retail-promo.so-bo-suffix
+sales-order-line-tax.so-order-no
+      sales-order-line-tax.so-bo-suffix
+sales-order-lines-to-allocate.so-order-no
+      sales-order-lines-to-allocate.so-bo-suffix
+sales-order-pallet-control.so-order-no
+      sales-order-pallet-control.so-bo-suffix
+sales-order-picking-loc-arch.so-order-no
+      sales-order-picking-loc-arch.so-bo-suffix
+sales-order-picking-location.so-order-no
+      sales-order-picking-location.so-bo-suffix
+sales-order-planning-detail.so-order-no
+sales-order-rep-split.so-order-no
+      sales-order-rep-split.so-bo-suffix
+sales-order-response.so-order-no
+      sales-order-response.so-bo-suffix
+sales-order-staging-location.so-order-no
+      sales-order-staging-location.so-bo-suffix
+sales-order-tally-picking-loc.so-order-no
+      sales-order-tally-picking-loc.so-bo-suffix
+sales-order-trade-in-details.so-order-no
+sales-order-warranty-archive.so-order-no
+      sales-order-warranty-archive.so-bo-suffix
+sales-order-warranty-details.so-order-no
+      sales-order-warranty-details.so-bo-suffix
+sales-stock-estimate-cost.so-order-no
+      sales-stock-estimate-cost.so-bo-suffix
+stock-upsell-history.so-order-no
+      stock-upsell-history.so-bo-suffix
+
+
+Completed
+contract-master.contract-so-order-no
+      contract-master.contract-so-bo-suffix
+cre-promotions-movements.so-order-no
+      cre-promotions-movements.so-bo-suffix
+	  so-order-no so-bo-suffix sol-line-seq cpm-rebate-code
+deb-promotions-movements.so-order-no
+      deb-promotions-movements.so-bo-suffix
+      so-order-no so-bo-suffix sol-line-seq dpm-discount-code
+order-history-file.so-order-no
+      order-history-file.so-bo-suffix
+      so-order-no so-bo-suffix
+production-delivery-schedule.so-order-no
+      production-delivery-schedule.so-bo-suffix
+      so-order-no so-bo-suffix sol-line-seq
+rep-commission-payable.rep-so-order-no
+      rep-commission-payable.rep-so-bo-suffix
+sales-audit-file.so-order-no
+      sales-audit-file.so-bo-suffix
+      so-order-no so-bo-suffix sol-line-seq order-log-date order-log-time saf-dedup-seq
+sales-order.so-order-no
+      sales-order.so-bo-suffix
+sales-order-archive.so-order-no
+      sales-order-archive.so-bo-suffix
+sales-order-delivery.so-order-no
+      sales-order-delivery.so-bo-suffix
+sales-order-delivery-archive.so-order-no
+      sales-order-delivery-archive.so-bo-suffix
+sales-order-details.so-order-no
+sales-order-install-checklist.so-order-no
+sales-order-line.so-order-no
+      sales-order-line.so-bo-suffix
+sales-order-line-archive.so-order-no
+      sales-order-line-archive.so-bo-suffix
+sales-order-line-cancel.so-order-no
+      sales-order-line-cancel.so-bo-suffix
+sales-order-line-details.so-order-no
+      sales-order-line-details.so-bo-suffix
+sales-order-line-extra-detail.so-order-no
+      sales-order-line-extra-detail.so-bo-suffix
+sales-order-line-notes.so-order-no
+      sales-order-line-notes.so-bo-suffix
+sales-order-line-notes-cancel.so-order-no
+      sales-order-line-notes-cancel.so-bo-suffix
+sales-order-line-packages.so-order-no
+      sales-order-line-packages.so-bo-suffix
+sales-order-line-purchase.so-order-no
+      sales-order-line-purchase.so-bo-suffix
+sales-order-manifest-details.so-order-no
+      sales-order-manifest-details.so-bo-suffix
+sales-order-notes.so-order-no
+      sales-order-notes.so-bo-suffix
+sales-order-update.so-order-no
+      sales-order-update.so-bo-suffix
+service-links.sp-so-order-no
+      service-links.sp-so-bo-suffix
+service-petty-cash.petty-so-order-no
+      service-petty-cash.petty-so-bo-suffix
+
+To Do
+
+*/
+
+
+mode md-tag
+	prompt "Tag"
+	currency
+
+mode md-untag-all
+	prompt "Untag All"
+
+mode md-tag-all
+	prompt "Tag All"
+
+mode md-update-objects
+	prompt "Update Objects"
+
+mode md-so-enq
+	prompt "S/O Enq"
+	help "Enquire on Sales Order"
+
+object tmp-so-order-no
+	type memory
+	record
+		tmp-old-so-order-no     like so-order-no
+		tmp-new-so-order-no		like so-order-no
+		tmp-error               pic x(30)
+		tmp-tag                 pic x
+	endrecord
+	key is tmp-old-so-order-no
+
+field
+	ws-date-col			type numeric
+	ws-prefix-digits	type numeric
+	ws-no-table-warn	type boolean occurs 30
+	ws-prefix-or-add	pic x //P or A
+	ws-num-to-add		type numeric //18oct12
+
+procedure main
+	set ws-date-col = 80
+	do get-user-input entry-once
+endprocedure // main ----------------------------------------------------------
+
+screen get-user-input
+window @1,1 to @8,40 title "SO Number Conversion"
+box @1,1 to @7,40 title SPACES
+	accept ws-prefix-or-add	@2,25 title "(P)refix or (A)dd:"
+		uppercase
+		allowed "P" "A"
+		default "P"
+	if ws-prefix-or-add = "P"
+		//accept ws-prefix-digits @3,25 title "Prefix Digit(s):" pic zz9
+		display "Prefix Digit(s):" 	@3,8 right background
+		accept ws-prefix-digits 	@3,25 pic zz9
+	else
+		//accept ws-num-to-add	@3,25 title "Number to Add:" pic zzzzzzz9
+		display "Number to Add:" 	@3,10 right background
+		accept ws-num-to-add		@3,25 pic zzzzzzz9
+	endif
+confirm
+confirmed
+	open tmp-so-order-no truncate temporary
+	if (ws-prefix-or-add = "P" and ws-prefix-digits > 0)
+		do build-dataset
+	elseif (ws-prefix-or-add = "A" and ws-num-to-add > 0)
+		do build-dataset
+	else
+		//do not want to build a set of changes, just show datagrid for manual entry
+	endif
+	do display-in-grid
+endconfirm
+endscreen // get-user-input ---------------------------------------------------
+
+procedure build-dataset
+local field
+	lf-count			type numeric
+	set lf-count = 0
+	display "sales-order" @6,5 background
+	extract sales-order
+		on index so-order-no so-bo-suffix
+	after so-order-no
+		set tmp-old-so-order-no    		= so-order-no
+		if ws-prefix-or-add = "P" //18oct12
+			if num(strconcat(str(ws-prefix-digits) str(so-order-no))) > 99999999
+				set tmp-new-so-order-no		= tmp-old-so-order-no
+				set tmp-error				= strconcat(str(ws-prefix-digits) str(so-order-no) " too large")
+			else
+				set tmp-new-so-order-no		= num(strconcat(str(ws-prefix-digits) str(so-order-no)))
+				set tmp-error				= SPACES
+			endif
+		elseif ws-prefix-or-add = "A"
+			if ws-num-to-add + so-order-no > 99999999
+				set tmp-new-so-order-no		= tmp-old-so-order-no
+				set tmp-error				= concat(str(ws-num-to-add + so-order-no) " too large")
+			else
+				set tmp-new-so-order-no		= ws-num-to-add + so-order-no
+				set tmp-error				= SPACES
+			endif
+		endif
+		if so-order-no <> 0
+			set lf-count += 1
+			insert tmp-so-order-no
+		endif
+		display tmp-old-so-order-no @4,25 background
+		display tmp-new-so-order-no @5,25 background
+		display lf-count @6,28 pic zzzz9 background
+	endextract
+	display "sales-order-archive" @6,5 background
+	extract sales-order-archive
+		on index so-order-no so-bo-suffix
+	after so-order-no
+		set tmp-old-so-order-no    		= so-order-no
+		//if num(strconcat(str(ws-prefix-digits) str(so-order-no))) > 99999999 //18oct12
+		//	set tmp-new-so-order-no		= tmp-old-so-order-no
+		//	set tmp-error				= strconcat(str(ws-prefix-digits) str(so-order-no) " too large")
+		//else
+		//	set tmp-new-so-order-no		= num(strconcat(str(ws-prefix-digits) str(so-order-no)))
+		//	set tmp-error				= SPACES
+		//endif
+		if ws-prefix-or-add = "P" //18oct12
+			if num(strconcat(str(ws-prefix-digits) str(so-order-no))) > 99999999
+				set tmp-new-so-order-no		= tmp-old-so-order-no
+				set tmp-error				= strconcat(str(ws-prefix-digits) str(so-order-no) " too large")
+			else
+				set tmp-new-so-order-no		= num(strconcat(str(ws-prefix-digits) str(so-order-no)))
+				set tmp-error				= SPACES
+			endif
+		elseif ws-prefix-or-add = "A"
+			if ws-num-to-add + so-order-no > 99999999
+				set tmp-new-so-order-no		= tmp-old-so-order-no
+				set tmp-error				= concat(str(ws-num-to-add + so-order-no) " too large")
+			else
+				set tmp-new-so-order-no		= ws-num-to-add + so-order-no
+				set tmp-error				= SPACES
+			endif
+		endif
+		if so-order-no <> 0
+			set lf-count += 1
+			insert tmp-so-order-no
+		endif
+		display tmp-old-so-order-no @4,25 background
+		display tmp-new-so-order-no @5,25 background
+		display lf-count @6,28 pic zzzz9 background
+	endextract
+endprocedure // build-dataset -------------------------------------------------
+
+screen display-in-grid
+local field
+	lf-new-so-order-no		like tmp-new-so-order-no
+	window @1,1 to @24,90
+		title concat("SO Number Conversion")
+		primary tmp-so-order-no
+		datagrid occurs 19
+	allowed md-so-enq entry correct remove md-tag md-tag-all md-untag-all search md-update-objects
+	review-from-start
+detail
+	accept 	tmp-old-so-order-no		@1,010 title "Old S/O"	pic zzzzzzzz9
+	accept  tmp-new-so-order-no    	@1,020 title "New S/O"  pic zzzzzzzz9
+	display tmp-error			    @1,040 title "Error"  pic x(20)
+	display tmp-tag					@1,050 title "Tag"
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-so-enq	//{5}
+			spl "so/m5ordenq"
+				parameters
+					"-e"
+					tmp-old-so-order-no
+					SPACES
+		case md-tag
+			if tmp-tag = SPACES
+				set tmp-tag = "*"
+			else
+				set tmp-tag = SPACES
+			endif
+			update tmp-so-order-no
+			refresh review
+		case md-tag-all
+			set lf-new-so-order-no		= tmp-new-so-order-no
+			extract tmp-so-order-no
+			detail
+				set tmp-tag = "*"
+				update tmp-so-order-no
+			endextract
+			refresh review
+			set tmp-new-so-order-no		= lf-new-so-order-no
+			get tmp-so-order-no
+		case md-untag-all
+			set lf-new-so-order-no		= tmp-new-so-order-no
+			extract tmp-so-order-no
+			detail
+				set tmp-tag = SPACES
+				update tmp-so-order-no
+
+			endextract
+			refresh review
+			set tmp-new-so-order-no		= lf-new-so-order-no
+			get tmp-so-order-no
+		case md-update-objects
+			do update-objects
+	endswitch
+endconfirm
+endscreen // display-in-grid --------------------------------------------------
+
+procedure update-objects
+	report "so-order-no conv"
+		spool-only
+	extract tmp-so-order-no
+	detail
+		if tmp-tag = SPACES
+			continue
+		endif
+		display tmp-old-so-order-no		background @20,50 title "Old S/O:"
+		display tmp-new-so-order-no    	background @21,50 title "New S/O:"
+		//
+		if not ws-no-table-warn[1]
+			display "contract-master"		background @22,50 title "Object:"
+			do cnv-contract-master
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[2]
+			display "cre-promotions-movements"		background @22,50 title "Object:"
+			do cnv-cre-promotions-movements
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[3]
+			display "deb-promotions-movements"		background @22,50 title "Object:"
+			do cnv-deb-promotions-movements
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[4]
+			display "cnv-order-history-file"		background @22,50 title "Object:"
+			do cnv-order-history-file
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[5]
+			display "production-delivery-schedule"		background @22,50 title "Object:"
+			do cnv-production-delivery-schedule
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[6]
+			display "rep-commission-payable"		background @22,50 title "Object:"
+			do cnv-rep-commission-payable
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		display "sales-audit-file"		background @22,50 title "Object:"
+		do cnv-sales-audit-file
+			parameters
+				tmp-old-so-order-no
+			    tmp-new-so-order-no
+		//11jun11 stock-movements need to be converted before the sales-order tables as these are needed to lookup stock-movements
+		display "stock-movements"		background @22,50 title "Object:"
+		do cnv-stock-movements
+			parameters
+				tmp-old-so-order-no
+			    tmp-new-so-order-no
+		display "sales-order"		background @22,50 title "Object:"
+		do cnv-sales-order
+			parameters
+				tmp-old-so-order-no
+			    tmp-new-so-order-no
+		display "sales-order-line"		background @22,50 title "Object:"
+		do cnv-sales-order-line
+			parameters
+				tmp-old-so-order-no
+			    tmp-new-so-order-no
+		display "sales-order-archive"		background @22,50 title "Object:"
+		do cnv-sales-order-archive
+			parameters
+				tmp-old-so-order-no
+			    tmp-new-so-order-no
+		display "sales-order-line-archive"		background @22,50 title "Object:"
+		do cnv-sales-order-line-archive
+			parameters
+				tmp-old-so-order-no
+			    tmp-new-so-order-no
+		display "sales-order-delivery"		background @22,50 title "Object:"
+		do cnv-sales-order-delivery
+			parameters
+				tmp-old-so-order-no
+			    tmp-new-so-order-no
+		display "sales-order-delivery-archive"		background @22,50 title "Object:"
+		do cnv-sales-order-delivery-archive
+			parameters
+				tmp-old-so-order-no
+			    tmp-new-so-order-no
+		if not ws-no-table-warn[18]
+			display "sales-order-details"		background @22,50 title "Object:"
+			do cnv-sales-order-details
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[7]
+			display "sales-order-indexes"		background @22,50 title "Object:"
+			do cnv-sales-order-indexes
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[8]
+			display "sales-order-line-cancel"		background @22,50 title "Object:"
+			do cnv-sales-order-line-cancel
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[9]
+			display "sales-order-line-details"		background @22,50 title "Object:"
+			do cnv-sales-order-line-details
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[10]
+			display "sales-order-line-extra-detail"		background @22,50 title "Object:"
+			do cnv-sales-order-line-extra-detail
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		display "sales-order-line-notes"		background @22,50 title "Object:"
+		do cnv-sales-order-line-notes
+			parameters
+				tmp-old-so-order-no
+			    tmp-new-so-order-no
+		if not ws-no-table-warn[11]
+			display "sales-order-line-notes-cancel"		background @22,50 title "Object:"
+			do cnv-sales-order-line-notes-cancel
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[12]
+			display "sales-order-line-packages"		background @22,50 title "Object:"
+			do cnv-sales-order-line-packages
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[13]
+			display "sales-order-line-purchase"		background @22,50 title "Object:"
+			do cnv-sales-order-line-purchase
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[14]
+			display "sales-order-manifest-details"		background @22,50 title "Object:"
+			do cnv-sales-order-manifest-details
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		display "sales-order-notes"		background @22,50 title "Object:"
+		do cnv-sales-order-notes
+			parameters
+				tmp-old-so-order-no
+			    tmp-new-so-order-no
+		if not ws-no-table-warn[15]
+			display "sales-order-update"		background @22,50 title "Object:"
+			do cnv-sales-order-update
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[16]
+			display "service-links"		background @22,50 title "Object:"
+			do cnv-service-links
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+		if not ws-no-table-warn[17]
+			display "service-petty-cash"		background @22,50 title "Object:"
+			do cnv-service-petty-cash
+				parameters
+					tmp-old-so-order-no
+				    tmp-new-so-order-no
+		endif
+	endextract
+	message "Report Finished: " spool-file-name()
+	report finished
+endprocedure // update-objects ------------------------------------------------
+//contract-master.contract-so-order-no
+//	contract-master.contract-so-bo-suffix
+procedure cnv-contract-master
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	//
+	get contract-master first
+	on error
+		print
+			substring(concat("contract-master" " ****************************"),1,30)
+			"table does not exist"
+			set ws-no-table-warn[1] = TRUE
+		exit
+	endon
+	extract contract-master
+	detail
+		if contract-so-order-no = lp-old-so-order-no
+			print
+				substring(concat("contract-master" " ****************************"),1,30)
+				contract-so-order-no
+				">"
+				lp-new-so-order-no
+				today()	in col ws-date-col
+				tod()
+			set contract-so-order-no = lp-new-so-order-no
+			update contract-master
+		endif
+	endextract
+endprocedure // cnv-contract-master -------------------------------------------
+
+
+//cre-promotions-movements.so-order-no
+//      cre-promotions-movements.so-bo-suffix
+//      	so-order-no so-bo-suffix sol-line-seq cpm-rebate-code
+procedure cnv-cre-promotions-movements
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get cre-promotions-movements first
+	on error
+		print
+			substring(concat("cre-promotions-movements" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[2] = TRUE
+		exit
+	endon
+	extract cre-promotions-movements
+		on index so-order-no so-bo-suffix sol-line-seq cpm-rebate-code
+		key is lp-old-so-order-no SPACES 0 SPACES
+		next same so-order-no
+	detail
+		print
+			substring(concat("cre-promotions-movements" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push cre-promotions-movements
+		set so-order-no = lp-new-so-order-no
+		update cre-promotions-movements
+		pop cre-promotions-movements
+	endextract
+endprocedure // cnv-cre-promotions-movements ----------------------------------
+
+
+//deb-promotions-movements.so-order-no
+//      deb-promotions-movements.so-bo-suffix
+//      so-order-no so-bo-suffix sol-line-seq dpm-discount-code
+procedure cnv-deb-promotions-movements
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get deb-promotions-movements first
+	on error
+		print
+			substring(concat("deb-promotions-movements" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[3] = TRUE
+		exit
+	endon
+	extract deb-promotions-movements
+		on index so-order-no so-bo-suffix sol-line-seq dpm-discount-code
+		key is lp-old-so-order-no SPACES 0 SPACES
+		next same so-order-no
+	detail
+		print
+			substring(concat("deb-promotions-movements" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push deb-promotions-movements
+		set so-order-no = lp-new-so-order-no
+		update deb-promotions-movements
+		pop deb-promotions-movements
+	endextract
+endprocedure // cnv-deb-promotions-movements ----------------------------------
+
+
+//order-history-file.so-order-no
+//      order-history-file.so-bo-suffix
+//      so-order-no so-bo-suffix
+procedure cnv-order-history-file
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get order-history-file first
+	on error
+		print
+			substring(concat("order-history-file" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[4] = TRUE
+		exit
+	endon
+	extract order-history-file
+		on index so-order-no so-bo-suffix
+		key is lp-old-so-order-no SPACES
+		next same so-order-no
+	detail
+		print
+			substring(concat("order-history-file" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push order-history-file
+		set so-order-no = lp-new-so-order-no
+		update order-history-file
+		pop order-history-file
+	endextract
+endprocedure // cnv-order-history-file ----------------------------------------
+
+//production-delivery-schedule.so-order-no
+//      production-delivery-schedule.so-bo-suffix
+//      so-order-no so-bo-suffix sol-line-seq
+procedure cnv-production-delivery-schedule
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get production-delivery-schedule first
+	on error
+		print
+			substring(concat("production-delivery-schedule" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[5] = TRUE
+		exit
+	endon
+	extract production-delivery-schedule
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is lp-old-so-order-no SPACES 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("production-delivery-schedule" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push production-delivery-schedule
+		set so-order-no = lp-new-so-order-no
+		update production-delivery-schedule
+		pop production-delivery-schedule
+	endextract
+endprocedure // cnv-production-delivery-schedule ------------------------------
+
+
+//rep-commission-payable.rep-so-order-no
+//      rep-commission-payable.rep-so-bo-suffix
+procedure cnv-rep-commission-payable
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	//
+	get rep-commission-payable first
+	on error
+		print
+			substring(concat("rep-commission-payable" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[6] = TRUE
+		exit
+	endon
+	extract rep-commission-payable
+	detail
+		if rep-so-order-no = lp-old-so-order-no
+			print
+				substring(concat("rep-commission-payable" " ****************************"),1,30)
+				rep-so-order-no
+				">"
+				lp-new-so-order-no
+				today()	in col ws-date-col
+				tod()
+			set rep-so-order-no = lp-new-so-order-no
+			update rep-commission-payable
+		endif
+	endextract
+endprocedure // cnv-rep-commission-payable ------------------------------------
+
+
+
+//sales-audit-file.so-order-no
+//      sales-audit-file.so-bo-suffix
+//		so-order-no so-bo-suffix sol-line-seq order-log-date order-log-time saf-dedup-seq
+procedure cnv-sales-audit-file
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	extract sales-audit-file
+		on index so-order-no so-bo-suffix sol-line-seq order-log-date order-log-time saf-dedup-seq
+		key is lp-old-so-order-no SPACES 0 0 0 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-audit-file" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-audit-file
+		set so-order-no = lp-new-so-order-no
+		update sales-audit-file
+		pop sales-audit-file
+	endextract
+endprocedure // cnv-sales-audit-file ------------------------------------------
+
+
+//sales-order.so-order-no
+//      sales-order.so-bo-suffix
+procedure cnv-sales-order
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	extract sales-order
+		on index so-order-no so-bo-suffix
+		key is lp-old-so-order-no SPACES
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order
+		set so-order-no = lp-new-so-order-no
+		set so-invoice-no = str(so-order-no) //{5}
+		update sales-order
+		pop sales-order
+	endextract
+endprocedure // cnv-sales-order -----------------------------------------------
+
+//sales-order-archive.so-order-no
+//      sales-order-archive.so-bo-suffix
+procedure cnv-sales-order-archive
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	extract sales-order-archive
+		on index so-order-no so-bo-suffix
+		key is lp-old-so-order-no SPACES
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-archive" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-archive
+		set so-order-no = lp-new-so-order-no
+		set so-invoice-no = str(so-order-no) //{5}
+		update sales-order-archive
+		pop sales-order-archive
+	endextract
+endprocedure // cnv-sales-order-archive ---------------------------------------
+
+
+//sales-order-delivery.so-order-no
+//      sales-order-delivery.so-bo-suffix
+procedure cnv-sales-order-delivery
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	extract sales-order-delivery
+		on index so-order-no so-bo-suffix so-text-type
+		key is lp-old-so-order-no SPACES SPACES
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-delivery" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-delivery
+		set so-order-no = lp-new-so-order-no
+		update sales-order-delivery
+		pop sales-order-delivery
+	endextract
+endprocedure // cnv-sales-order-delivery --------------------------------------
+
+
+//sales-order-delivery-archive.so-order-no
+//      sales-order-delivery-archive.so-bo-suffix
+procedure cnv-sales-order-delivery-archive
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	extract sales-order-delivery-archive
+		on index so-order-no so-bo-suffix so-text-type
+		key is lp-old-so-order-no SPACES SPACES
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-delivery-archive" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-delivery-archive
+		set so-order-no = lp-new-so-order-no
+		update sales-order-delivery-archive
+		pop sales-order-delivery-archive
+	endextract
+endprocedure // cnv-sales-order-delivery-archive ------------------------------
+
+//sales-order-details.so-order-no
+procedure cnv-sales-order-details
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get sales-order-details first
+	on error
+		print
+			substring(concat("sales-order-details" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[18] = TRUE
+		exit
+	endon
+	extract sales-order-details
+		on index so-order-no
+		key is lp-old-so-order-no
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-details" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-details
+		set so-order-no = lp-new-so-order-no
+		update sales-order-details
+		pop sales-order-details
+	endextract
+endprocedure // cnv-sales-order-details ---------------------------------------
+
+//sales-order-indexes.so-order-no
+//      sales-order-indexes.so-bo-suffix
+procedure cnv-sales-order-indexes
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	//
+	get sales-order-indexes first
+	on error
+		print
+			substring(concat("sales-order-indexes" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[7] = TRUE
+		exit
+	endon
+	extract sales-order-indexes
+	detail
+		if so-order-no = lp-old-so-order-no
+			print
+				substring(concat("sales-order-indexes" " ****************************"),1,30)
+				so-order-no
+				">"
+				lp-new-so-order-no
+				today()	in col ws-date-col
+				tod()
+			set so-order-no = lp-new-so-order-no
+			update sales-order-indexes
+		endif
+	endextract
+endprocedure // cnv-sales-order-indexes ---------------------------------------
+
+//sales-order-line.so-order-no
+//      sales-order-line.so-bo-suffix
+procedure cnv-sales-order-line
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	extract sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is lp-old-so-order-no SPACES 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-line" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-line
+		set so-order-no = lp-new-so-order-no
+		update sales-order-line
+		pop sales-order-line
+	endextract
+endprocedure // cnv-sales-order-line ------------------------------------------
+
+//sales-order-line-archive.so-order-no
+//      sales-order-line-archive.so-bo-suffix
+procedure cnv-sales-order-line-archive
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	extract sales-order-line-archive
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is lp-old-so-order-no SPACES 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-line-archive" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-line-archive
+		set so-order-no = lp-new-so-order-no
+		update sales-order-line-archive
+		pop sales-order-line-archive
+	endextract
+endprocedure // cnv-sales-order-line-archive ----------------------------------
+
+
+//sales-order-line-cancel.so-order-no
+//      sales-order-line-cancel.so-bo-suffix
+procedure cnv-sales-order-line-cancel
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get sales-order-line-cancel first
+	on error
+		print
+			substring(concat("sales-order-line-cancel" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[8] = TRUE
+		exit
+	endon
+	extract sales-order-line-cancel
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is lp-old-so-order-no SPACES 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-line-cancel" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-line-cancel
+		set so-order-no = lp-new-so-order-no
+		update sales-order-line-cancel
+		pop sales-order-line-cancel
+	endextract
+endprocedure // cnv-sales-order-line-cancel -----------------------------------
+
+//sales-order-line-details.so-order-no
+//      sales-order-line-details.so-bo-suffix
+procedure cnv-sales-order-line-details
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get sales-order-line-details first
+	on error
+		print
+			substring(concat("sales-order-line-details" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[9] = TRUE
+		exit
+	endon
+	extract sales-order-line-details
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is lp-old-so-order-no SPACES 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-line-details" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-line-details
+		set so-order-no = lp-new-so-order-no
+		update sales-order-line-details
+		pop sales-order-line-details
+	endextract
+endprocedure // cnv-sales-order-line-details ----------------------------------
+
+
+//sales-order-line-extra-detail.so-order-no
+//      sales-order-line-extra-detail.so-bo-suffix
+procedure cnv-sales-order-line-extra-detail
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get sales-order-line-extra-detail first
+	on error
+		print
+			substring(concat("sales-order-line-extra-detail" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[10] = TRUE
+		exit
+	endon
+	extract sales-order-line-extra-detail
+		on index so-order-no so-bo-suffix sol-line-seq soled-type
+		key is lp-old-so-order-no SPACES 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-line-extra-detail" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-line-extra-detail
+		set so-order-no = lp-new-so-order-no
+		update sales-order-line-extra-detail
+		pop sales-order-line-extra-detail
+	endextract
+endprocedure // cnv-sales-order-line-extra-detail -----------------------------
+
+//sales-order-line-notes.so-order-no
+//      sales-order-line-notes.so-bo-suffix
+procedure cnv-sales-order-line-notes
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get sales-order-line-notes first
+	on error
+		print
+			substring(concat("sales-order-line-notes" " ****************************"),1,30)
+			"table does not exist"
+		exit
+	endon
+	extract sales-order-line-notes
+		on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+		key is lp-old-so-order-no SPACES 0 SPACES 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-line-notes" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-line-notes
+		set so-order-no = lp-new-so-order-no
+		update sales-order-line-notes
+		pop sales-order-line-notes
+	endextract
+endprocedure // cnv-sales-order-line-notes ------------------------------------
+
+
+//sales-order-line-notes-cancel.so-order-no
+//      sales-order-line-notes-cancel.so-bo-suffix
+procedure cnv-sales-order-line-notes-cancel
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get sales-order-line-notes-cancel first
+	on error
+		print
+			substring(concat("sales-order-line-notes-cancel" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[11] = TRUE
+		exit
+	endon
+	extract sales-order-line-notes-cancel
+		on index so-order-no so-bo-suffix sol-line-seq soln-type soln-seq-no
+		key is lp-old-so-order-no SPACES 0 SPACES 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-line-notes-cancel" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-line-notes-cancel
+		set so-order-no = lp-new-so-order-no
+		update sales-order-line-notes-cancel
+		pop sales-order-line-notes-cancel
+	endextract
+endprocedure // cnv-sales-order-line-notes-cancel -----------------------------
+
+
+
+//sales-order-line-packages.so-order-no
+//      sales-order-line-packages.so-bo-suffix
+procedure cnv-sales-order-line-packages
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get sales-order-line-packages first
+	on error
+		print
+			substring(concat("sales-order-line-packages" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[12] = TRUE
+		exit
+	endon
+	extract sales-order-line-packages
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is lp-old-so-order-no SPACES 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-line-packages" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-line-packages
+		set so-order-no = lp-new-so-order-no
+		update sales-order-line-packages
+		pop sales-order-line-packages
+	endextract
+endprocedure // cnv-sales-order-line-packages ---------------------------------
+
+//sales-order-line-purchase.so-order-no
+//      sales-order-line-purchase.so-bo-suffix
+procedure cnv-sales-order-line-purchase
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get sales-order-line-purchase first
+	on error
+		print
+			substring(concat("sales-order-line-purchase" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[13] = TRUE
+		exit
+	endon
+	extract sales-order-line-purchase
+		on index so-order-no so-bo-suffix sol-line-seq
+		key is lp-old-so-order-no SPACES 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-line-purchase" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-line-purchase
+		set so-order-no = lp-new-so-order-no
+		update sales-order-line-purchase
+		pop sales-order-line-purchase
+	endextract
+endprocedure // cnv-sales-order-line-purchase ---------------------------------
+
+
+//sales-order-manifest-details.so-order-no
+//      sales-order-manifest-details.so-bo-suffix
+procedure cnv-sales-order-manifest-details
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get sales-order-manifest-details first
+	on error
+		print
+			substring(concat("sales-order-manifest-details" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[14] = TRUE
+		exit
+	endon
+	extract sales-order-manifest-details
+		on index so-order-no so-bo-suffix
+		key is lp-old-so-order-no SPACES
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-manifest-details" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-manifest-details
+		set so-order-no = lp-new-so-order-no
+		update sales-order-manifest-details
+		pop sales-order-manifest-details
+	endextract
+endprocedure // cnv-sales-order-manifest-details ------------------------------
+
+//sales-order-notes.so-order-no
+//      sales-order-notes.so-bo-suffix
+procedure cnv-sales-order-notes
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get sales-order-notes first
+	on error
+		print
+			substring(concat("sales-order-notes" " ****************************"),1,30)
+			"table does not exist"
+		exit
+	endon
+	extract sales-order-notes
+		on index so-order-no so-bo-suffix so-note-type so-user-code so-note-sequence-no
+		key is lp-old-so-order-no SPACES SPACES SPACES 0
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-notes" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-notes
+		set so-order-no = lp-new-so-order-no
+		update sales-order-notes
+		pop sales-order-notes
+	endextract
+endprocedure // cnv-sales-order-notes -----------------------------------------
+
+
+
+
+//sales-order-update.so-order-no
+//      sales-order-update.so-bo-suffix
+procedure cnv-sales-order-update
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	get sales-order-update first
+	on error
+		print
+			substring(concat("sales-order-update" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[15] = TRUE
+		exit
+	endon
+	extract sales-order-update
+		on index so-order-no so-bo-suffix
+		key is lp-old-so-order-no SPACES
+		next same so-order-no
+	detail
+		print
+			substring(concat("sales-order-update" " ****************************"),1,30)
+			so-order-no
+			">"
+			lp-new-so-order-no
+			today()	in col ws-date-col
+			tod()
+		push sales-order-update
+		set so-order-no = lp-new-so-order-no
+		update sales-order-update
+		pop sales-order-update
+	endextract
+endprocedure // cnv-sales-order-update ----------------------------------------
+
+//service-links.sp-so-order-no
+//      service-links.sp-so-bo-suffix
+procedure cnv-service-links
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	//
+	get service-links
+	on error
+		print
+			substring(concat("service-links" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[16] = TRUE
+		exit
+	endon
+	extract service-links
+	detail
+		if sp-so-order-no = lp-old-so-order-no
+			print
+				substring(concat("service-links" " ****************************"),1,30)
+				sp-so-order-no
+				">"
+				lp-new-so-order-no
+				today()	in col ws-date-col
+				tod()
+			set sp-so-order-no = lp-new-so-order-no
+			update service-links
+		endif
+	endextract
+endprocedure // cnv-service-links ---------------------------------------------
+
+//service-petty-cash.petty-so-order-no
+//      service-petty-cash.petty-so-bo-suffix
+procedure cnv-service-petty-cash
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	//
+	get service-petty-cash
+	on error
+		print
+			substring(concat("service-petty-cash" " ****************************"),1,30)
+			"table does not exist"
+		set ws-no-table-warn[17] = TRUE
+		exit
+	endon
+	extract service-petty-cash
+	detail
+		if petty-so-order-no = lp-old-so-order-no
+			print
+				substring(concat("service-petty-cash" " ****************************"),1,30)
+				petty-so-order-no
+				">"
+				lp-new-so-order-no
+				today()	in col ws-date-col
+				tod()
+			set petty-so-order-no = lp-new-so-order-no
+			update service-petty-cash
+		endif
+	endextract
+endprocedure // cnv-service-petty-cash ----------------------------------------
+
+//stock-movements.stk-document-no
+//stk-trans-type stock-code stk-accountcode stk-trans-date
+procedure cnv-stock-movements
+local field
+	lf-stk-trans-ref1		like stk-trans-ref1
+	lf-gl-old-reference		like gl-reference
+	lf-gl-new-reference		like gl-reference
+parameters
+	lp-old-so-order-no  like so-order-no
+	lp-new-so-order-no	like so-order-no
+	//message lp-old-so-order-no "cnv-stock-movements"
+	print
+		"debug:"
+		lp-old-so-order-no
+		"cnv-stock-movements"
+	extract sales-order-archive
+		on index so-order-no so-bo-suffix
+		key is lp-old-so-order-no
+		next same so-order-no
+	detail
+		//message "so-invoice-no [" so-invoice-no "]"
+		print
+			"debug:"
+			strconcat("so-invoice-no [" so-invoice-no "]")
+		if so-invoice-no = SPACES
+			continue
+		endif
+		set lf-stk-trans-ref1 = right-justify(so-invoice-no,8)
+		set lf-gl-old-reference = strconcat(str(so-order-no) so-bo-suffix)
+		set lf-gl-new-reference = strconcat(str(lp-new-so-order-no) so-bo-suffix)
+		//message "lf-stk-trans-ref1 [" lf-stk-trans-ref1 "]"
+		print
+			"debug:"
+			strconcat("lf-stk-trans-ref1 [" lf-stk-trans-ref1 "]")
+		extract stock-movements
+			on index stk-trans-type stk-trans-ref1
+			key is "SO" lf-stk-trans-ref1
+			next same stk-trans-type stk-trans-ref1
+			//message "stk-document-no [" stk-document-no "]"
+			print
+				"debug:"
+				strconcat("stk-document-no [" str(stk-document-no) "]")
+			if stk-document-no = lp-old-so-order-no
+				print
+					substring(concat("stock-movements" " ****************************"),1,30)
+					stk-document-no
+					">"
+					lp-new-so-order-no
+					today()	in col ws-date-col
+					tod()
+				//12jun11 ------------------------------------------------------ start
+				push stock-movements
+				set stk-document-no = lp-new-so-order-no
+				print
+					"ref1:"
+					stk-trans-ref1
+					">"
+					right-justify(str(stk-document-no),8)
+				print
+					"ref3:"
+					stk-trans-ref3
+					">"
+					strconcat(right-justify(str(stk-document-no),8) stk-document-suffix)
+				set stk-trans-ref1 = right-justify(str(stk-document-no),8)
+				set stk-trans-ref3 = strconcat(right-justify(str(stk-document-no),8) stk-document-suffix)
+				update stock-movements
+				pop stock-movements
+				//12jun11 -------------------------------------------------------- end
+			endif
+		endextract
+		extract deb-trans
+			on index trans-ref //accountcode batch-ref dr-tr-trans-no
+			key is lf-stk-trans-ref1 //SPACES SPACES 0
+			next same trans-ref
+		detail
+			if dr-tr-order-no = lp-old-so-order-no
+				push deb-trans
+				print
+					substring(concat("deb-trans" " ****************************"),1,30)
+					dr-tr-order-no
+					">"
+					lp-new-so-order-no
+					today()	in col ws-date-col
+					tod()
+				set dr-tr-order-no 	= lp-new-so-order-no
+				set tr-sort-key 	= str(dr-tr-order-no) //{5}
+				set trans-ref 		= str(dr-tr-order-no) //{5}
+				update deb-trans
+				pop deb-trans
+			endif
+		endextract
+		extract deb-trans-archive
+			on index trans-ref accountcode batch-ref dr-tr-trans-no
+			key is lf-stk-trans-ref1 SPACES SPACES 0
+			next same trans-ref
+		detail
+			if dr-tr-order-no = lp-old-so-order-no
+				push deb-trans-archive
+				print
+					substring(concat("deb-trans-archive" " ****************************"),1,30)
+					dr-tr-order-no
+					">"
+					lp-new-so-order-no
+					today()	in col ws-date-col
+					tod()
+				set dr-tr-order-no 	= lp-new-so-order-no
+				set trans-ref 		= str(dr-tr-order-no) //{5}
+				update deb-trans-archive
+				pop deb-trans-archive
+			endif
+		endextract
+		//14jun11
+		print
+			"debug gl-trans lookup"
+			concat("lf-gl-old-reference: [" lf-gl-old-reference "]")
+			concat("   lf-gl-new-reference: [" lf-gl-new-reference "]")
+		extract gl-trans
+			on index gl-batch-ref gl-trans-no
+			key is so-batch-ref 0
+			next same gl-batch-ref
+		detail
+			print
+				"current gl-reference:"
+				concat("[" gl-reference "]")
+			if gl-reference = lf-gl-old-reference
+				print
+					substring(concat("gl-trans" " ****************************"),1,30)
+					gl-reference
+					">"
+					lf-gl-new-reference
+					today()	in col ws-date-col
+					tod()
+				push gl-trans
+				set gl-reference = lf-gl-new-reference
+				update gl-trans
+				pop gl-trans
+			endif
+		endextract
+		print
+			"debug gl-trans-archive lookup"
+			concat("lf-gl-old-reference: [" lf-gl-old-reference "]")
+			concat("   lf-gl-new-reference: [" lf-gl-new-reference "]")
+		extract gl-trans-archive
+			on index gl-batch-ref gl-trans-no
+			key is so-batch-ref 0
+			next same gl-batch-ref
+		detail
+			print
+				"current gl-reference:"
+				concat("[" gl-reference "]")
+			if gl-reference = lf-gl-old-reference
+				print
+					substring(concat("gl-trans-archive" " ****************************"),1,30)
+					gl-reference
+					">"
+					lf-gl-new-reference
+					today()	in col ws-date-col
+					tod()
+				push gl-trans-archive
+				set gl-reference = lf-gl-new-reference
+				update gl-trans-archive
+				pop gl-trans-archive
+			endif
+		endextract
+	endextract
+	//non archive pass to resolve deb-trans
+	print
+		"debug:"
+		lp-old-so-order-no
+		"cnv-stock-movements non archive pass for deb-trans"
+	extract sales-order
+		on index so-order-no so-bo-suffix
+		key is lp-old-so-order-no
+		next same so-order-no
+	detail
+		//message "so-invoice-no [" so-invoice-no "]"
+		print
+			"debug:"
+			strconcat("so-invoice-no [" so-invoice-no "]")
+		if so-invoice-no = SPACES
+			continue
+		endif
+		set lf-stk-trans-ref1 = right-justify(so-invoice-no,8)
+		set lf-gl-old-reference = strconcat(str(so-order-no) so-bo-suffix)
+		set lf-gl-new-reference = strconcat(str(lp-new-so-order-no) so-bo-suffix)
+		//message "lf-stk-trans-ref1 [" lf-stk-trans-ref1 "]"
+		print
+			"debug:"
+			strconcat("lf-stk-trans-ref1 [" lf-stk-trans-ref1 "]")
+		extract deb-trans
+			on index trans-ref //accountcode batch-ref dr-tr-trans-no
+			key is lf-stk-trans-ref1 //SPACES SPACES 0
+			next same trans-ref
+		detail
+			if dr-tr-order-no = lp-old-so-order-no
+				push deb-trans
+				print
+					substring(concat("deb-trans" " ****************************"),1,30)
+					dr-tr-order-no
+					">"
+					lp-new-so-order-no
+					today()	in col ws-date-col
+					tod()
+				set dr-tr-order-no 	= lp-new-so-order-no
+				set tr-sort-key 	= str(dr-tr-order-no) //{5}
+				set trans-ref 		= str(dr-tr-order-no) //{5}
+				update deb-trans
+				pop deb-trans
+			endif
+		endextract
+		extract deb-trans-archive
+			on index trans-ref accountcode batch-ref dr-tr-trans-no
+			key is lf-stk-trans-ref1 SPACES SPACES 0
+			next same trans-ref
+		detail
+			if dr-tr-order-no = lp-old-so-order-no
+				push deb-trans-archive
+				print
+					substring(concat("deb-trans-archive" " ****************************"),1,30)
+					dr-tr-order-no
+					">"
+					lp-new-so-order-no
+					today()	in col ws-date-col
+					tod()
+				set dr-tr-order-no 	= lp-new-so-order-no
+				set trans-ref 		= str(dr-tr-order-no) //{5}
+				update deb-trans-archive
+				pop deb-trans-archive
+			endif
+		endextract
+		//14jun11
+		print
+			"debug gl-trans lookup"
+			concat("lf-gl-old-reference: [" lf-gl-old-reference "]")
+			concat("   lf-gl-new-reference: [" lf-gl-new-reference "]")
+		extract gl-trans
+			on index gl-batch-ref gl-trans-no
+			key is so-batch-ref 0
+			next same gl-batch-ref
+		detail
+			print
+				"current gl-reference:"
+				concat("[" gl-reference "]")
+			if gl-reference = lf-gl-old-reference
+				print
+					substring(concat("gl-trans" " ****************************"),1,30)
+					gl-reference
+					">"
+					lf-gl-new-reference
+					today()	in col ws-date-col
+					tod()
+				push gl-trans
+				set gl-reference = lf-gl-new-reference
+				update gl-trans
+				pop gl-trans
+			endif
+		endextract
+		print
+			"debug gl-trans-archive lookup"
+			concat("lf-gl-old-reference: [" lf-gl-old-reference "]")
+			concat("   lf-gl-new-reference: [" lf-gl-new-reference "]")
+		extract gl-trans-archive
+			on index gl-batch-ref gl-trans-no
+			key is so-batch-ref 0
+			next same gl-batch-ref
+		detail
+			print
+				"current gl-reference:"
+				concat("[" gl-reference "]")
+			if gl-reference = lf-gl-old-reference
+				print
+					substring(concat("gl-trans-archive" " ****************************"),1,30)
+					gl-reference
+					">"
+					lf-gl-new-reference
+					today()	in col ws-date-col
+					tod()
+				push gl-trans-archive
+				set gl-reference = lf-gl-new-reference
+				update gl-trans-archive
+				pop gl-trans-archive
+			endif
+		endextract
+	endextract
+endprocedure // cnv-stock-movements -------------------------------------------
