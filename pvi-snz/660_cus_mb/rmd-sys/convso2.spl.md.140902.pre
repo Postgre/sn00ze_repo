@@ -11,7 +11,6 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//	02sep14	rmd	{6}		add sales-order-line-notional-cost to sales-order-line
 //	16jul14	rmd	{5}		update invoice # and deb-trans fields referring to invoice
 //						*sales-order: so-invoice-no
 //						*sales-order-archive: so-invoice-no
@@ -546,7 +545,6 @@ procedure update-objects
 					tmp-old-so-order-no
 				    tmp-new-so-order-no
 		endif
-		//sales-order-line-notional-cost
 	endextract
 	message "Report Finished: " spool-file-name()
 	report finished
@@ -972,26 +970,6 @@ parameters
 		update sales-order-line
 		pop sales-order-line
 	endextract
-	// < {6}
-	extract sales-order-line-notional-cost
-		on index solnc-order-no solnc-bo-suffix solnc-line-seq solnc-status
-		key is lp-old-so-order-no SPACES 0 SPACES
-		next same solnc-order-no
-	detail
-		print
-	      //substring(concat("sales-order-line" " ****************************"),1,30)
-			substring(concat("sales-order-line-notional-cost" " **************"),1,30)
-			solnc-order-no
-			">"
-			lp-new-so-order-no
-			today()	in col ws-date-col
-			tod()
-		push sales-order-line-notional-cost
-		set solnc-order-no = lp-new-so-order-no
-		update sales-order-line-notional-cost
-		pop sales-order-line-notional-cost
-	endextract
-	// > {6}
 endprocedure // cnv-sales-order-line ------------------------------------------
 
 //sales-order-line-archive.so-order-no
