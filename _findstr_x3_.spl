@@ -1,0 +1,27 @@
+t:/ > findstr /s /i "bankrec-cash-trans" *.spl > x.x
+
+pvi-snz\deb\bankaudit-ho.spl:// 30apr09	rmd	run a pass on bankrec-cash-trans to pickup trans for non deb accounts
+pvi-snz\deb\bankaudit-ho.spl:// 04jun08	rmd switch to bankrec-cash-trans object...
+pvi-snz\deb\bankaudit-ho.spl:			//extract bankrec-cash-trans
+pvi-snz\deb\bankaudit-ho.spl:				extract bankrec-cash-trans
+pvi-snz\deb\bankaudit-ho.spl:			//extract bankrec-cash-trans
+pvi-snz\deb\bankaudit-ho.spl:				extract bankrec-cash-trans
+pvi-snz\deb\bankaudit-ho.spl:				extract bankrec-cash-trans
+pvi-snz\deb\bankaudit-ho.spl:				extract bankrec-cash-trans
+pvi-snz\deb\bankaudit-ho.spl:			bankrec-cash-trans
+pvi-snz\deb\bankaudit.spl:// 04jun08	rmd switch to bankrec-cash-trans object...
+pvi-snz\deb\bankaudit.spl:			//extract bankrec-cash-trans
+pvi-snz\deb\bankaudit.spl:				extract bankrec-cash-trans
+pvi-snz\deb\bankaudit.spl:			//extract bankrec-cash-trans
+pvi-snz\deb\bankaudit.spl:				extract bankrec-cash-trans
+pvi-snz\sys\glrenumber5.spl:bankrec-cash-trans.bct-batch-ref
+pvi-snz\sys\glrenumber5.spl:		display "bankrec-cash-trans" background @22,50 title "Object:"
+pvi-snz\sys\glrenumber5.spl:		do cnv-bankrec-cash-trans
+pvi-snz\sys\glrenumber5.spl://bankrec-cash-trans.bct-batch-ref
+pvi-snz\sys\glrenumber5.spl:procedure cnv-bankrec-cash-trans
+pvi-snz\sys\glrenumber5.spl:	get bankrec-cash-trans first
+pvi-snz\sys\glrenumber5.spl:	extract bankrec-cash-trans
+pvi-snz\sys\glrenumber5.spl:				"bankrec-cash-trans ******"
+pvi-snz\sys\glrenumber5.spl:			update bankrec-cash-trans
+pvi-snz\sys\glrenumber5.spl:endprocedure // cnv-bankrec-cash-trans ----------------------------------------
+pvi-snz\sys\glrenumber5.spl:				"bankrec-cash-trans ******"
