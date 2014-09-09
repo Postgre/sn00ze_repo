@@ -479,9 +479,24 @@ key
 /* message "zaz B. tsd-so-order-no / tdt-tr-details = ." str(tsd-so-order-no) ". / " tdt-tr-details */ \
 /* endif */ \
 			set lf-payments-taken += tdt-tr-amount * -1 \
+			/* */ \
+			/* tag the fact that some payments were found via bankrec internet payments : */ \
+			string tsd-suburb replacing "." at size-of(tsd-suburb) \
 		endif \
 	endextract //-- tmp-deb-trans
 //-- end-#define UPDATE_PAYMENTS_BANKREC
+
+/* ----------------------------------------
+// Obtain data from the last 3 character
+// positions at the end of an alpha field.
+field ws-text pic x(10)
+set ws-text = "ABCDEFGHIJ"
+message "Chars 8 to 10 : "
+        sub-string(ws-text,
+        size-of(ws-text)- 2,size-of(ws-text))
+//
+// Result: "Chars 8 to 10 : HIJ"
+*/ //----------------------------------------
 
 // > {9}
 
