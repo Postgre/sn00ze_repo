@@ -497,6 +497,8 @@ message "Chars 8 to 10 : "
 //
 // Result: "Chars 8 to 10 : HIJ"
 */ //----------------------------------------
+//#define RIGHT_MOST(ASTR,BLEN) substring(ASTR, size-of(ASTR) - BLEN - 1, size-of(ASTR))
+#define RIGHT_MOST(ASTR,BLEN) substring(ASTR, strlen(ASTR) - BLEN + 1, strlen(ASTR))
 
 // > {9}
 
@@ -506,8 +508,28 @@ message "Chars 8 to 10 : "
 	key is tsd-so-cust-code /* SPACES */ \
 	next same accountcode \
 	detail \
-		if trans-type in {"CR" "PD", "JE"} AND dr-tr-order-no = tsd-so-order-no \
+		/* if trans-type in {"CR" "PD", "JE"} AND dr-tr-order-no = tsd-so-order-no */ \
+/* if accountcode = "MARNKR02" and login-id() = "mladenb" */ \
+/* message "zaz MARNKR02 : login id / payment = " login-id() " / " tr-amount */ \
+/* message "zaz trans-type / dr-tr-order-no = " trans-type " / " dr-tr-order-no */ \
+/* message "zaz so-order-no / right_most() / tr-details = " fstr(tsd-so-order-no,SO_ORDER_NO_LENGTH,0) " / " */ \
+/* RIGHT_MOST(tr-details, SO_ORDER_NO_LENGTH) " / " strconcat(tr-details) */ \
+/* endif */ \
+		if trans-type in {"CR" "PD" "JE"} \
+			if dr-tr-order-no = tsd-so-order-no \
+			/* > {9} */ \
+			/* need to also make sure this payment is against the current SO order no. */ \
+			OR RIGHT_MOST(tr-details, SO_ORDER_NO_LENGTH) = fstr(tsd-so-order-no,SO_ORDER_NO_LENGTH,0) \
+			/* and pattern(tr-details, fstr(tsd-so-order-no,SO_ORDER_NO_LENGTH,0) )) */ \
+			/* < {9} */ \
 			set lf-payments-taken += tr-amount * -1 \
+			/* > {9} */ \
+			if substring(tr-details,1,6) = "CCTPOS" \
+				/* tag the fact that some payments were found via bankrec internet payments : */ \
+				string tsd-suburb replacing "." at size-of(tsd-suburb) \
+			endif \
+			/* < {9} */ \
+			endif \
 		endif \
 		if trans-type = "PD" AND dr-tr-order-no = tsd-so-order-no \
 			set tsd-financed = "Y" \
@@ -523,8 +545,10 @@ local field
 	open tmp-scheduled-delivery truncate temporary
 	open tmp-order-count truncate temporary
 // < {9}
+/*
 	open tmp-deb-trans truncate temporary
 	BANKREC_BUILD_TEMP_TABLE
+*/
 // > {9}
 	extract sales-order-line
 	detail
@@ -758,8 +782,10 @@ local field
 						//	endif
 						//endextract
 // < {9}
+/*
 						//-- check bankrec-cash-trans
 						UPDATE_PAYMENTS_BANKREC
+*/
 // > {9}
 
 // 04aug14	mb		{8}	include deb-trans-archive when looking for any past payments for the SO Sales Order 
