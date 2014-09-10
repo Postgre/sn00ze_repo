@@ -1,0 +1,59 @@
+#PRONTO Screen Customiser File (Override statements only).
+screen whse-change-warehouse-address
+	{
+	display
+		{
+		orig_text = "Address  :"
+		coordinate = 15.00,31.00
+		text = "Address 2:"
+		}
+	display
+		{
+		text = "Address 1:"
+		coordinate = 14.00,31.00
+		add = true
+		attributes = background, prompt
+		}
+	display
+		{
+		text = "Suburb:"
+		coordinate = 16.00,34.00
+		add = true
+		attributes = background, prompt
+		}
+	accept
+		{
+		name = na-country
+		picture = x(5)
+		allowed = ACT,VIC,WA,NSW,SA,QLD,TAS,NT
+		}
+	display
+		{
+		text = "State:"
+		coordinate = 17.00,35.00
+		add = true
+		attributes = background, prompt
+		}
+	accept
+		{
+		name = na-address-6
+		suppress = true
+		default = " "
+		}
+	accept
+		{
+		name = na-address-7
+		suppress = true
+		default = " "
+		}
+	accept
+		{
+		name = postcode
+		coordinate = 18.00,42.00
+		}
+	display
+		{
+		orig_text = "Postcode :"
+		coordinate = 18.00,31.00
+		}
+	}

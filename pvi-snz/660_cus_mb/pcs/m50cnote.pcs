@@ -1,0 +1,115 @@
+#PRONTO Screen Customiser File (Override statements only).
+screen ask-for-valid-whse-code
+	{
+	accept
+		{
+		name = so-whse-code
+		suppress = true
+		#default = " "
+		default = so-whse-code
+		readonly = true
+		}
+accept
+     {
+     name = so-whse-code
+     default = so-whse-code
+     #readonly = true
+     }
+	display
+		{
+		orig_text = "Goods will be returned into the following warehouse :"
+		suppress = true
+		}
+	display
+		{
+		name = so-curr-code
+		suppress = true
+		}
+	display
+		{
+		name = sys-description
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Local"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "                                           Currency :"
+		suppress = true
+		}
+	display
+		{
+		name = sys-money-value
+		suppress = true
+		}
+	display
+		{
+		orig_text = "                                               Help :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "                          Sales Order Currency Rate :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "                                Current System Rate :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "*EUR Triangulation conversion method will apply."
+		suppress = true
+		}
+	accept
+		{
+		name = so-curr-final-exchange-rate
+		suppress = true
+		#default = " "
+		}
+	accept
+		{
+		name = lf-confirm
+		suppress = true
+		#default = " "
+		}
+	display
+		{
+		orig_text = "N/A"
+		suppress = true
+		}
+	confirm
+		{
+		default = "yes"
+		suppress = true
+		}
+	}
+menu determine-what-to-do-for-cnote
+	{
+	option
+		{
+		orig_text = "Produce credit note WITH a &tax exempt number   "
+		suppress = true
+		}
+	option
+		{
+		orig_text = "Produce credit note &WITHOUT a tax exempt number"
+		suppress = true
+		}
+	option
+		{
+		orig_text = "Produce full credit note && then a &rework invoice"
+		suppress = true
+		}
+	}
+screen fast-cnote-entry-screen
+	{
+	confirm
+		{
+		suppress = true
+		}
+	}
