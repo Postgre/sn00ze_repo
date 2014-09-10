@@ -1,20 +1,21 @@
 // delsched.spl
 version-number "20140909.001" // {9}
 version-number "20140804.001" // {8}
-//version-number "LIVE pvi-snz/so/delsched 20090414"
+version-number "20080107.007"
 // 09sep14	mb		{9}	include bankrec payments made over internet -- see ticket # 1169
 // 04aug14	mb		{8}	include deb-trans-archive when looking for any past payments for the SO Sales Order 
-//								-- update for 710 : no longer has a separate archive table object.
-// 28may14	rmd	{3} suppress SMS mode
-// 16apr14	rmd	{2} updated balance calculation
-// 16jan14	rmd	{1} migrate to 10.3.0.9 710.x
-//					retired fields
-//						so-spare-flag1	now so-spare-alpha4-1
-//						tr-sort-key
+// 17dec13	rmd	{7}	use so-order-no to look up payments in deb-trans instead of inv# lookup
+// 30aug13	rmd	{6} dedicated phone lookup (if DA exists C record being ignored)
+// 19mar13	rmd cloned rmd/so/delsched to pvi-snz/so/delsched
+//				{1} *HD19035 allow long sol notes up to full length of 57 char
+//				{2} *HD19474 overcome issue with Z in contact name
+//				{3} *HD19028 suppress quotes
+//				{4}	*HD18755 Allow Sales Order DA, current, only Cust DA works
+//				{5}	*HD18755 mode to call setdeldate to allow update of s/o del date and address
 // 01May12	lg	Add option for Receipt of Mondy from Delsched.  Doesn't parse Invoice number, but SO visible behind.
 // 01May12      lg      Change Wording for Mobile/Phone/Phone to match Customer Entry screen.
 // 29jul10	rmd add po maint button - don't forget to add email button
-// 26jul10	rmd	set so-user-only-date1 = tsd-so-delivery-date to prevent being asked for delivecry
+// 26jul10	rmd	set so-user-only-date1 = tsd-so-delivery-date to prevent being asked for delivery
 //				date during invoice/receipt prints, only asked if so-user-only-date1 = 0
 // 20may10	rmd	only test stock lines when testing for inclusion
 // 09sep09	rmd	Order Maint always shows regardless of DC flag
@@ -99,10 +100,8 @@ version-number "20140804.001" // {8}
 // 07jan08	rmd	DO want to see cash sales and want to filter by user's store code
 
 
-//#include "../../../../bms/include/i85codes.spl" 	//{1}
-//#include "../../../../bms/include/m1enqrep.spl"   //{1}
-#include "../../../bms/include/i85codes.spl"        //{1}
-#include "../../../bms/include/m1enqrep.spl"        //{1}
+#include "../../../../bms/include/i85codes.spl"
+#include "../../../../bms/include/m1enqrep.spl"
 
 //start -----------------------------------------  //rc 04jun09
 #define TEXT_COLOUR(multi-cust-code)\
@@ -124,7 +123,7 @@ mode md-select
 
 mode md-review-so
 	//prompt "Review &SO"
-	prompt "&Order Maint"
+	prompt "S&O Maint"
 	help "Maintain Sales Order for this Delivery"
 	currency
 
@@ -133,9 +132,10 @@ mode md-review-sol
 	help "Maintain Sales Order Lines for this Delivery"
 	currency
 
+
 mode md-review-cust
 	//prompt "Review &Cust"
-	prompt "C&ustomer"
+	prompt "C&ust"
 	help "Review Customer Details"
 	currency
 
@@ -158,12 +158,12 @@ mode md-rcpt-cust
         currency
 mode md-confirm-delivery
 	//prompt "Con&firm/Edit Order"
-	prompt "Confirm &Delivery"
+	prompt "Conf &Delivery"
 	currency
 	help "Confirm Delivery"// or edit this order"
 
 mode md-order-schedule
-	prompt "Order &Schedule"
+	prompt "Order &Sched"
 	currency
 	help "Order Schedule"
 
@@ -212,6 +212,10 @@ mode md-find
 mode md-po-maint //rmd29jul10
 	prompt "PO Maint"
 	help "Maintain Purchase Orders"
+
+mode md-delivery-details	//{5}
+	prompt "Deli&very Details"
+	help "Set Delivery Date and Address"
 
 field
 //	ws-select-time-mode						pic x(10)
@@ -318,19 +322,6 @@ object tmp-sales-order
 	key is so-whse-code	desc so-order-no desc so-bo-suffix desc unique
 
 
-// < {8}
-//#define UPDATE_PAYMENTS_TAKEN \
-//	on index accountcode /* tr-sort-key */ \
-//	key is tsd-so-cust-code /* SPACES */ \
-//	next same accountcode \
-//	detail \
-//		if trans-type in {"CR" "PD", "JE"} AND dr-tr-order-no = tsd-so-order-no \
-//			set lf-payments-taken += tr-amount * -1 \
-//		endif \
-//		if trans-type = "PD" AND dr-tr-order-no = tsd-so-order-no \
-//			set tsd-financed = "Y" \
-//		endif
-// > {8}
 
 procedure main
 local field
@@ -551,7 +542,6 @@ local field
 	lf-order-within-period				type boolean
 	lf-include-order					type boolean
 	i									type numeric
-
 	open tmp-scheduled-delivery truncate temporary
 	open tmp-order-count truncate temporary
 // < {9}
@@ -577,7 +567,6 @@ local field
 					//message "continuing"
 					continue
 				endon
-
 				//if so-order-status not in {"11""70"}
 				//	set tsd-ready-to-confirm = NO
 				//endif
@@ -586,23 +575,22 @@ local field
 				//if (so-order-status in {"11" "18" "30" "31" "40" "44" "70"}) and (so-territory-code = user-store-id)
 				set lf-include-order = FALSE
 
+
+
 				if (so-order-status in {"11" "18" "30" "31" "34" "40" "44" "70"}) and (so-cust-code != user-store-id) and (so-territory-code = user-store-id)		// 16Jan08
 					set lf-include-order = TRUE
 				endif
 				if (so-order-status in {"35" "45"}) and (so-cust-code != user-store-id)
 					set lf-include-order = TRUE
 				endif
-
 				// 12mar08
 				if (so-order-status in {"11" "18" "30" "31" "34" "35" "40" "44" "45" "70"} and ws-dc-user)
 					set lf-include-order = TRUE
 				endif
-
 				// 26sep08
 				if so-order-status = "60" and so-order-type-code = "S"
 					set lf-include-order = TRUE
 				endif
-
 				// 09dec08
 				//switch on ws-whse-to-view
 				//	case "*"
@@ -615,8 +603,8 @@ local field
 				//			set lf-include-order = FALSE
 				//		endif
 				//endswitch
-
-				if ws-whse-masked
+				//if ws-whse-masked                     //{3} don't run this test if order already marked to not include
+				if ws-whse-masked and lf-include-order	//{3} if the whse mask finds a match it may be re-included
 					set lf-include-order = FALSE
 					for i = 1 to 10
 						if so-whse-code = ws-whse-mask-code[i]
@@ -639,7 +627,6 @@ local field
 				// 09dec08
 
 				// 26sep08
-
 				if lf-include-order
 					set lf-order-within-period = FALSE
 					switch on ws-period-to-view
@@ -707,8 +694,7 @@ local field
 							set tsd-delivery-window = SPACES
 						endif
 						set tsd-so-order-status					= so-order-status
-						//set tsd-pickup-or-deliver				= so-spare-flag1	//{1}
-						set tsd-pickup-or-deliver				= so-spare-alpha4-1	//{1}
+						set tsd-pickup-or-deliver				= so-spare-flag1
 						set tsd-so-territory-code				= so-territory-code
 						set tsd-so-whse-code                    = so-whse-code
 
@@ -781,7 +767,20 @@ local field
 
 
 						set tsd-financed = "N"
-
+						//<{7}
+						//extract deb-trans
+						//on index accountcode tr-sort-key
+						//key is tsd-so-cust-code fstr(tsd-so-order-no,8,0) // right-justify(str(tsd-so-order-no),8)
+						//next same accountcode tr-sort-key
+						//detail
+						//	//if trans-type in {"CR "PD" } // != "IN"
+						//	if trans-type in {"CR" "PD", "JE"}
+						//		set lf-payments-taken += tr-amount * -1
+						//	endif
+						//	if trans-type = "PD"
+						//		set tsd-financed = "Y"
+						//	endif
+						//endextract
 // < {9}
 /*
 						//-- check bankrec-cash-trans
@@ -791,40 +790,32 @@ local field
 
 // 04aug14	mb		{8}	include deb-trans-archive when looking for any past payments for the SO Sales Order 
 // < {8}
-					/* //-- 710 and above no longer has separate archive deb-trans table object
 						extract deb-trans-archive
 							UPDATE_PAYMENTS_TAKEN
 						endextract //deb-trans-archive
-					*/ //-- 710 and above no longer has separate archive deb-trans table object
 
 						extract deb-trans
 						//--
 							UPDATE_PAYMENTS_TAKEN
 						endextract //deb-trans
 // > {8}
-
 /* //{8}
-						//-- UPDATE_PAYMENTS_TAKEN :
 						extract deb-trans
-						//on index accountcode tr-sort-key
-						on index accountcode trans-ref batch-ref dr-tr-trans-no
-						//key is tsd-so-cust-code fstr(tsd-so-order-no,8,0) SPACES 0 // right-justify(str(tsd-so-order-no),8)   //{2}
-						key is tsd-so-cust-code right-justify(str(tsd-so-order-no),10) SPACES 0									//{2}
-						next same accountcode trans-ref
+						on index accountcode tr-sort-key
+						key is tsd-so-cust-code SPACES
+						next same accountcode
 						detail
-							//if trans-type in {"CR "PD" } // != "IN"
-							if trans-type in {"CR" "PD", "JE"}
+							if trans-type in {"CR" "PD", "JE"} AND dr-tr-order-no = tsd-so-order-no
 								set lf-payments-taken += tr-amount * -1
 							endif
-							if trans-type = "PD"
+							if trans-type = "PD" AND dr-tr-order-no = tsd-so-order-no
 								set tsd-financed = "Y"
 							endif
 						endextract
 */ //{8}
-
+						//>{7}
 						set tsd-balance-owing = tsd-balance-owing - lf-payments-taken
 						set ws-counter-1 += 1
-
 						// 08jul08
 						if ws-truck-filter != SPACES
 							if tsd-truck != ws-truck-filter
@@ -935,9 +926,9 @@ local field
 	//allowed search correct md-review-so md-review-sol md-confirm-delivery md-order-schedule md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-send-sms md-print-report md-toggle-whse
 	//allowed search md-correct md-review-so md-review-sol md-confirm-delivery md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-send-sms md-print-report md-toggle-whse // 06aug08
 
-	//allowed search md-find md-correct md-review-so md-rcpt-cust md-review-sol md-confirm-delivery md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-send-sms md-print-report md-toggle-whse md-po-maint// 1may12	//{3}
-	allowed search md-find md-correct md-review-so md-rcpt-cust md-review-sol md-confirm-delivery md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-print-report md-toggle-whse md-po-maint// 1may12                //{3}
 	//allowed md-find md-correct md-review-so md-review-sol md-confirm-delivery md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-send-sms md-print-report md-toggle-whse // 06aug08
+	//allowed search md-find md-correct md-review-so md-rcpt-cust md-review-sol md-confirm-delivery md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-send-sms md-print-report md-toggle-whse md-po-maint// 1may12						//{5}
+	allowed search md-find md-correct md-review-so md-rcpt-cust md-review-sol md-confirm-delivery md-filter-view md-filter-truck md-review-notes md-review-cust md-review-po md-print-report md-toggle-whse md-po-maint md-delivery-details// 1may12    //{5}
 	//no-prompt-for-search
 	mode md-view-prev
 		prompt concat("[ " substring(month-name(add-month(today(),-1,1)),1,3) " ]")
@@ -1108,8 +1099,7 @@ confirmed
 			set ws-find-so-bo-suffix	 =  tsd-so-bo-suffix			//rc 21jul09
 			// 18jun08
 			if ws-so-line-mode = "V"
-				//spl	"rmd/so/solview"
-				spl	"pvi-snz/so/solview"
+				spl	"rmd/so/solview"
 					parameters
 						tsd-so-order-no
 						tsd-so-bo-suffix
@@ -1136,6 +1126,7 @@ confirmed
                         set ws-find-so-order-no  =  tsd-so-order-no                                     //lg 1May12
                         set ws-find-so-bo-suffix         =  tsd-so-bo-suffix
                         spl     "deb/m1poscrec"
+
 		case md-confirm-delivery
 			set ws-so-order-no	 =  tsd-so-order-no
 			set ws-so-bo-suffix	 =  tsd-so-bo-suffix
@@ -1287,6 +1278,12 @@ confirmed
 			do print-delivery-sheet
 		case md-po-maint
 			spl "po/m6edit"
+		case md-delivery-details	//{5}
+			spl "pvi-snz/so/setdeldate"
+				parameters
+					tsd-so-order-no
+			        tsd-so-bo-suffix
+			        "-delsched"
 	endswitch
 	refresh data								//rc 04jun09
 	refresh										//rc 04jun09
@@ -1333,8 +1330,7 @@ local field
 	//lf-so-delivery-date				like so-delivery-date
 	//lf-so-delivery-time             like so-delivery-time
 	//lf-so-actual-delivery-time      like so-actual-delivery-time
-	//lf-pickup-or-deliver            like so-spare-flag1	//{1}
-	lf-pickup-or-deliver            like so-spare-alpha4-1  //{1}
+	//lf-pickup-or-deliver            like so-spare-flag1
 	//lf-sms-sent 					pic x
 	//lf-truck    					like sys-tbl-code
 	//lf-mobile-no					like na-fax-no
@@ -1558,7 +1554,7 @@ local field
 			help "Contact for Mobile Number"
 			showvalue
 			uppercase
-			allow "A" to "Z" SPACES
+			//allow "A" to "Z" SPACES	//{2}
 			disallow "0" to "9"
 		accept tsd-mobile-no @8,40 pic is x(10)
 			default tsd-mobile-no
@@ -1587,7 +1583,7 @@ local field
 			help "Contact for Phone 1"
 			showvalue
 			uppercase
-			allow "A" to "Z" SPACES
+			//allow "A" to "Z" SPACES	//{2}
 			disallow "0" to "9"
 		accept tsd-phone-no @9,40 pic is x(10)
 			default tsd-phone-no
@@ -1615,7 +1611,7 @@ local field
 			help "Contact for Phone 2"
 			showvalue
 			uppercase
-			allow "A" to "Z" SPACES
+			//allow "A" to "Z" SPACES	//{2}
 			disallow "0" to "9"
 		accept tsd-phone-no2 @10,40 pic is x(10)
 			default tsd-phone-no2
@@ -1684,8 +1680,7 @@ local field
 				set so-delivery-date       	= tsd-so-delivery-date
 				set so-delivery-time       	= tsd-so-delivery-time
 				set so-actual-delivery-time	= tsd-so-actual-delivery-time
-				//set so-spare-flag1 			= tsd-pickup-or-deliver	//{1}
-				set so-spare-alpha4-1		= tsd-pickup-or-deliver		//{1}
+				set so-spare-flag1 			= tsd-pickup-or-deliver
 				set so-user-only-date1		= tsd-so-delivery-date	//rmd26jul10
 				update sales-order
 			do set-delivery-window-note
@@ -1964,6 +1959,7 @@ local field
 	lf-confirm					pic x
 	window @10,10 to @14,40 title is "Confirm"
 	box @10,11 to @14,39
+
 	//display strconcat(str(ws-so-order-no) ws-so-bo-suffix)				@11,14 background // scale 120 bold background
 	//display concat("Order Balance: $" fstr(ws-balance-owing,7,2))		@12,14 scale 120 bold background
 	display ws-so-order-no				@11,24 title is "Order #:" pic zzzzzzzzzz   scale 110
@@ -1972,6 +1968,7 @@ local field
 		uppercase
 		allowed "Y" "N"
 		default "N"
+
 	if lf-confirm = "N"
 		set ws-confirmed = FALSE
 	else
@@ -3077,7 +3074,11 @@ local field
 			if sol-line-type in {"DN"}
 				if sol-line-description != spaces
 					print
-						sol-line-description		in col ws-col-2
+						//<{1}
+						//sol-line-description		in col ws-col-2
+						concat(sol-line-description stock-code sol-stk-unit-desc sol-price-overide-flag
+						sol-whse-code sol-update-whse sol-short-ship-reason-code) in col ws-col-2
+						//>{1}
 				endif
 			endif
 		endextract
@@ -3293,7 +3294,11 @@ local field
 			if sol-line-type in {"DN"}
 				if sol-line-description != spaces
 					print
-						sol-line-description		in col ws-col-2 bold   //rc 29may09
+						//<{1}
+						//sol-line-description		in col ws-col-2 bold   //rc 29may09
+						concat(sol-line-description stock-code sol-stk-unit-desc sol-price-overide-flag
+						sol-whse-code sol-update-whse sol-short-ship-reason-code) in col ws-col-2 bold
+						//>{1}
 				endif
 			endif
 		endextract
@@ -3439,36 +3444,48 @@ local field
 	detail
 		need 12 lines
 		set i += 1
-		//22jan09 look for DA record first, fall back to C.
-		get name-and-address-master
-		on index accountcode na-type
-		key is tsd-so-cust-code "DA"
+		//<{4} look for Sales Order DA then Customer DA, then Customer C
+		get sales-order-delivery
+			on index so-order-no so-bo-suffix so-text-type
+			key is tsd-so-order-no tsd-so-bo-suffix "DA"
 		on error
+			//22jan09 look for DA record first, fall back to C.
 			get name-and-address-master
 			on index accountcode na-type
-			key is tsd-so-cust-code "C"
+			key is tsd-so-cust-code "DA"
 			on error
-				set lf-address-string-1 = SPACES
-				set lf-address-string-2 = SPACES
-				set lf-phone-string-1 = tsd-mobile-no
+				get name-and-address-master
+				on index accountcode na-type
+				key is tsd-so-cust-code "C"
+				on error
+					set lf-address-string-1 = SPACES
+					set lf-address-string-2 = SPACES
+					set lf-phone-string-1 = tsd-mobile-no
+				endon
 			endon
-		endon
-		//set lf-address-string = concat(strconcat(na-company) " " strconcat(na-street) " " strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
-		set lf-address-string-1 = concat(strconcat(na-company) " " strconcat(na-street))
-		if substring(lf-address-string-1,1,1) = SPACES
-			set lf-address-string-1 = substring(lf-address-string-1,2,strlen(lf-address-string-1))
-		endif
-		set lf-address-string-2 = concat(strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
-		if substring(lf-address-string-2,1,1) = SPACES
-			set lf-address-string-2 = substring(lf-address-string-2,2,strlen(lf-address-string-2))
-		endif
-		if strlen(str-concat(na-phone)) = 0
-			set lf-phone-string-1 = tsd-mobile-no
+			//set lf-address-string = concat(strconcat(na-company) " " strconcat(na-street) " " strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+			set lf-address-string-1 = concat(strconcat(na-company) " " strconcat(na-street))
+			if substring(lf-address-string-1,1,1) = SPACES
+				set lf-address-string-1 = substring(lf-address-string-1,2,strlen(lf-address-string-1))
+			endif
+			set lf-address-string-2 = concat(strconcat(na-suburb) " " strconcat(na-country) " " strconcat(postcode))
+			if substring(lf-address-string-2,1,1) = SPACES
+				set lf-address-string-2 = substring(lf-address-string-2,2,strlen(lf-address-string-2))
+			endif
+			if strlen(str-concat(na-phone)) = 0
+				set lf-phone-string-1 = tsd-mobile-no
+			else
+				set lf-phone-string-1 = strconcat(na-phone)
+				set lf-phone-string-2 = strconcat(tsd-mobile-no)
+			endif
+			//22jan09
 		else
-			set lf-phone-string-1 = strconcat(na-phone)
-			set lf-phone-string-2 = strconcat(tsd-mobile-no)
-		endif
-		//22jan09
+			set lf-address-string-1 = concat(strconcat(so-dl-text[1]) " " strconcat(so-dl-text[2]))
+		    set lf-address-string-2 = concat(strconcat(so-dl-text[3]) " " strconcat(so-dl-text[4]) " " so-dl-postcode)
+		    set lf-phone-string-1 = strconcat(so-dl-text[6])
+		    set lf-phone-string-2 = strconcat(so-dl-text[7])
+		endon
+		//<{4}
 		if tsd-pickup-or-deliver = "P"
 			set lf-delivery-window = "Customer Pickup"
 		else
@@ -3493,6 +3510,16 @@ local field
 				set lf-original-store-desc			= sys-description
 			endon
 		endon
+		//<{6}
+		get name-and-address-master
+		on index accountcode na-type
+		key is tsd-so-cust-code "C"
+		on error
+			initialise name-and-address-master
+		else
+			//we should have phone details in hand to display against Contact #: labels
+		endon
+		//>{6}
 		print
 			lf-delivery-window				in col ws-col-1 bold
 			tsd-so-order-no					in col ws-col-2 bold
@@ -3541,7 +3568,11 @@ local field
 			if sol-line-type in {"DN"}
 				if sol-line-description != spaces
 					print
-						sol-line-description		in col ws-col-2 //bold   //rc 29may09
+						//<{1}
+						//sol-line-description		in col ws-col-2 //bold   //rc 29may09
+						concat(sol-line-description stock-code sol-stk-unit-desc sol-price-overide-flag
+						sol-whse-code sol-update-whse sol-short-ship-reason-code) in col ws-col-2
+						//>{1}
 				endif
 			endif
 		endextract
@@ -3868,9 +3899,13 @@ procedure confirm-delivery
 parameters
 	lp-so-order-no					like so-order-no
 	lp-so-bo-suffix					like so-bo-suffix
+
 	set so-order-no =  lp-so-order-no
 	set so-bo-suffix = lp-so-bo-suffix
+
 	//message concat("1:" str(so-order-no) so-bo-suffix)
+
+
 		get sales-order lock
 		//message concat("2:" str(so-order-no) so-bo-suffix " Status:" so-order-status)
 		// 18jun08
@@ -3878,7 +3913,9 @@ parameters
 			message concat(str(so-order-no) so-bo-suffix " is locked")
 			exit
 		endon
+
 		// 01jul08 - test if multi-po splits..
+
 		//if so-order-status in { "11" "18" "70" }//{ I5SO_BACK_ORDER I5SO_RDY_TO_PRINT_INVOICE}
 		if ws-allocation = "A"
 			//set ws-old-status = so-order-status
@@ -3898,6 +3935,7 @@ parameters
 					update sales-order-line
 				endif
 			endextract
+
 		//elseif so-order-status in {"44" "34" }// {I5SO_BEING_PURCHASED I5SO_RDY_TO_BE_PURCHASED}
 		elseif ws-allocation = "M"
 			//Look for a non-taken line - if found set to taken
@@ -3918,6 +3956,7 @@ parameters
 				//	set sol-print-line = "T"
 				//	update sales-order-line
 				//endif
+
 				if sol-line-type = 'KN'
 					set ws-kit-found = TRUE
 					set ws-kit-taken = TRUE
@@ -3978,6 +4017,7 @@ parameters
 					on index so-order-no so-bo-suffix sol-line-seq
 			endif
 			if ws-found-taken = YES
+
 				spl 'so/m5bosplit' parameters are '-one_taken'
 					str(so-order-no) so-bo-suffix 'Y'
 				get copy-sales-order lock
@@ -4004,15 +4044,13 @@ parameters
 			set so-invoice-date = today()
 		endif
 		update copy-sales-order
-		spl 'deb/m1poscrec'
-			parameters
-				'-cash'
-				str(so-order-no)
-				so-bo-suffix
-				'-confirm-delivery'
+		spl 'deb/m1poscrec' parameters '-cash'
+			str(so-order-no) so-bo-suffix
 		get sales-order
 			on index so-whse-code so-order-type-code
 				so-order-no so-bo-suffix
+
+
 		//message concat("3:" str(so-order-no) so-bo-suffix " Pos Mode:" sys-point-of-sale-mode-used)
 		if (sys-point-of-sale-mode-used != '6') and (so-order-status in { "11" "18" "30" "31" "34" "40" "44" "70" })
 		// if not (sys-point-of-sale-mode-used = '6'
