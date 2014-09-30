@@ -1,0 +1,229 @@
+#PRONTO Screen Customiser File (Override statements only).
+screen rbtchproc-report-parameters
+	{
+	accept
+		{
+		name = ws-web-only
+		suppress = true
+		#default = "W"
+		}
+	display
+		{
+		orig_text = "Show Web Orders only?:"
+		suppress = true
+		}
+	accept
+		{
+		name = ws-search-archive
+		default = "Y"
+		readonly = true
+		}
+	accept
+		{
+		name = ws-sales-type
+		#readonly = true
+		default = "W"
+		}
+	accept
+		{
+		name = ws-include-or-exclude-tax
+		default = "E"
+		readonly = true
+		}
+	accept
+		{
+		name = ws-start-group
+		default = "  "
+		suppress = true
+		}
+	accept
+		{
+		name = ws-end-group
+		suppress = true
+		default = "~~~~~~~~~~`"
+		}
+	accept
+		{
+		name = ws-start-customer
+		suppress = true
+		default = " "
+		}
+	accept
+		{
+		name = ws-end-customer
+		suppress = true
+		default = "~~~~~~~~"
+		}
+	accept
+		{
+		name = ws-start-stk-class
+		suppress = true
+		default = " "
+		}
+	accept
+		{
+		name = ws-end-stk-class
+		suppress = true
+		default = "~~"
+		}
+	accept
+		{
+		name = ws-report-seq
+		default = "S"
+		}
+	display
+		{
+		orig_text = "Start Item Group  :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "  End Item Group  :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Start Customer    :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "  End Customer    :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Start Item Class  :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "  End Item Class  :"
+		suppress = true
+		}
+	accept
+		{
+		name = ws-start-abc-class
+		suppress = true
+		default = " "
+		}
+	accept
+		{
+		name = ws-end-abc-class
+		suppress = true
+		default = "~"
+		}
+	display
+		{
+		orig_text = "Start ABC Class   :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "  End ABC Class   :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Start Territory   :"
+		coordinate = 15.00,45.00
+		}
+	accept
+		{
+		name = ws-start-terr
+		coordinate = 15.00,66.00
+		}
+	display
+		{
+		orig_text = "  End Territory   :"
+		coordinate = 16.00,45.00
+		picture = x(19)
+		}
+	accept
+		{
+		name = ws-end-terr
+		coordinate = 16.00,66.00
+		}
+	box
+		{
+		orig_coordinate = 9.00,1.00
+		coordinate = 22.00,80.00
+		suppress = true
+		}
+	box
+		{
+		orig_coordinate = 10.00,1.00
+		coordinate = 17.00,80.00
+		add = true
+		title = "Report Ranges"
+		}
+	window
+		{
+		window_size = 18,86
+		}
+	accept
+		{
+		name = ws-start-order-no
+		coordinate = 8.00,66.00
+		default = "1"
+		suppress = true
+		}
+	accept
+		{
+		name = ws-end-order-no
+		coordinate = 9.00,66.00
+		default = "99999999"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "Start Sales Order :"
+		suppress = true
+		}
+	display
+		{
+		orig_text = "  End Sales Order :"
+		coordinate = 14.00,5.00
+		suppress = true
+		}
+	accept
+		{
+		name = ws-start-rep
+		coordinate = 11.00,66.00
+		}
+	display
+		{
+		orig_text = "Start Rep Code    :"
+		coordinate = 11.00,45.00
+		}
+	display
+		{
+		orig_text = "  End Rep Code    :"
+		coordinate = 12.00,45.00
+		}
+	accept
+		{
+		name = ws-end-rep
+		coordinate = 12.00,66.00
+		}
+	accept
+		{
+		name = ws-start-whse
+		coordinate = 13.00,66.00
+		}
+	display
+		{
+		orig_text = "Start Warehouse   :"
+		coordinate = 13.00,45.00
+		}
+	display
+		{
+		orig_text = "  End Warehouse   :"
+		coordinate = 14.00,45.00
+		}
+	accept
+		{
+		name = ws-end-whse
+		coordinate = 14.00,66.00
+		}
+	}
