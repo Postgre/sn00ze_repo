@@ -11,12 +11,6 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//
-// 03oct14	mb		{3a} incorp {3b} changes by rmd in 660 across to 710 :
-//	20aug14	rmd	{3b}		retrieve territory (store) code associated with PO to
-//						po-user-only-alpha4-1 allowing Territory address print
-//
-//	03sep14	mb	{4}		default printer for Kim of Geelong 
 //	07aug14	mb		{3}		fix issue where only option to exit is to say YES to update email address.
 //	28mar14	rmd	{2}		upgrade for 710
 //	08may13	rmd	{1}		increase email address to 60 char na-name + na-company
@@ -121,10 +115,6 @@ local field
 	lf-update-email					pic x
 	lf-printer-name					pic x(15)
 	lf-printer-name2				pic x(15)
-// < {3a}
-	lf-territory					like territory	//{3}
-	lf-terr-method					pic x			//{3} method used to retrieve territory
-// > {3a}
 //window @14,55 to @20,110 title "Print, Spool or Email Purchase Order"	//{1}
 //box @14,55 to @19,110 title SPACES                                    //{1}
 window @14,33 to @20,110 title "Print or Email Purchase Order"          //{1}
@@ -150,73 +140,10 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 			exit
 		else
 			set lf-archived-po = TRUE
-// < {3a}
-			set lf-territory = po-user-only-alpha4-1	//{2}
-// > {3a}
 		endon
 	else
 		set lf-archived-po = FALSE
-// < {3a}
-		set lf-territory = po-user-only-alpha4-1	//{2}
-// > {3a}
 	endon
-// < {3a}
-	// < {3}
-	if lf-territory = SPACES
-		//1. test for linked order to obtain territory
-		do get-linked-so-terr
-			parameters
-				ws-order-no
-				ws-suffix
-			returning
-				lf-territory
-		if lf-territory != SPACES
-			set lf-terr-method = "L"	//territory from linked SO
-		endif
-	else
-		set lf-terr-method = "P"		//territory from PO
-	endif
-	if lf-territory = SPACES
-		//2. determine territory based on user-id
-		if num(substring(po-user-name,4,6)) > 0
-			set lf-territory = substring(po-user-name,4,6)
-			set lf-terr-method = "U"
-		endif
-	endif
-	display lf-terr-method	@15,63 background
-	accept lf-territory @15,57 title "Store:"
-// < {4}
-		when lf-mode != "E"
-		default lf-territory
-		read-only
-	accept lf-territory @15,57 title "Store:"
-		when lf-mode = "E"
-// > {4}
-		default lf-territory
-		uppercase
-		validation
-			//#| lookup helper and validation
-			if num(lf-territory) > 0
-				get purchase-order lock
-					on index po-order-no po-backorder-flag
-					key is ws-order-no ws-suffix
-				on error
-					get purchase-order-archive lock
-						on index po-order-no po-backorder-flag
-						key is ws-order-no ws-suffix
-					on error
-					else
-						set po-user-only-alpha4-1 = lf-territory
-						update purchase-order-archive
-					endon				
-				else
-					set po-user-only-alpha4-1 = lf-territory
-					update purchase-order				
-				endon
-			endif
-		endvalidation
-	// > {3}
-// > {3a}
 	if lf-mode = "E"
 		//retrieve recipient address, warn if none exists, allow override and update with new value
 		get name-and-address-master lock
@@ -253,18 +180,6 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 			default lf-email-address
 	*/
 	//-- --------------------------------------------------
-// < {4}
-		if lf-email-address = spaces
-			get system-user-control
-				on index user-id
-				key is getenv("LOGNAME")
-			on error
-			endon //get system-user-control
-			//--
-			set lf-email-address = suc-user-email //-- pronto login user email address . . .
-			//--
-		endif //-- if lf-email-address = spaces
-// > {4}
 		accept lf-email-address
 			@16,47 
 			title "Email Address:"
@@ -421,25 +336,8 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		set lf-printer-name2 = getenv("POPRINT")
 		//display "Choose Printer:"	@16,61 background	//{1}
 		//accept lf-printer-name @16,77                 //{1}
-		//display "Choose Printer:"	@16,31 background   //{1}
-// < {4}
-		do get-default-printer
-			returning lf-printer-name
-//zzz zaz zzxzx
-// > {4}
-		display "Printer:"	@16,38 background   				//{3}
-// < {4}
-/*
+		display "Choose Printer:"	@16,31 background   //{1}
 		accept lf-printer-name @16,47                   //{1}
-		when lf-printer-name != spaces
-		default lf-printer-name
-		read-only
-*/
-// > {4}
-		accept lf-printer-name @16,47                   //{1}
-/*
-			when lf-printer-name = spaces
-*/
 			default lf-printer-name
 			//show-value
 		on help-key
@@ -449,7 +347,6 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 			refresh lf-printer-name
 			reenter optional
 		endon
-		/*
 		validation
 			set lf-printer-name = lf-printer-name2
 			if lf-printer-name = SPACES
@@ -459,7 +356,6 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 				refresh lf-printer-name
 			endif
 		endvalidation
-		*/
 		//set ws-env-printer = lf-printer-name
 		//set ws-spool-report = NO
 
@@ -518,48 +414,6 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		reenter lf-mode
 	endif
 endprocedure // pse-po --------------------------------------------------------
-
-// < {4}
-//zzz zaz zzxzx
-//-- ------------------------------
-procedure get-default-printer
-	returning lr-printer-name pic x(15)
-//-- ------------------------------
-	set lr-printer-name = spaces
-	//-- -----------------------
-	/*
-	get system-user-control
-		on index user-id
-		key is getenv("LOGNAME")
-	on error
-	endon //get system-user-control
-	*/
-	set user-id = getenv("LOGNAME")
-	//suc-user-email //-- pronto login user email address . . .
-	//message "zaz: user-id = " user-id ", po-user-name = " po-user-name
-	switch on user-id
-	case "gee365l3"
-		set lr-printer-name = "365_tfq_po"
-	case "mladenb"
-		set lr-printer-name = "ho_finlaser"
-	else
-		set lr-printer-name = spaces
-//object tmp-printers
-//	record
-//		tmp-prt-name		type string
-		get tmp-printers
-			first
-		on error
-		else
-			set lr-printer-name = tmp-prt-name
-		endon //get tmp-printers
-		//--
-		set lr-printer-name = getenv("POPRINT")
-		//--
-	endswitch //on user-id
-endprocedure //get-default-printer
-//-- ------------------------------
-// > {4}
 
 procedure build-faxmail-sender
 parameter
@@ -648,40 +502,3 @@ local field
 	//set tmp-prt-name = lf-all-printer
 	//insert tmp-printers
 endprocedure  // build-printers-list  ---------------------------------------
-
-
-
-// < {3a}
-// < {3}
-procedure get-linked-so-terr
-parameters
-	lp-po-order-no              like po-order-no      
-	lp-po-backorder-flag        like po-backorder-flag
-returning                        
-	lr-territory        		like territory        
-	extract sales-order-line-purchase
-		on index solp-po-order-no solp-backorder-flag solp-l-seq
-		key is lp-po-order-no lp-po-backorder-flag 0
-		next same solp-po-order-no solp-backorder-flag
-	detail
-		get sales-order
-			on index so-order-no so-bo-suffix
-		on error
-			get sales-order-archive
-				on index so-order-no so-bo-suffix
-			on error
-				continue
-			else
-				set lr-territory = so-territory-code
-				break
-			endon
-		else
-			set lr-territory = so-territory-code
-			break		
-		endon
-	endextract
-endprocedure // get-linked-so-terr --------------------------------------------
-
-// > {3}
-
-// > {3a}
