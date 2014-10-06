@@ -11,7 +11,6 @@
 //===========================================================================//
 //  Modification History
 //  Date	Who	Chg#	What
-//	27sep14	rmd	{20}	inject tax code 0 for ex GST items
 //	18aug14	rmd	{19}	switch to p7branch imput during transition, switch back to p710branch
 //						once all stores are cut across
 //	26mar14	rmd	{18}	710 specific changes
@@ -235,7 +234,7 @@ procedure main
 	//state exceptions
 	if sys-consolidation-division = "OSB"
 		set ws-state = "W"
-	elseif sys-consolidation-division in {"TN1" "TN2" "ABK" "T01" "T02"}
+	elseif sys-consolidation-division in {"TN1" "TN2" "ABK"}
 		set ws-state = "N"
 	elseif sys-consolidation-division = "VIC"
 		set ws-state = "V"
@@ -613,18 +612,11 @@ local field
 				delete tax-stock-output-defaults
 			endextract
 			//insert new tax record
-			// < {20}
-			//only insert if tax code "0", system will default to "1" inc GST if not specified
-			if tsm-prc-sales-tax-code = 0
-				initialise tax-stock-output-defaults
-				set tsod-stock-code = stock-code
-				set tsod-tax-code 	= str(tsm-prc-sales-tax-code)
-				set tsod-type		= "O"
-				insert tax-stock-output-defaults
-			endif
-			//capture tax code against item in external system to uo num2 field for validation
-			set stk-user-only-num2 = tsm-prc-sales-tax-code
-			// > {20}
+			initialise tax-stock-output-defaults
+			set tsod-stock-code = stock-code
+			set tsod-tax-code 	= str(tsm-prc-sales-tax-code)
+			set tsod-type		= "O"
+			insert tax-stock-output-defaults
 			//>{16}
 			//if tsm-prc-sales-tax-code = 0
 			//	message concat(strconcat(stock-code) ":" str(tsm-prc-sales-tax-code))

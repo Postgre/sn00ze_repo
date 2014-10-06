@@ -15,8 +15,6 @@
 ///////////////////////////////////////////////////////////////////////////////
 // promoprice.spl
 //when		ref		who	notes
-//18sep14	rmd		{6}	710 treats prc-prom-price as ex GST, not inc like 660 does.
-//						remove GST from price before storing
 //18aug14	rmd		{5}	switch to p7branch imput during transition, switch back to p710branch
 //						once all stores are cut across
 //22Aug13		LG	Added New p7branch Promopricing file Location.
@@ -111,6 +109,7 @@ procedure silent-process
 			else
 				set stk-user-only-alpha20-1	= substring(tpp-ticket-type-desc,1,20)
 				set stk-user-only-alpha20-2	= substring(tpp-promo-desc,1,20) //concat(strconcat(ws-price-region) " " substring(tpp-promo-desc,1,11))
+
 				update stock-master
 				on error
 					print
@@ -127,14 +126,7 @@ procedure silent-process
 					tpp-stock-code											in col 05
 					"No Price Record"
 			else
-				// < {6}
-				//set prc-prom-price 			= lf-promo-price
-				if lf-promo-price = 0
-					set prc-prom-price 			= lf-promo-price
-				else
-					set prc-prom-price 			= lf-promo-price / 1.1
-				endif
-				// > {6}
+				set prc-prom-price 			= lf-promo-price
 				set prc-start-prom-date 	= date2julian(substring(tpp-prc-start-prom-date,1,10))
 				set prc-end-prom-date 		= date2julian(substring(tpp-prc-end-prom-date,1,10))
 				update stock-price

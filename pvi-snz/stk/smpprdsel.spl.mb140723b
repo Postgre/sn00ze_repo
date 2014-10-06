@@ -12,8 +12,8 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//	15may14	rmd	{10}	upgrade to 710.3 (bom/kit handing) and add
-//						a new range "New Venus Yellow" type 10
+
+//	15may14	rmd	{10}	upgrade to 710.3
 //	02dec13	rmd	{9}		print line break ------ after kit compoenents on next
 //						whole number seq
 //	27nov13	rmd	{8}		write component desc lines as sales-order-line notes
@@ -653,6 +653,7 @@ menu main-menu
 		do build-list
 		do dig-snz-simplify-kit
 	//do return-kit-code
+	//do inject-bom-header
 endmenu // main-menu ----------------------------------------------------------
 
 //procedure rebuild-isam //ism-snz-simplify-kit
@@ -851,34 +852,6 @@ local field
 			"records:"
 			lf-rec-count
 	endon
-	// < {10}
-	open snz-simplify-kit read-only
-		file "/p7branch/matrix/bigmatrix-10.csv"
-	on error
-	else
-		extract snz-simplify-kit
-		detail
-			if ssk-parent-code != SPACES
-				insert ism-snz-simplify-kit
-				on error
-				else
-					set lf-rec-count += 1
-				endon
-			endif
-		endextract
-		set lf-file-name = file-name(snz-simplify-kit)
-		print
-			today()
-			tod()
-			login-id()
-			strconcat(lf-file-name)
-			date-from-date-time(modification-time(lf-file-name),0)
-			time-from-date-time(modification-time(lf-file-name),0)
-			"records:"
-			lf-rec-count
-		set lf-rec-count = 0
-	endon
-	// > {10}
 	print
 		today()
 		tod()
@@ -1495,13 +1468,6 @@ confirmed
 			do prod-sel-head-uph entry-once
 				returning
 					ws-stock-code
-		// < {10}
-		case "New Venus Yellow"
-			do reset-options
-			do prod-sel-head-uph entry-once
-				returning
-					ws-stock-code
-		// > {10}
 		case "Upholstered with Timber"
 			//do prod-sel-head-ut entry-once
 			do reset-options
@@ -3593,13 +3559,6 @@ parameters
 			endif
 		endfor
 	endon
-	// < {10}
-	//check/insert bom header, run kit-check-inject in header-check mode, no compenents will be injected
-	do kit-check-inject
-		parameters
-			ssk-parent-code
-		    "header-check"
-	// > {10}
 	//insert component codes
 	//ssk-headboard-code
 	//ssk-bed-base-code
@@ -3613,14 +3572,12 @@ parameters
 		next same stock-code
 	detail
 		extract bill-of-materials-detail
-			// < {10}
 			//on index bom-parent-code bom-seq-no comp-code
 			//key is ssk-parent-code 0 SPACES
 			//next same bom-parent-code
 			on index bomh-id bom-seq-no comp-code
 			key is bomh-id 0 SPACES
 			next same bomh-id
-			// > {10}
 		detail
 			print
 				"deleting bill-of-materials-detail"
@@ -3629,7 +3586,6 @@ parameters
 				comp-code
 			delete bill-of-materials-detail
 		endextract
-	endextract
 	//
 	if ssk-headboard-code != SPACES
 		get stock-master
@@ -3641,18 +3597,10 @@ parameters
 				ssk-headboard-code
 			//validation
 		else
-			// < {10}
-			//set bom-parent-code = ssk-parent-code
-			//set comp-code = ssk-headboard-code
-			//set bom-quantity = 1
-			//insert bill-of-materials-detail
-			push stock-master
-			do kit-check-inject
-				parameters
-					ssk-parent-code
-				    ssk-headboard-code
-			pop stock-master
-			// < {10}
+			set bom-parent-code = ssk-parent-code
+			set comp-code = ssk-headboard-code
+			set bom-quantity = 1
+			insert bill-of-materials-detail
 			get stock-price
 				on index stock-code prc-region-code
 				key is ssk-headboard-code SPACES
@@ -3673,18 +3621,10 @@ parameters
 				ssk-bed-base-code
 			//validation
 		else
-			// < {10}
-			//set bom-parent-code = ssk-parent-code
-			//set comp-code = ssk-bed-base-code
-			//set bom-quantity = 1
-			//insert bill-of-materials-detail
-			push stock-master
-			do kit-check-inject
-				parameters
-					ssk-parent-code
-				    ssk-bed-base-code
-			pop stock-master
-			// < {10}
+			set bom-parent-code = ssk-parent-code
+			set comp-code = ssk-bed-base-code
+			set bom-quantity = 1
+			insert bill-of-materials-detail
 			get stock-price
 				on index stock-code prc-region-code
 				key is ssk-bed-base-code SPACES
@@ -3705,18 +3645,10 @@ parameters
 				ssk-leg-code
 			//validation
 		endon
-		// < {10}
-		//set bom-parent-code = ssk-parent-code
-		//set comp-code = ssk-leg-code
-		//set bom-quantity = 1
-		//insert bill-of-materials-detail
-		push stock-master
-		do kit-check-inject
-			parameters
-				ssk-parent-code
-			    ssk-leg-code
-		pop stock-master
-		// < {10}
+		set bom-parent-code = ssk-parent-code
+		set comp-code = ssk-leg-code
+		set bom-quantity = 1
+		insert bill-of-materials-detail
 	endif
 	if ssk-storage-code != SPACES
 		get stock-master
@@ -3728,18 +3660,10 @@ parameters
 				ssk-storage-code
 			//validation
 		else
-			// < {10}
-			//set bom-parent-code = ssk-parent-code
-			//set comp-code = ssk-storage-code
-			//set bom-quantity = 1
-			//insert bill-of-materials-detail
-			push stock-master
-			do kit-check-inject
-				parameters
-					ssk-parent-code
-				    ssk-storage-code
-			pop stock-master
-			// < {10}
+			set bom-parent-code = ssk-parent-code
+			set comp-code = ssk-storage-code
+			set bom-quantity = 1
+			insert bill-of-materials-detail
 			get stock-price
 				on index stock-code prc-region-code
 				key is ssk-storage-code SPACES
@@ -3791,6 +3715,19 @@ parameters
 	endif
 	report finished
 endprocedure // check-kit -----------------------------------------------------
+
+procedure inject-bom-header
+	get bill-of-materials-header first
+	get stock-master
+	set stock-code = "RMDBOM2"
+	insert bill-of-materials-header
+	on error
+	endon
+	set stk-price-per = 1
+	insert stock-master
+	on error
+	endon
+endprocedure // inject-bom-header ---------------------------------------------
 
 
 //screen maint-option-1
@@ -5040,7 +4977,6 @@ local field
 	lf-desc-lines				pic x(30) occurs 8
 	i							type numeric
 	lf-sol-line-seq				like sol-line-seq	//{9}
-	lf-kit-header-found			type numeric		//{10}
 	//message "price-band-note-lines"
 	//message "1: " ws-so-order-no
 	//message "2: " ws-so-bo-suffix
@@ -5145,50 +5081,33 @@ local field
 	endfor
 	//<{9}
 	//print line of --------------------- as note at and of kit
-	//message "end of kit line " concat(str(ws-so-order-no) ws-so-bo-suffix ":" str(ws-sol-line-seq))	//{10}
+	message "end of kit line " concat(str(ws-so-order-no) ws-so-bo-suffix ":" str(ws-sol-line-seq))
 	set lf-sol-line-seq = ws-sol-line-seq
-	// < {10}
-	//get header
-	set lf-kit-header-found = FALSE
-	extract bill-of-materials-header
-		on index stock-code bomh-factory-code bomh-id
-		key is ssk-parent-code SPACES 0
-		next same stock-code
+	extract bill-of-materials-detail
+		on index bom-parent-code bom-seq-no comp-code
+		key is ssk-parent-code 0 SPACES
+		next same bom-parent-code
 	detail
-		//found
-		set lf-kit-header-found = TRUE
-		break
-	endextract
-	if lf-kit-header-found
-		extract bill-of-materials-detail
-			//on index bom-parent-code bom-seq-no comp-code
-			//key is ssk-parent-code 0 SPACES
-			//next same bom-parent-code
-			on index bomh-id bom-seq-no comp-code
-			key is bomh-id 0 SPACES
-			next same bomh-id
-		detail
-			set lf-sol-line-seq += 1
-		endextract//e
-		initialise sales-order-line
-		set so-order-no	    = ws-so-order-no
-		set so-bo-suffix    = ws-so-bo-suffix
-		set sol-line-seq 	= integer(lf-sol-line-seq) + 1
-		set soln-type		= "SN"
-		get sales-order-line
-			on index so-order-no so-bo-suffix sol-line-seq
-		on error
-			set sol-line-type 			= "DN"
-			set sol-line-description 	= concat("--------------------")
-			insert sales-order-line
-		else
-			set sol-line-description 	= concat("--------------------")
-			update sales-order-line
-		endon
-		//>{9}
-	endif
-	// > {10}
+		set lf-sol-line-seq += 1
+	endextract//e
+	initialise sales-order-line
+	set so-order-no	    = ws-so-order-no
+	set so-bo-suffix    = ws-so-bo-suffix
+	set sol-line-seq 	= integer(lf-sol-line-seq) + 1
+	set soln-type		= "SN"
+	get sales-order-line
+		on index so-order-no so-bo-suffix sol-line-seq
+	on error
+		set sol-line-type 			= "DN"
+		set sol-line-description 	= concat("--------------------")
+		insert sales-order-line
+	else
+		set sol-line-description 	= concat("--------------------")
+		update sales-order-line
+	endon
+	//>{9}
 endprocedure // comp-desc-note-lines ------------------------------------------
+
 
 procedure comp-desc-note-lines-old	//{8}
 	//message "price-band-note-lines"
@@ -5636,103 +5555,5 @@ returning
 		endif
 	endextract
 endprocedure // validate-sst-description --------------------------------------
-//>{4}
 
-procedure kit-check-inject // {10}
-local field
-	lf-bom-exists			type boolean
-	lf-component-exists		type boolean
-parameters
-	lp-parent-code			like stock-code
-	lp-comp-code			like comp-code
-	//
-	set lf-bom-exists = FALSE
-	extract bill-of-materials-header
-		on index stock-code bomh-factory-code bomh-id
-		key is lp-parent-code SPACES 0
-		next same stock-code
-	detail
-		set lf-bom-exists = TRUE
-		break
-	endextract
-	if not lf-bom-exists
-		print
-			"cannot locate header:"
-			lp-parent-code
-		//get last id in bomh file
-		get bill-of-materials-header last
-		on error
-			set bomh-id 	= 0
-		endon
-		initialise bill-of-materials-header
-			leaving bomh-id stock-code
-		set bomh-id 	+= 1
-		set stock-code 	= lp-parent-code
-		get bill-of-materials-header
-		on error
-			//insert header here - we still have currency on the new bomh-id and stock-code
-			//bomh-factory-code will = SPACES which is OK
-			set bomh-authorised-end-date 	= 06-JUN-2079	//30-JUN-2079	//future date
-			set bom-authorised-flag 		= "Y"
-			set bom-yield					= 100			//100%
-			set bomh-lot-size				= 1
-			set bomh-type					= "P"
-			insert bill-of-materials-header
-			on error
-				//#| need to deal with this
-			else
-				print
-					"insert bill-of-materials-header:"
-					bomh-id
-					stock-code
-			endon
-		endon
-	endif
-	if lp-comp-code = "header-check"
-		//this pass was just to check for presence of header and inject if not found
-	else
-		//need to get currency on stock-master for component to obtain stk-unit-desc
-		get stock-master
-			on index stock-code
-			key is lp-comp-code
-		on error
-			set stk-unit-desc = "--"
-		endon
-		//inject component
-		//we already have bomh-id and it should contain the id for the current header regardless
-		//if we had to create the header or if we found it already existed.
-		//test if component already in kit
-		set lf-component-exists = FALSE
-		extract bill-of-materials-detail
-			on index bomh-id bom-seq-no comp-code
-			key is bomh-id 0 SPACES
-			next same bomh-id
-		detail
-			if comp-code = lp-comp-code
-				set lf-component-exists = TRUE
-				break
-			endif
-		endextract
-		if not lf-component-exists
-			//bom-seq-no will be positioned on the last componenet in the kit
-			//add 1 to this then inject the new item
-			initialise bill-of-materials-detail
-				leaving bomh-id bom-seq-no
-			set bom-seq-no 			+= 1
-			set comp-code			= lp-comp-code
-			set bom-quantity		= 1
-			set bom-unit-desc		= stk-unit-desc
-			insert bill-of-materials-detail
-			on error
-				//#| need to handle this if it occurs
-			else
-				print
-					"insert bill-of-materials-detail:"
-					bomh-id
-					stock-code
-                    bom-seq-no
-					comp-code
-			endon
-		endif
-	endif
-endprocedure // kit-check-inject ----------------------------------------------
+//>{4}
