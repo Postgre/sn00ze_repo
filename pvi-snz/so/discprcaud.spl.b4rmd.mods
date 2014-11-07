@@ -11,9 +11,6 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//	28oct14	rmd	{9}		add check to switch ZROUNDDISC on any lines to ZROUND
-//	15sep14	rmd	{8}		suppress if called from company 2, dealing with a common pcs path
-//						and this program may be caled from company 2
 //	28mar13	rmd	{7}		upgrade to 710
 //	17apr13	rmd	{5}		cloned from rmd/so/discprcaud7
 //				{6}		authority check
@@ -25,7 +22,6 @@
 //	26jul10	rmd			if all reasons accounted for do not 're' prompt user
 ///////////////////////////////////////////////////////////////////////////////
 
-version-number "20100726.008"
 
 //#include "../../../../bms/include/i85codes.spl"	//{7}
 #include "../../../bms/include/i85codes.spl"		//{7}
@@ -101,20 +97,6 @@ window @1,1 to @15,45 title "pvi-snz/so/discprcaud"
     open rmd-audit create permanent
     //check order for signs of price override
     get system-control first
-    // < {8}
-    if sys-consolidation-division = "2"
-    	//do not want to run this for company 2
-    	exit
-    endif
-    // > {8}
-    // < {9}
-    if login-id() in {"robd"} or sys-consolidation-division in {"295" "312" "292" "115" "163"}
-    	do zrounddiscfix
-    		parameters
-    			lp-so-order-no
-    			lp-so-bo-suffix
-    endif
-    // > {9}
     set sol-spare-num2 = 1
     set lf-audit-required = FALSE
     set lf-all-reasons-supplied = TRUE	//rmd26jul10
@@ -1037,48 +1019,3 @@ procedure authority-routine //{6}
 	//maybe run a running sum using SO_OP_LINE and somehow perform the auth test BEFORE they exit the screen
 	//Chris said he'd be happy if we set the order to suspended at this point and NOT call the cash receipt routine
 endprocedure // authority-routine ---------------------------------------------
-
-// < {9}
-procedure zrounddiscfix
-parameters
-	lp-so-order-no          like so-order-no
-	lp-so-bo-suffix         like so-bo-suffix
-	extract sales-order-line
-		on index so-order-no so-bo-suffix sol-line-seq
-		key is lp-so-order-no lp-so-bo-suffix 0
-		next same so-order-no so-bo-suffix
-	detail
-		if stock-code = "ZROUNDDISC"
-			get sales-order-line lock
-				on index so-order-no so-bo-suffix sol-line-seq
-				key is so-order-no so-bo-suffix sol-line-seq
-			on error
-			else
-				do zround-check
-				set stock-code = "ZROUND"
-				update sales-order-line
-				on error
-				endon
-			endon
-		endif
-	endextract
-endprocedure // zrounddiscfix -------------------------------------------------
-
-procedure zround-check
-	get stock-master
-		on index stock-code
-		key is "ZROUND"
-	on error
-		get stock-master
-			on index stock-code
-			key is "ZROUNDDISC"
-		on error
-		else
-			set stock-code = "ZROUND"
-			insert stock-master
-			on error
-			endon
-		endon
-	endon
-endprocedure // zround-check --------------------------------------------------
-// > {9}

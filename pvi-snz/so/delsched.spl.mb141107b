@@ -526,7 +526,7 @@ message "Chars 8 to 10 : "
 /* message "zaz so-order-no / right_most() / tr-details = " fstr(tsd-so-order-no,SO_ORDER_NO_LENGTH,0) " / " */ \
 /* RIGHT_MOST(tr-details, SO_ORDER_NO_LENGTH) " / " strconcat(tr-details) */ \
 /* endif */ \
-		if trans-type in {"CR" "PD" "JE" "CN"} \
+		if trans-type in {"CR" "PD" "JE"} \
 			if dr-tr-order-no = tsd-so-order-no \
 			/* > {9} */ \
 			/* need to also make sure this payment is against the current SO order no. */ \
