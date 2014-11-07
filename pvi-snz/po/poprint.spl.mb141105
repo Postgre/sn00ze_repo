@@ -12,7 +12,6 @@
 //  Modification History
 //  Date	Who	Chg#	What
 //
-// 05nov14	mb		{5} fix PO RETRY LOCK error
 // 03oct14	mb		{3a} incorp {3b} changes by rmd in 660 across to 710 :
 //	20aug14	rmd	{3b}		retrieve territory (store) code associated with PO to
 //						po-user-only-alpha4-1 allowing Territory address print
@@ -209,12 +208,10 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 					else
 						set po-user-only-alpha4-1 = lf-territory
 						update purchase-order-archive
-							on error endon //{5}
 					endon				
 				else
 					set po-user-only-alpha4-1 = lf-territory
 					update purchase-order				
-						on error endon //{5}
 				endon
 			endif
 		endvalidation
@@ -358,10 +355,8 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		set po-user-only-alpha20-2 = substring(lf-faxmail-from,21,40)
 		if lf-archived-po
 			update purchase-order-archive
-				on error endon //{5}
 		else
 			update purchase-order
-				on error endon //{5}
 		endif
 		//on error
 		//	message "Cannot insert P/O 'From' Address"
@@ -392,8 +387,6 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		else
 			set lf-command = concat("POPRINT=tf_faxmail; export POPRINT;prospl po/m62custom -s " str(ws-order-no) " " ws-suffix " " "-print")
 		endif
-		unlock purchase-order
-		unlock purchase-order-archive
 		command "sh"
 			parameters
 				"-c"
