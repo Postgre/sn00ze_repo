@@ -2,10 +2,8 @@
 version-number "20140909.001" // {9}
 version-number "20140804.001" // {8}
 //version-number "LIVE pvi-snz/so/delsched 20090414"
-// 17oct14	rmd	{10} allow any characters in contact name
-//				and ignore quotes
 // 09sep14	mb		{9}	include bankrec payments made over internet -- see ticket # 1169
-// 04aug14	mb		{8}	include deb-trans-archive when looking for any past payments for the SO Sales Order
+// 04aug14	mb		{8}	include deb-trans-archive when looking for any past payments for the SO Sales Order 
 //								-- update for 710 : no longer has a separate archive table object.
 // 28may14	rmd	{3} suppress SMS mode
 // 16apr14	rmd	{2} updated balance calculation
@@ -622,10 +620,7 @@ local field
 					set lf-include-order = FALSE
 					for i = 1 to 10
 						if so-whse-code = ws-whse-mask-code[i]
-							//but we still don't want quotes
-							if so-order-type-code != "Q" and so-order-status not in {"02"}	//{10}
-								set lf-include-order = TRUE
-							endif															//{10}
+							set lf-include-order = TRUE
 						endif
 					endfor
 				else
@@ -794,7 +789,7 @@ local field
 */
 // > {9}
 
-// 04aug14	mb		{8}	include deb-trans-archive when looking for any past payments for the SO Sales Order
+// 04aug14	mb		{8}	include deb-trans-archive when looking for any past payments for the SO Sales Order 
 // < {8}
 					/* //-- 710 and above no longer has separate archive deb-trans table object
 						extract deb-trans-archive
@@ -1563,10 +1558,8 @@ local field
 			help "Contact for Mobile Number"
 			showvalue
 			uppercase
-			// < {10}
-			//allow "A" to "Z" SPACES
-			//disallow "0" to "9"
-			// > {10}
+			allow "A" to "Z" SPACES
+			disallow "0" to "9"
 		accept tsd-mobile-no @8,40 pic is x(10)
 			default tsd-mobile-no
 			//optional
@@ -1594,10 +1587,8 @@ local field
 			help "Contact for Phone 1"
 			showvalue
 			uppercase
-			// < {10}
-			//allow "A" to "Z" SPACES
-			//disallow "0" to "9"
-			// > {10}
+			allow "A" to "Z" SPACES
+			disallow "0" to "9"
 		accept tsd-phone-no @9,40 pic is x(10)
 			default tsd-phone-no
 			optional
@@ -1624,10 +1615,8 @@ local field
 			help "Contact for Phone 2"
 			showvalue
 			uppercase
-			// < {10}
-			//allow "A" to "Z" SPACES
-			//disallow "0" to "9"
-			// > {10}
+			allow "A" to "Z" SPACES
+			disallow "0" to "9"
 		accept tsd-phone-no2 @10,40 pic is x(10)
 			default tsd-phone-no2
 			//optional
