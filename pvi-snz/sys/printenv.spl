@@ -1,0 +1,32 @@
+// pvi-snz/sys/printenv.spl
+procedure main
+	report "Print Env"
+	print
+		"$PWD:"
+		get-env("PWD")          in col 16
+	print
+		"$DATADIR:"
+		get-env("DATADIR")      in col 16
+	print
+		"$PROEDI:"
+		get-env("PROEDI")       in col 16
+	print
+		"$SYSEDI:"
+		get-env("SYSEDI")       in col 16
+	print
+		"$BMS:"
+		get-env("BMS")          in col 16
+	print
+		"$CUS:"
+		get-env("CUS")          in col 16
+	print
+		"$POPRINT:"
+		get-env("POPRINT")		in col 16
+	print
+		"$INVOICES:"
+		get-env("INVOICES")		in col 16
+	print
+		"$PRCREGION:"
+		get-env("PRCREGION")	in col 16
+	report finished
+endprocedure // main ----------------------------------------------------------

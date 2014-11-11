@@ -1,0 +1,9 @@
+procedure main
+/*
+	get system-control first
+	message "sys-point-of-sale-mode-used: " sys-point-of-sale-mode-used
+	set sys-point-of-sale-mode-used = "0"
+	update system-control
+	message "sys-point-of-sale-mode-used: " sys-point-of-sale-mode-used
+*/
+endprocedure // main ----------------------------------------------------------

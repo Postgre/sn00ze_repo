@@ -1,0 +1,109 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/sys/gstcheck
+//  Program Desc:	Report showing GST config of interest Post upgrade from 660
+//  Requested By:	Chris Ward
+//  Request Date:	13oct14
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	13oct14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+
+procedure main
+	get system-control first
+	do gst-check
+endprocedure // main ----------------------------------------------------------
+
+procedure gst-check
+	report "gst-check"
+	print
+		"---------- GST CHECK ----------"
+	print
+		today()
+		tod()
+		login-id()
+	print
+		sys-consolidation-division
+		company-name
+	skip 2
+	get tax-code-master lock
+		on index tcm-tax-code
+		key is "1"
+	on error
+		print
+			"Tax Code 1 not found"
+	else
+		print
+			"Tax Code 1:"
+		print
+			"     Active:"
+			tcm-active-flag
+		print
+			"    Default:"
+			tcm-tax-default-flag
+		if tcm-tax-default-flag = "N"
+			set tcm-tax-default-flag = "Y"
+			update tax-code-master
+			on error
+			else
+				print
+					"        Default set to Y"
+			endon
+		endif
+	endon
+	get tax-code-master lock
+		on index tcm-tax-code
+		key is "T"
+	on error
+		print
+			"Tax Code T not found"
+	else
+		print
+			"Tax Code T:"
+		print
+			"     Active:"
+			tcm-active-flag
+		print
+			"    Default:"
+			tcm-tax-default-flag
+		if tcm-tax-default-flag = "N"
+			set tcm-tax-default-flag = "Y"
+			update tax-code-master
+			on error
+			else
+				print
+					"        Default set to Y"
+			endon
+		endif
+	endon
+	skip 2
+	print
+		"----- Customer Exemptions -----"
+	extract tax-customer-exemptions
+		all
+	detail
+		print
+			//"   "
+			tce-accountcode
+			tce-tax-exemption-code
+	endextract
+	skip 2
+	print
+		"---- Item Output Tax Codes ----"
+	extract tax-stock-output-defaults
+		all
+	detail
+		if tsod-tax-code = "0"
+			print
+				tsod-stock-code
+				"0 tax code"
+		endif
+	endextract
+	report finished
+endprocedure // gst-check -----------------------------------------------------

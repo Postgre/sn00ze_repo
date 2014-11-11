@@ -1,10 +1,31 @@
 //pvi-snz/sys/710_post_upgrade
 //
+object mas-system-forms-header like system-forms-header
+	file "/pro/data/mas/SYSSOH"//6
+object mas-system-forms-layout like system-forms-layout
+	file "/pro/data/mas/SYSSOL"//4
+
+
 procedure main
+	report "710 post upgrade"
+		spool-only
+	get system-control first
+	print
+		company-name
+		today()
+		tod()
+		login-id()
+	skip
 	do set-faxmail
 	do create-custom-objects
 	do system-table-fix
 	do night-seq-fix
+	do remittance-fix
+	do skin-bg
+	do promo-gst-fix
+	do get-mas-flatcl
+	do mas-po-layouts
+	report finished
 	message "Post Upgrade complete"
 endprocedure // main ----------------------------------------------------------
 
@@ -17,6 +38,21 @@ procedure create-custom-objects
 	open snooze-stock-master        create permanent
 	open snooze-written-movements   create permanent
 	open sycas-lines				create permanent
+	print
+		"created global-sycas-lines"
+	print
+		"created snooze-active-stock-list"
+	print
+	    "created snooze-order-amendments"
+	print
+	    "created snooze-sales-log"
+	print
+	    "created snooze-stock-master"
+	print
+	    "created snooze-written-movements"
+	print
+	    "created sycas-lines"
+	skip
 endprocedure // create-custom-objects -----------------------------------------
 
 procedure set-faxmail
@@ -24,6 +60,10 @@ procedure set-faxmail
 	set fmsc-pending-area = "/pro/pronto/bms/fax/jobs"
 	update faxmail-software-control
 	on error
+	else
+		print
+			"fmsc-pending-area = /pro/pronto/bms/fax/jobs"
+		skip
 	endon
 endprocedure // set-faxmail ---------------------------------------------------
 
@@ -35,9 +75,55 @@ procedure system-table-fix
 	//	parameters
 	//		"ZT"
 	//Program Overrides, will need to get the new program names/locations for 710
-	spl "pvi-snz/sys/stsync"
-		parameters
-			"PR"
+	//spl "pvi-snz/sys/stsync"
+	//	parameters
+	//		"PR"
+	extract system-table lock
+		on index sys-tbl-type sys-tbl-code
+		key is "PR" SPACES
+		next same sys-tbl-type
+	detail
+		if substring(sys-description,1,3) = "rmd"
+			print
+				"old:"
+				sys-description
+				no-newline
+			set sys-description = strconcat("pvi-snz" substring(sys-description,4,30))
+			update system-table
+			print
+				"new:"
+				sys-description
+		endif
+	endextract
+	//710 specific PR entries
+	get system-table lock
+		on index sys-tbl-type sys-tbl-code
+		key is "PR" "SO_OP_LINE"
+	on error
+		initialise system-table
+		set sys-tbl-type	= "PR"
+		set sys-tbl-code	= "SO_OP_LINE"
+		set sys-description	= "pvi-snz/pgmovr/so_op_line"
+		insert system-table
+	else
+		set sys-description	= "pvi-snz/pgmovr/so_op_line"
+		update system-table
+	endon
+	get system-table lock
+		on index sys-tbl-type sys-tbl-code
+		key is "PR" "PO_PRT_L1"
+	on error
+		initialise system-table
+		set sys-tbl-type	= "PR"
+		set sys-tbl-code	= "PO_PRT_L1"
+		set sys-description	= "pvi-snz/pgmovr/po_prt_l1"
+		insert system-table
+	else
+		set sys-description	= "pvi-snz/pgmovr/po_prt_l1"
+		update system-table
+	endon
+	unlock system-table
+	skip
 endprocedure // system-table-fix ----------------------------------------------
 
 procedure night-seq-fix
@@ -49,6 +135,172 @@ procedure night-seq-fix
 		if rs-program-name = "rmd/so/socleanup"
 			set rs-program-name = "pvi-snz/so/socleanup"
 			update reporting-seq-file
+			print
+				"update to pvi-snz/so/socleanup in NIGHT"
+			skip
 		endif
 	endextract
 endprocedure // night-seq-fix -------------------------------------------------
+
+procedure remittance-fix
+	//remove existing FM
+	extract system-forms-header
+		on index ssh-layout-code ssh-order-source ssh-order-status
+		key is "FM" SPACES "X"
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		delete system-forms-header
+	endextract
+	extract system-forms-layout
+		on index ssh-layout-code ssh-order-source ssh-order-status sso-record-type sso-seq-no
+		key is "FM" SPACES "X" SPACES 0
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		//push system-forms-layout
+		//set ssh-layout-code = "FM_BAK"
+		//update system-forms-layout
+		//on error
+		//endon
+		//pop system-forms-layout
+		delete system-forms-layout
+	endextract
+	//push MAS settings to this datase
+	extract mas-system-forms-header
+		on index ssh-layout-code ssh-order-source ssh-order-status
+		key is "FM" SPACES "X"
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		insert system-forms-header
+	endextract
+	extract mas-system-forms-layout
+		on index ssh-layout-code ssh-order-source ssh-order-status sso-record-type sso-seq-no
+		key is "FM" SPACES "X" SPACES 0
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		insert system-forms-layout
+	endextract
+	print
+		"FM remittance updated"
+	skip
+	//remove existing captn
+	extract system-forms-header
+		on index ssh-layout-code ssh-order-source ssh-order-status
+		key is "captn" SPACES "X"
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		delete system-forms-header
+	endextract
+	extract system-forms-layout
+		on index ssh-layout-code ssh-order-source ssh-order-status sso-record-type sso-seq-no
+		key is "captn" SPACES "X" SPACES 0
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		delete system-forms-layout
+	endextract
+	//push MAS settings to this datase
+	extract mas-system-forms-header
+		on index ssh-layout-code ssh-order-source ssh-order-status
+		key is "captn" SPACES "X"
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		insert system-forms-header
+	endextract
+	extract mas-system-forms-layout
+		on index ssh-layout-code ssh-order-source ssh-order-status sso-record-type sso-seq-no
+		key is "captn" SPACES "X" SPACES 0
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		insert system-forms-layout
+	endextract
+	print
+		"captn remittance updated"
+	skip
+endprocedure // remittance-fix ------------------------------------------------
+
+procedure skin-bg
+	get pos-screen-details lock
+		on index pmd-id psd-type
+		key is 106 "1001"
+	on error
+	else
+		set psd-detail = "skin_bg.jpg"
+		update pos-screen-details
+		print
+			"Theme 106 background set to skin_bg.jpg"
+	endon
+endprocedure // skin-bg -------------------------------------------------------
+
+procedure promo-gst-fix
+	print
+		"Take GST from prc-prom-price ------------------------------------------"
+	extract stock-price lock
+	detail
+		if prc-prom-price <> 0 and prc-break-qty[4] <> 99999999.9998
+			print
+				stock-code
+				"old:"
+				prc-prom-price
+				no-newline
+			set prc-prom-price 		= prc-prom-price / 1.1
+			set prc-break-qty[4] 	= 99999999.9998
+			update stock-price
+			print
+				"new:"
+				prc-prom-price
+		endif
+	endextract
+endprocedure // promo-gst-fix -------------------------------------------------
+
+procedure get-mas-flatcl
+local field
+	lf-command			pic x(100)
+	set lf-command = "cp /pro/data/mas/FLATCL* ."
+	command "sh"
+		parameters
+			"-c"
+			strconcat(lf-command)
+	if exit-status() = 0
+		print
+			"MAS remittance layouts copied successfuly"
+	else
+		print
+			"MAS remittance layouts not copied, run command manually"
+		print
+			"cp /pro/data/mas/FLATCL* ."
+	endif
+endprocedure // get-mas-flatcl ------------------------------------------------
+
+procedure mas-po-layouts
+	//remove existing FMT PO
+	extract system-forms-header
+		on index ssh-layout-code ssh-order-source ssh-order-status
+		key is "FMT" SPACES "H"
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		delete system-forms-header
+	endextract
+	extract system-forms-layout
+		on index ssh-layout-code ssh-order-source ssh-order-status sso-record-type sso-seq-no
+		key is "FMT" SPACES "H" SPACES 0
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		delete system-forms-layout
+	endextract
+	//push MAS settings to this datase
+	extract mas-system-forms-header
+		on index ssh-layout-code ssh-order-source ssh-order-status
+		key is "FMT" SPACES "H"
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		insert system-forms-header
+	endextract
+	extract mas-system-forms-layout
+		on index ssh-layout-code ssh-order-source ssh-order-status sso-record-type sso-seq-no
+		key is "FMT" SPACES "H" SPACES 0
+		next same ssh-layout-code ssh-order-source ssh-order-status
+	detail
+		insert system-forms-layout
+	endextract
+	print
+		"FMT PO updated"
+endprocedure // mas-po-layouts ------------------------------------------------

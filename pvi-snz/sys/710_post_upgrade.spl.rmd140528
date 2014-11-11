@@ -1,0 +1,54 @@
+//pvi-snz/sys/710_post_upgrade
+//
+procedure main
+	do set-faxmail
+	do create-custom-objects
+	do system-table-fix
+	do night-seq-fix
+	message "Post Upgrade complete"
+endprocedure // main ----------------------------------------------------------
+
+procedure create-custom-objects
+	open global-sycas-lines         create permanent
+	open snooze-active-stock-list   create permanent
+	//open snooze-calendar-periods    create permanent not correct
+	open snooze-order-amendments    create permanent
+	open snooze-sales-log           create permanent
+	open snooze-stock-master        create permanent
+	open snooze-written-movements   create permanent
+	open sycas-lines				create permanent
+endprocedure // create-custom-objects -----------------------------------------
+
+procedure set-faxmail
+	get faxmail-software-control first
+	set fmsc-pending-area = "/pro/pronto/bms/fax/jobs"
+	update faxmail-software-control
+	on error
+	endon
+endprocedure // set-faxmail ---------------------------------------------------
+
+procedure system-table-fix
+	//obtain system-table entries from MAS
+	//Truck Table should come across as part of the system table from the 660 dataset
+	////Truck Table
+	//spl "pvi-snz/sys/stsync"
+	//	parameters
+	//		"ZT"
+	//Program Overrides, will need to get the new program names/locations for 710
+	spl "pvi-snz/sys/stsync"
+		parameters
+			"PR"
+endprocedure // system-table-fix ----------------------------------------------
+
+procedure night-seq-fix
+	extract reporting-seq-file
+		on index report-seq-name report-seq-number
+		key is "NIGHT" 0
+		next same report-seq-name
+	detail
+		if rs-program-name = "rmd/so/socleanup"
+			set rs-program-name = "pvi-snz/so/socleanup"
+			update reporting-seq-file
+		endif
+	endextract
+endprocedure // night-seq-fix -------------------------------------------------
