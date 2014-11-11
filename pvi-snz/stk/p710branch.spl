@@ -11,6 +11,8 @@
 //===========================================================================//
 //  Modification History
 //  Date	Who	Chg#	What
+//	24oct14	rmd	{21}	regional pricing not being picked up, display PRCREGION variable for sanity
+//						use XY PRCREGION in preference to PRCREGION variable
 //	27sep14	rmd	{20}	inject tax code 0 for ex GST items
 //	18aug14	rmd	{19}	switch to p7branch imput during transition, switch back to p710branch
 //						once all stores are cut across
@@ -214,7 +216,16 @@ procedure main
 	endon
 	//set ws-input-dir = "/p710branch/"	//{16}	//{19}
 	set ws-input-dir = "/p7branch/"	//{16}		//{19}
-	set ws-price-region = uppercase(get-env("PRCREGION"))
+	// < {21}
+	get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "XY" "PRCREGION"
+	on error
+		set ws-price-region = uppercase(get-env("PRCREGION"))
+	else
+		set ws-price-region = uppercase(sys-description)
+	endon
+	// > {21}
 	//message concat("Price Region:" ws-price-region)
 	//determine state prefix
 	set ws-state = "X"
@@ -304,6 +315,8 @@ local field
 			login-id()		pic x(12)
 			"processing"
 			strconcat(lf-directory "ff-stock-master")
+			"PRCREGION:"					//{21}
+			uppercase(get-env("PRCREGION")) //{21}
 		do process-stock-master
 	endon
 	//<{17}
@@ -655,7 +668,6 @@ local field
 			if prc-wholesale-price = 0 and prc-recommend-retail != 0
 				set prc-wholesale-price = prc-recommend-retail
 			endif
-
 			if ws-price-region = "REGIONAL"
 				if prc-sales-tax-code = 1
 					set prc-recommend-retail-inc-tax	= prc-wholesale-price * 1.1

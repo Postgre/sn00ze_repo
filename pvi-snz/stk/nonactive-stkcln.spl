@@ -11,7 +11,15 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//	02jun14	mb		{4}		upgrade to 710.3
+//	23sep14	rmd	{8}		ability to restore from selection  <<< ON HOLD >>>
+//	22sep14	rmd	{7}		ability to review deleted and backup items
+//	10sep14	rmd	{6}		preserve ZRNDBENEFIT
+//	08apr14	rmd	{5}		add ACT status for items that are active in store if
+//						not already set to LIV or COM
+//	07apr14	rmd	{4}.x	option to purge legacy items from stock keyword table
+//	02jun14	mb	{4}		upgrade to 710.3
+//							05nov14 rmd: 660 version was enhanced further than the
+//							version mb started with, changes replayed into this one
 //	27feb14	rmd	{3}		add orphan count and keyword rebuild option
 //	20feb14	rmd	{2}		ensure orphaned stock-supplier, warehouse-stock-master,
 //						stock-price and stock-warehouse-detail are removed
@@ -20,7 +28,7 @@
 //	07jan14	rmd			started
 ///////////////////////////////////////////////////////////////////////////////
 
-version-number "140602.000" //"CUSTOM pvi-snz/stk/nonactive-stkcln 140602" //{4}
+version-number "140602.008" //"CUSTOM pvi-snz/stk/nonactive-stkcln 140602" //{4}
 //todo
 // need to mark simplify kit and component items as "CMP" if they are not marked as active
 //or ask Andrew to include them when he sends his 'Active' list
@@ -35,7 +43,7 @@ version-number "140602.000" //"CUSTOM pvi-snz/stk/nonactive-stkcln 140602" //{4}
 object deleted-stock-master like stock-master	//{1}
 	type isam
 	file "deleted-stock-master"
-*/ // < {4} 
+*/ // < {4}
 
 //common stock list
 /* // < {4} now an object: snooze-active-stock-list
@@ -47,7 +55,9 @@ object deleted-stock-master like stock-master	//{1}
 		asl-stk-description		like stk-description
 	endrecord
 	key is asl-stock-code unique
-*/ // < {4} 
+*/ // < {4}
+object tmp-stock-master like stock-master	//{7}
+	type memory
 
 	object tmp-common-stock type memory
 	record
@@ -83,11 +93,13 @@ object bak-stock-unit-conversion	like stock-unit-conversion		type is external		f
 object bak-bill-of-materials-detail	like bill-of-materials-detail	type is external		file is 'bak-bill-of-materials-detail'
 
 field
-	ws-act-count		pic 999999
-	ws-leg-count		pic 999999
-	ws-obs-count		pic 999999
-	ws-com-count		pic 999999
-	ws-orph-count		pic 999999	//{3}
+	ws-act-count			pic 999999
+	ws-liv-count			pic 999999	//{5}
+	ws-leg-count			pic 999999
+	ws-obs-count			pic 999999
+	ws-com-count			pic 999999
+	ws-orph-count			pic 999999	//{3}
+	ws-backup-stock-master	pic x(100)	//{7}
 
 mode md-remove-all
 	prompt "Remove All"
@@ -101,10 +113,15 @@ mode md-restore-obs
 	prompt "Restore deleted items"
 	help "Not for normal use - just during testing"
 
+mode md-dig-deleted-stock //{7}
+	prompt "View Deleted items"
+	help "View items marked as deleted"
+
+
 procedure main
 /* // < {4} now an object: snooze-active-stock-list
 	open active-stock-list create permanent
-*/ // < {4} 
+*/ // < {4}
 	open snooze-active-stock-list create permanent //{4}
 	//do load-and-test-for-deletion
 	do main-menu
@@ -142,9 +159,18 @@ returning
 		key is lp-stock-code SPACES
 		next same stock-code
 	detail
-		//message "stock-warehouse-detail"
-		set lr-include 			= "*"
-		break
+		//<{5}
+		////message "stock-warehouse-detail"
+		//set lr-include 			= "*"
+		//break
+		if whse-qty-on-hand <> 0 or whse-qty-on-order <> 0 or whse-qty-in-transit <> 0 or whse-back-orders <> 0 or whse-forward-orders <> 0 or whse-current-orders <> 0
+			set lr-include 			= "A"
+		else
+			if lr-include = SPACES
+				set lr-include 			= "*"
+			endif
+		endif
+		//>{5}
 	endextract
 	if lr-include = SPACES
 		extract stock-movements
@@ -302,6 +328,22 @@ window @1,1 to @10,60
 		spl "sys/m85major"
 			parameters
 				"-stkkey"
+	option "Purge Legacy items from Stock Keywords" @10,12	//{4}.x
+		do purge-legacy-kw
+	option "Show Deleted Items"				@11,12	//{7}
+		do dig-deleted-stock
+	option "Show Stock Backup"				@12,12	//{7}
+		set ws-backup-stock-master = "bak-1408191350-stock-master"	//bak-1408191350-stock-masterZ
+		open bak-stock-master
+			file ws-backup-stock-master read-only
+		open tmp-stock-master truncate temporary
+		extract bak-stock-master
+		detail
+			insert tmp-stock-master
+		endextract
+		do dig-stock-backup
+//	option "Restore From Selection"			@13,12	//{8}
+//		do restore-from-selection
 	/*
 	option "View/Maintain Stock List"		@1,12
 		//open p7stkcln-common-stock create permanent
@@ -349,6 +391,11 @@ procedure reset-active-stock
 				set stk-user-only-alpha4-4 = "COM"
 			endif
 		endon
+		// < {6}
+		if stock-code = "ZRNDBENEFIT"
+			set stk-user-only-alpha4-4 = "LIV"
+		endif
+		// > {6}
 		update stock-master
 	endextract
 	message "Reset Complete"
@@ -358,6 +405,7 @@ procedure check-non-active-for-inclusion
 local field
 	lf-include				pic x	//"*" if it is to be included
 	set ws-act-count	= 0
+	set ws-liv-count	= 0	//{5}
 	set ws-leg-count    = 0
 	set ws-obs-count    = 0
 	set ws-com-count	= 0
@@ -372,6 +420,9 @@ local field
 			if lf-include = "*"
 				set stk-user-only-alpha4-4 	= "LEG"
 				set ws-leg-count    		+= 1
+			elseif	lf-include = "A" //{5}
+				set stk-user-only-alpha4-4 	= "ACT"
+				set ws-act-count    		+= 1
 			else
 				//set stk-user-only-alpha4-4 	= "OBS"	//{1}
 				set stk-user-only-alpha4-4 	= "DEL"     //{1}
@@ -380,7 +431,8 @@ local field
 			update stock-master
 		//elseif stk-user-only-alpha4-4 = "ACT"	//{1}
 		elseif stk-user-only-alpha4-4 = "LIV"   //{1}
-			set ws-act-count	+= 1
+			//set ws-act-count	+= 1	//{5}
+			set ws-liv-count	+= 1    //{5}
 		elseif stk-user-only-alpha4-4 = "COM"
 			set ws-com-count	+= 1
 		endif
@@ -441,13 +493,16 @@ screen dig-active-stock-status
 	window @1,1 to @24,90
 		title concat("Review Stock Status")
 		primary stock-master
-		datagrid occurs 19
+		datagrid occurs 18
 	allowed search md-delete-obs md-restore-obs
 	review-from-start
 before
 	//display "ACT: Active Item"		@20,20 background
-	display "LIV: Live Items"		@20,20 background
-		display ws-act-count		@20,42 background
+	display "LIV: Live Items"		@19,20 background
+		//display ws-act-count		@19,42 background	//{5}
+		display ws-liv-count		@19,42 background	//{5}
+	display "ACT: Active Item"		@20,20 background	//{5}
+		display ws-act-count		@20,42 background	//{5}
 	display "LEG: Legacy Item"		@21,20 background
 		display ws-leg-count		@21,42 background
 	//display "OBS: Obsolete Item"	@22,20 background
@@ -471,6 +526,8 @@ confirmed
 					"-update"
 		case md-restore-obs
 			do restore-obs
+		case md-dig-deleted-stock	//{7}
+			do dig-deleted-stock
 	endswitch
 endconfirm
 endscreen // dig-active-stock-status ------------------------------------------
@@ -478,7 +535,7 @@ endscreen // dig-active-stock-status ------------------------------------------
 procedure delete-obs	//{1}
 /* // < {4} now an object: snooze-deleted-stock-master
 	open deleted-stock-master create permanent
-*/ // < {4} 
+*/ // < {4}
 	open snooze-deleted-stock-master create permanent //{4}
 	extract stock-master
 	detail
@@ -712,24 +769,24 @@ procedure build-report-data
 			set tra-deletable-records = 0
 			insert tmp-records-affected
 		endon
-	// < {4} 
+	// < {4}
 	extract bill-of-materials-header
 		on index stock-code //bomh-factory-code bomh-id
 		key is pcs-stock-code
 		next same stock-code
 	detail
-	// > {4} 
+	// > {4}
 		extract bill-of-materials-detail
-		 // < {4} 
+		 // < {4}
 			on index bom-parent-code bom-seq-no comp-code
 			key is pcs-stock-code 0 SPACES
 			next same bom-parent-code
-		 // > {4} 
-		// < {4} 
+		 // > {4}
+		// < {4}
 			on index	bomh-id //bom-seq-no comp-code
 			key is	bomh-id
 			next same bomh-id
-		// > {4} 
+		// > {4}
 		detail
 			set tra-affected-records += 1
 			if tcs-can-be-deleted = "*"
@@ -737,15 +794,15 @@ procedure build-report-data
 			else
 				print
 					"bill-of-materials-detail"
-				 // < {4} 
+				 // < {4}
 					bom-parent-code bom-seq-no comp-code
-				 // > {4} 
-					bomh-id bom-seq-no comp-code stock-code //{4} 
+				 // > {4}
+					bomh-id bom-seq-no comp-code stock-code //{4}
 					"cannot be deleted"
 			endif
 		endextract
 		update tmp-records-affected
-	endextract //bill-of-materials-header //{4} 
+	endextract //bill-of-materials-header //{4}
 
 	endextract
 	report finished
@@ -859,31 +916,31 @@ local field
 			"deleted"		in col 40
 			lf-count
 		set lf-count = 0
-	// < {4} 
+	// < {4}
 	extract bill-of-materials-header
 		on index stock-code //bomh-factory-code bomh-id
 		key is tcs-stock-code
 		next same stock-code
 	detail
 		set lf-count = 0
-	// > {4} 
+	// > {4}
 		extract bill-of-materials-detail
-		/* // < {4} 
+		/* // < {4}
 			on index bom-parent-code bom-seq-no comp-code
 			key is tcs-stock-code 0 SPACES
 			next same bom-parent-code
-		*/ // > {4} 
-		// < {4} 
+		*/ // > {4}
+		// < {4}
 			on index	bomh-id //bom-seq-no comp-code
 			key is	bomh-id
 			next same bomh-id
-		// > {4} 
+		// > {4}
 		detail
 			print
 				"    "
-			/* // < {4} 
+			/* // < {4}
 				bom-parent-code
-			*/ // > {4} 
+			*/ // > {4}
 				bomh-id bom-seq-no comp-code stock-code //{4}
 			delete bill-of-materials-detail
 			set lf-count += 1
@@ -894,7 +951,7 @@ local field
 			lf-count
 	endextract //bill-of-materials-header //{4}
 	//--
-	// < {4} 
+	// < {4}
 	set lf-count = 0
 	extract bill-of-materials-header
 		on index stock-code //bomh-factory-code bomh-id
@@ -1092,6 +1149,56 @@ local field
 	message "Table backup complete"
 	report finished
 endprocedure // backup-tables -------------------------------------------------
+
+procedure purge-legacy-kw	//{4}.x
+	extract stock-master
+	detail
+		if stk-user-only-alpha4-4 = "LEG"
+			extract stock-key-words
+				on index stock-code stock-key-word skw-whse
+				key is stock-code SPACES SPACES
+				next same stock-code
+			detail
+				delete stock-key-words
+			endextract
+		endif
+	endextract
+endprocedure // purge-legacy-kw -----------------------------------------------
+
+screen dig-deleted-stock	//{7}
+	window @1,1 to @24,90
+		title concat("Deleted Stock")
+		//primary deleted-stock-master      //{4}} leapfrogged change, required for 710 but not
+		primary snooze-deleted-stock-master	//{4}} present in replayed 660 changes mad afterwards
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+detail
+	display stock-code              @1,004
+	display stk-description			@1,008
+confirm
+	auto
+confirmed
+endconfirm
+endscreen // md-dig-deleted-stock ---------------------------------------------
+
+
+screen dig-stock-backup	//{7}
+	window @1,1 to @24,90
+		title concat("Stock Backup")
+		primary tmp-stock-master
+		datagrid occurs 20
+	allowed search //md-mode
+	review-from-start
+detail
+	display stock-code              @1,004
+	display stk-description			@1,008
+confirm
+	auto
+confirmed
+endconfirm
+endscreen // dig-stock-backup -------------------------------------------------
+
 
 ///*
 //procedure backup-tables

@@ -1,4 +1,5 @@
 // smplstktk4.spl
+// 01nov14	rmd	{2}	various improvements
 // 15may14	rmd	{1} convert to 710.3
 // 31May07	rmd	Simple Stocktake
 //				Screen 1 capture control code and whse
@@ -129,9 +130,11 @@ detail
 			for i = 1 to 10
 				// clear @3,1 to @3,20
 				// display concat(ws-stv-control-code " not found") @3,2 flashing bell
-				for j = 1 to 30000
-					set k = j * 2.5
-				endfor
+				// < {2}
+				//for j = 1 to 30000
+				//	set k = j * 2.5
+				//endfor
+				// > {2}
 				clear @4,1 to @4,20
 				display concat(ws-stv-control-code " not found") @4,2 inverse flashing bell background
 			endfor
@@ -197,7 +200,8 @@ detail
 	//set lf-stv-bin-location = ws-stv-bin-location
 	set lf-stv-lot-batch-no = ws-stv-lot-batch-no
 	accept lf-stv-lot-batch-no @2,2
-		help "Counter's Initials"
+		//help "Counter's Initials"	//{2}
+		help "Initials/0 to exit"   //{2}
 		uppercase
 		default ws-stv-lot-batch-no
 	validations
@@ -222,9 +226,11 @@ detail
 				lf-stv-lot-batch-no
 		if ws-stock-code-exists = TRUE
 			for i = 1 to 10
-				for j = 1 to 30000
-					set k = j * 2.5
-				endfor
+				// < {2}
+				//for j = 1 to 30000
+				//	set k = j * 2.5
+				//endfor
+				// > {2}
 				clear @4,1 to @4,20
 				display strconcat(ws-resolved-stock-code "=stock code") @4,2 inverse flashing bell background
 			endfor
@@ -253,9 +259,11 @@ detail
 				lf-stv-bin-location
 		if ws-stock-code-exists = TRUE
 			for i = 1 to 10
-				for j = 1 to 30000
-					set k = j * 2.5
-				endfor
+				// < {2}
+				//for j = 1 to 30000
+				//	set k = j * 2.5
+				//endfor
+				// > [2}
 				clear @2,1 to @2,20
 				display strconcat(ws-resolved-stock-code "=stock code") @2,2 inverse flashing bell background
 			endfor
@@ -270,10 +278,13 @@ after
 	//want user to stay here until they enter 0 into ws-stock-code
 	if lf-stv-bin-location in {"0"}// SPACES}
 		do screen-1
+		exit	//{2}
 	elseif lf-stv-lot-batch-no in {"0"}// SPACES}
 		do screen-1
+		exit	//{2}
 	else
 		do screen-3
+		exit	//{2}
 		//message "Press 0 to exit"
 		//back-to-detail
 	endif
@@ -456,7 +467,7 @@ detail
 	if ws-single-scan
 		set lf-stv-scanned-qty = "1"
 		set lf-stv-count-qty = num(lf-stv-scanned-qty)
-		set lf-last-scanned-message = concat(strconcat(lf-stock-code) ": " str(stv-count-qty + 1))
+		//set lf-last-scanned-message = concat(strconcat(lf-stock-code) ": " str(stv-count-qty + 1))	//{2}
 	else
 		accept lf-stv-scanned-qty @5,15 pic x(5) // z(4)9
 			help "Count Qty"
@@ -568,10 +579,16 @@ detail
 				update stock-take-variance
 			endswitch
 		endon
+		// < {2}
+		if ws-single-scan
+			set lf-last-scanned-message = concat(strconcat(lf-stock-code) ": " str(stv-count-qty + 1))
+		endif
+		// > {2}
 after
 	//want user to stay here until they enter 0 into ws-stock-code
 	if lf-stock-code in {"0" SPACES}
 		do screen-2
+		exit	//{2}
 	else
 		message "Press 0 to exit"
 		back-to-detail

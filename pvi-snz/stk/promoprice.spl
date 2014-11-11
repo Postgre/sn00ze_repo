@@ -15,6 +15,9 @@
 ///////////////////////////////////////////////////////////////////////////////
 // promoprice.spl
 //when		ref		who	notes
+//26oct14	rmd		{8} use XY PRCREGION over PRCREGION variable as the latter
+//					may change between user's running the program
+//24oct14	rmd		{7}	show value of PRCREGION variable for sanity
 //18sep14	rmd		{6}	710 treats prc-prom-price as ex GST, not inc like 660 does.
 //						remove GST from price before storing
 //18aug14	rmd		{5}	switch to p7branch imput during transition, switch back to p710branch
@@ -58,7 +61,16 @@ procedure silent-process
 		lf-promo-price						like prc-recommend-retail-inc-tax
 	//
 	get system-control first
-	set ws-price-region = uppercase(get-env("PRCREGION"))
+	// < {8}
+	get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "XY" "PRCREGION"
+	on error
+		set ws-price-region = uppercase(get-env("PRCREGION"))
+	else
+		set ws-price-region = uppercase(sys-description)
+	endon
+	// > {8}
 	//message ws-price-region
 	//
 	if ws-price-region = SPACES
@@ -314,6 +326,9 @@ procedure top-of-page
 		"Page :" col 117
 		left-justify(str(page-no())) col 124
 		//no-new-line
+	print
+		"PRCREGION:"					//{7}
+		uppercase(get-env("PRCREGION")) //{7}
 		print
 			"Stock Code"				     	in col 05
 			"Promo Price"		               	in col 29
