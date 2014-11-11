@@ -1,0 +1,68 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/rf/snoozerf
+//  Program Desc:	RF menu for Snooze Stores
+//  Requested By:
+//  Request Date:	31oct14
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	01nov14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+/*
+screen main
+	window @1,1 to @8,20
+before
+	// clean up previous RF menu
+	clear @1,1 to @8,20
+	do rfmenu
+	exit
+// detail
+
+confirm
+	auto
+confirmed
+endconfirm
+endscreen // main ------------------------------------------------------------
+*/
+
+menu main
+	window @1,1 to @8,20
+before
+	clear @1,1 to @8,20
+	display "Snooze RF Menu" @1,1 // inverse
+detail
+	option "&Stocktake" @2,1
+		security 5
+		help is "Stocktake"
+			spl "pvi-snz/stk/simplstktk"
+/*
+    option "&PO Receipt" @3,1
+       security 4
+       help is "PO Receipt"
+			spl "po/m6lines"
+			parameters
+				"-rf-g"
+				SPACES
+				SPACES
+				SPACES
+				SPACES
+				SPACES
+				"-rcpt"
+				"O"
+	option "&Transfer Receipt" @4,1
+		security 4
+		help is "Recv Transfer Order"
+			spl "so/m5rectfr"
+			parameters
+				"-rf-rectfr"
+*/
+	option "&0-Exit" @7,1
+		help is "Exit Screen"
+		exit
+endmenu // main ---------------------------------------------------------------
