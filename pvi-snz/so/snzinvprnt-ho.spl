@@ -1,0 +1,94 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/so/snzinvprnt-ho
+//  Program Desc:	Wizard for printing HO invoices from company #2
+//  Requested By:	Chris Ward
+//  Request Date:	15sep14
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	15sep14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+version-number "20140915.000"
+
+procedure main
+local field
+	lf-print-or-email		pic x	//P or E
+parameters
+	lp-so-order-no          like so-order-no
+	lp-so-bo-suffix			like so-bo-suffix
+	//message "dbg: IR HO"
+	//ensure sales-order exists
+	get sales-order
+		on index so-order-no so-bo-suffix
+		key is lp-so-order-no lp-so-bo-suffix
+	on error
+		get sales-order-archive
+			on index so-order-no so-bo-suffix
+			key is lp-so-order-no lp-so-bo-suffix
+		on error
+			message "Unknown Sales Order: " str(lp-so-order-no) lp-so-bo-suffix
+			exit
+		endon
+	endon
+	do get-user-input entry-once
+		returning
+			lf-print-or-email
+	switch on lf-print-or-email
+		case "E"
+			if set-env("INVOICES","tf_faxmail")
+				spl "so/m54custom"
+					parameters
+						lp-so-order-no
+						lp-so-bo-suffix
+						0
+						NO
+						NO
+			endif
+		case "P"
+			if set-env("INVOICES","fin_tfqinv")
+				spl "so/m54custom"
+					parameters
+						lp-so-order-no
+						lp-so-bo-suffix
+						0
+						NO
+						NO
+			endif
+		case "S"
+			if set-env("INVOICES",SPACES)
+				spl "so/m54custom"
+					parameters
+						lp-so-order-no
+						lp-so-bo-suffix
+						0
+						YES
+						NO
+			endif
+	endswitch
+endprocedure // main ----------------------------------------------------------
+
+screen get-user-input
+returning
+	lr-print-or-email		pic x
+window @1,1 to @5,45 title "Enter Details"
+box @1,1 to @4,45 title SPACES
+	accept lr-print-or-email	@2,30 title "Print, Spool or Email?"
+		uppercase
+		allowed "P" "S" "E"
+confirm
+confirmed
+endconfirm
+endscreen // get-user-input ---------------------------------------------------
+
+//	Parameters passed are:  1 - sales order number
+//							2 - sales order suffix
+//							3 - invoice date if set
+//							4 - spool report flag, spool even if
+//								system is setup to print direct
+//							5 - order confirmation

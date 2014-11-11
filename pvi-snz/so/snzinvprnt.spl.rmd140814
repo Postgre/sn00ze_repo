@@ -22,7 +22,6 @@
 //
 // Modifcations
 //	When	Who		ChangeID	Changes
-//	18sep14	rmd		{17}	use sol-line-description for DN notes line 2507
 //	07aug14	mb		{2}		fix issue where only option to exit is to say YES to update email address.
 //									-- see also pvi-snz/sys/ordreprint.spl  (for second part of required changes)
 //
@@ -555,15 +554,15 @@ detail
 							UPDATE_EMAIL(lf-so-accountcode,lf-email-address)
 						else
 							//-- email entered is only temporary for this reprint, and needs to be restored to original email.
-							//--
+							//-- 
 							set lf-temp-email			= lf-email-address
 							UPDATE_EMAIL(lf-so-accountcode,lf-temp-email)
 							//-- -------------------------------------------------------------------------
 							//-- at this point, write to temp file details to restore original email
 							//-- note : the restore to occur AFTER the SO is reprinted, and will have to be done
-							//-- at $CUS/pvi-snz/sys/ordreprint.spl
+							//-- at $CUS/pvi-snz/sys/ordreprint.spl 
 							//-- -------------------------------------------------------------------------
-							//--
+							//-- 
 							if lf-temp-email != spaces
 								open ff-ext-snzinvprnt truncate permanent
 								set fes-email			= lf-original-email
@@ -573,7 +572,7 @@ detail
 /*
 		//if lf-temp-email = spaces or lf-original-email = spaces
 message 'zaz a: lf-update-email = ' lf-update-email
-		if lf-update-email = "Y"
+		if lf-update-email = "Y" 
 			//-- leave updated email address already updated in table update.
 		else
 message 'zaz aa: lf-original-email = ' lf-original-email
@@ -2505,10 +2504,6 @@ procedure print-an-invoice-line
 	//elseif sol-line-type = "DN"
 	//	I5SOSTATII_LOAD_EXTENDED_NOTE_LINE
 	//	print ws-extended-note-line col 14
-	// < {17}
-	elseif sol-line-type = "DN"
-		print sol-line-description col 14
-	// > {17}
 	endif
 	if sol-line-type in {"SN","RR","RN",'KN', 'WN', 'SS'}
 		if ws-stk-desc != SPACES
