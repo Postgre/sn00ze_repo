@@ -1,0 +1,70 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/pcs/m4fastret
+//  Program Desc:	Proscreen triggered programs for m4fastret
+//  Requested By:
+//  Request Date:	02jun14
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	10oct14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+procedure main
+returning
+	lr-promo-inc-gst		pic 99999999.99
+	switch on get-param(1)
+		case "-stock-maint"
+			if get-param(2) = "-promo-inc-gst"
+				do stock-maint-promo-inc-gst
+					parameters
+						get-param(3)	//stock-code
+					returning
+						lr-promo-inc-gst
+			endif
+	endswitch
+endprocedure // main ----------------------------------------------------------
+
+procedure stock-maint-promo-inc-gst
+local field
+	lf-inc-tax			type boolean
+parameters
+	lp-stock-code		like stock-code
+returning
+	lr-promo-inc-gst	pic 99999999.99
+	get stock-price
+		on index stock-code prc-region-code
+		key is lp-stock-code SPACES
+	on error
+		set lr-promo-inc-gst = 0
+	else
+		get stock-master
+			on index stock-code
+			key is lp-stock-code
+		on error
+			set lr-promo-inc-gst = 0
+		else
+			//is this tax ex?
+			set lf-inc-tax = TRUE
+			extract tax-stock-output-defaults
+				on index tsod-stock-code tsod-cust-type tsod-tax-group tsod-tax-code
+				key is stock-code SPACES SPACES SPACES
+				next same tsod-stock-code
+			detail
+				if tsod-tax-code = "0"
+					set lf-inc-tax = FALSE
+					break
+				endif
+			endextract
+			if lf-inc-tax
+				set lr-promo-inc-gst = prc-prom-price * 1.1
+			else
+				set lr-promo-inc-gst = prc-prom-price
+			endif
+		endon
+	endon
+endprocedure // stock-maint-promo-inc-gst -------------------------------------

@@ -388,8 +388,12 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		//		ws-order-no
 		//		ws-suffix
 		if ws-suffix = SPACES
+			unlock purchase-order
+			unlock purchase-order-archive
 			set lf-command = concat("POPRINT=tf_faxmail; export POPRINT;prospl po/m62custom -s " str(ws-order-no) " " "'  '" " " "-print")
 		else
+			unlock purchase-order
+			unlock purchase-order-archive
 			set lf-command = concat("POPRINT=tf_faxmail; export POPRINT;prospl po/m62custom -s " str(ws-order-no) " " ws-suffix " " "-print")
 		endif
 		unlock purchase-order

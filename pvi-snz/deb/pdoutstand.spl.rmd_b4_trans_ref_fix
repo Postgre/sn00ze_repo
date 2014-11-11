@@ -1,5 +1,4 @@
 // pdoutstand.spl
-// 11oct14	rmd	{2}	trans ref fix
 // 15may14	rmd	{1} upgrade for 710.3
 //						tr-sort-key fix switch to trans-ref
 //						switch index accountcode tr-sort-key
@@ -516,8 +515,7 @@ procedure build-virtual-table-pd
 			//set tvt-data 			= concat(tdt-tr-sort-key " " tdt-trans-type " " julian2date(tdt-trans-date) " " tdt-tr-details " " str(tdt-tr-amount) "   ---")
 			//message strlen(tvt-data)
 			//message strlen(strconcat(tvt-data))
-			//set tvt-trans-ref    	= trans-ref//tdt-tr-sort-key		//{2}
-			set tvt-trans-ref    	= tdt-trans-ref//tdt-tr-sort-key    //{2}
+			set tvt-trans-ref    	= trans-ref//tdt-tr-sort-key
 			set tvt-trans-type      = tdt-trans-type
 			set tvt-trans-date      = tdt-trans-date
 			set tvt-tr-details      = tdt-tr-details

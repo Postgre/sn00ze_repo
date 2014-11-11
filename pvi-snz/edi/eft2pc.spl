@@ -11,15 +11,216 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
+//	21oct14	rmd	{6}		post upgrade replay changes for 650 multi EFT dir
+//	02sep14	rmd	{5} 	handle new directory pathways
 //	27may14	mb 	{4}		convert send2proterm to use proclientft
 //	15may14	rmd	{3}		upgrade to 710.3
 //	12may11	rmd			started
 //	01Feb12 LG		Added '-r' to send2proterm argument for de-unicoding ABA output
 ///////////////////////////////////////////////////////////////////////////////
 
-version-number "140527.000" //"CUSTOM pvi-snz/edi/eft2pc 140527" //{4}
+version-number "140527.006" //"CUSTOM pvi-snz/edi/eft2pc 140527" //{4}
 //version-number "CUSTOM rc/edi/eft2pc no-version"
 
+
+mode md-download
+	prompt "Download to PC"
+	currency
+
+object tmp-dir-list
+	type memory
+	record
+		tdr-dir					pic x(200)
+		tdr-file        		pic x(40)
+		tdr-full-path   		pic x(250)
+		tdr-mod-time			type date-time
+	endrecord
+		//key is tdr-full-path //unique
+		key is tdr-full-path
+
+field
+	ws-pc-eft-exists		type boolean
+	ws-dir					pic x(200)	//{1}
+
+//	parameters
+//		"-c"
+//		concat("send2proterm xml-output.xml 'C:/Program Files/Nightowl Systems/ProntoLink/Upload/invoice.xml'")
+
+procedure main
+	//message concat(strconcat(dir() "/edi/out/EFT"))
+	do check-pc-eft-dir	//{2}
+	// < {6}
+	get system-control first
+	if sys-consolidation-division = "650"
+		do get-eft-dir entry-once
+	else
+		set ws-dir = strconcat(dir() "/edi/out/EFT")
+	endif
+	// > {6}
+	do file-list
+	do dig-file-list
+endprocedure // main ----------------------------------------------------------
+
+// < {2}
+procedure check-pc-eft-dir
+if file-exists(strconcat("c:/eft"),1)
+	set ws-pc-eft-exists = TRUE
+else
+	set ws-pc-eft-exists = FALSE
+endif
+endprocedure // check-pc-eft-dir ----------------------------------------------
+// > {2}
+procedure file-list
+local field
+	lf-dir-ok		type boolean
+	lf-ext			pic x(4)
+	lf-dir			pic x(200)
+	lf-no-entries	type boolean
+//
+	//get system-control first
+	//get system-user
+	//	on index user-id sys-comp-code
+	//	key is login-id() sys-consolidation-division
+	//on error
+	//	message "Cannot locate System User record, please enter the "
+	//	exit
+	//endon
+	//set ws-whse-code = user-whse
+	//if ws-whse-code = SPACES
+	//	do get-whse-code entry-once
+	//endif
+	open tmp-dir-list truncate temporary
+	set lf-ext = ".ABA"
+	//set lf-dir = strconcat(dir() "/edi/out/EFT") // strconcat("/data/shared2/stfiles/" ws-whse-code)	// {6}
+	set lf-no-entries = TRUE
+	//if start-dir-search(lf-dir,lf-ext) // SPACES)	//{6}
+	if start-dir-search(ws-dir,lf-ext) // SPACES)   //{6}
+    	set lf-dir-ok = TRUE
+	else
+    	set lf-dir-ok = FALSE
+	endif
+	while lf-dir-ok
+    	set tdr-file	 	= next-dir-entry()
+   		set tdr-dir			= ws-dir //lf-dir 	//{6}
+		set tdr-full-path	= strconcat(tdr-dir "/" tdr-file)
+		set tdr-mod-time	= modification-time(tdr-full-path)
+		//set tdr-date-string	= substring(tdr-file,11,18) //OFFICEMAX_20100614-100350-663.xml
+    	if tdr-file = spaces
+       		set lf-dir-ok = FALSE
+       	else
+       		set lf-no-entries	= FALSE
+       		insert tmp-dir-list
+       	endif
+	endwhile
+	if lf-no-entries
+		set tdr-file = "NO FILES FOUND"
+		//insert tmp-dir-list
+	endif
+endprocedure // file-list -----------------------------------------------------
+
+screen dig-file-list
+local field
+	lf-load-status		type numeric
+	lf-full-path		like tdr-full-path
+	lf-command			pic x(200)
+	lf-pc-dir			pic x(40)
+	window @1,1 to @24,50
+		//title concat("EFT File List: " strconcat(dir() "/edi/out/EFT"))	//{6}
+		title concat("EFT File List: " strconcat(ws-dir))					//{6}
+		primary tmp-dir-list
+		datagrid occurs 20
+	allowed search md-download
+	review-from-start
+detail
+	//display tdr-dir		    @1,02 title "Dir"
+	display tdr-file        @1,04 title "File"			pic x(20)
+	display tdr-mod-time	@1,06 title "Modified"
+	if not ws-pc-eft-exists //{2}
+		display "C:\EFT folder needs to be created on this PC" @22,8 colour red bold prompt
+	else
+		//display "C:\EFT OK" @22,20 colour blue bold prompt
+	endif
+confirm
+	auto
+confirmed
+	//message tdr-full-path
+	switch on screen-mode()
+		case md-download
+		do get-pc-user-dir
+			returning
+				lf-pc-dir
+		if ws-pc-eft-exists	//{2}
+			//set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat("c:/eft/" tdr-file))
+			set lf-command = concat("proclientft -s -t " strconcat(tdr-full-path) " " strconcat("c:/eft/" tdr-file)) //{4}
+		else
+			//set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat(tdr-file))
+			set lf-command = concat("proclientft -s -t " strconcat(tdr-full-path) " " strconcat(tdr-file)) //{4}
+		endif
+		//message lf-command
+		command
+			"sh"
+		parameters
+			"-c"
+			lf-command
+		//message concat("File transferred, check your Pronto program directory.")	//{2}
+		if ws-pc-eft-exists	//{2}
+			message concat("File transferred, check the C:\EFT\ directory on your PC.")    //{2}C
+		else
+			message concat("File transferred, check the '" strconcat(lf-pc-dir) "' directory on your PC.")    //{2}
+		endif
+	endswitch
+endconfirm
+endscreen // dig-file-list ----------------------------------------------------
+
+
+// screen eft-to-pc
+// local field
+// 	lf-unix-file				pic x(12)
+// 	lf-pc-file					pic x(12)
+// 	lf-command					pic x(60)
+// window @1,1 to @5,35 title "Send EFT file to PC"
+// box @1,1 to @4,35 title SPACES
+// 	accept lf-unix-file @2,20 title "EFT Filename:"
+// 		default lf-unix-file
+// confirm
+// confirmed
+// 	set lf-command = concat("send2proterm " strconcat(dir() "edi/eft/out/" lf-unix-file) " " lf-unix-file)
+// 	message lf-command
+// 	command
+// 		"sh"
+// 	parameters
+// 		"-c"
+// 		//concat("send2proterm " strconcat(dir() "edi/eft/out/" lf-unix-file) 'C:/Program Files/Nightowl Systems/ProntoLink/Upload/invoice.xml'")
+// 		lf-command
+// endconfirm
+// endscreen // eft-to-pc --------------------------------------------------------
+
+procedure get-pc-user-dir
+returning
+	lr-pc-user-dir			pic x(40)
+local field
+	lf-hive							pic x(300)
+	set lr-pc-user-dir = SPACES
+	set lf-hive = "HKEY_CURRENT_USER\Volatile Environment\"
+	set lr-pc-user-dir = strconcat(get-registry-value(strconcat(lf-hive "HOMEDRIVE")) get-registry-value(strconcat(lf-hive "HOMEPATH")))
+endprocedure // get-pc-user-dir -----------------------------------------------
+
+// < {6}
+menu get-eft-dir
+	window @1,1 to @5,40 title "Select EFT directory"
+	tree-menu
+	option "650 EFT"	@1,1
+		set ws-dir = strconcat(dir() "/edi/out/EFT")
+		exit
+	option "655 EFT"  	@2,1
+		set ws-dir = strconcat(dir() "/edi/out/EFT655")
+		exit
+endmenu // get-eft-dir --------------------------------------------------------
+// > {6}
+
+
+
+/*
 mode md-download
 	prompt "Download to PC"
 	currency
@@ -114,9 +315,9 @@ confirmed
 	//message tdr-full-path
 	switch on screen-mode()
 		case md-download
-		/* //<{4}
+		//<{4}
 		set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat(tdr-file))
-		*/ //>{4}
+		//>{4}
 		//set tdr-file = strconcat("C:/Program Files (x86)/PRONTO/PROCLIENT/" tdr-file)
 		//set tdr-file = strconcat("C:/tmp/" tdr-file)
 		set lf-command = concat("proclientft -s -t " strconcat(tdr-full-path) " " strconcat(tdr-file)) //{4}

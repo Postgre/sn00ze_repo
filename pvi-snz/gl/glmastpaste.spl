@@ -1,0 +1,33 @@
+//09oct14	rmd	recompiled for 710
+
+procedure main
+	// can only be run in stores being setup as new
+	get system-control first
+	if sys-consolidation-division = "VCT" or get-env("NEW_STORE") in {"YES" "TRUE" "1" "OKIEDOKIE"} or login-id() in {"robd" "leenac"}
+		do gl-master-paste
+	else
+		message "Not a new store, need env var NEW_STORE=YES (TRUE, 1 or OKIEDOKIE would also work)"
+		exit
+	endif
+endprocedure // main ----------------------------------------------------------
+
+screen gl-master-paste
+	window @1,1 to @23,125 title is "**** DANGER GL Master Paste Screen DANGER ****"
+	primary gl-master
+	datagrid occurs 18
+	review-from-start
+	allowed search entry correct remove
+detail
+	accept gl-accountcode                  @1,02 // title is "
+	accept gl-desc                         @1,04 // title is "
+	accept gl-total-level                  @1,06 // title is "
+	accept gl-account-type                 @1,08 // title is "
+	accept gl-bal-sheet-or-profit-loss     @1,10 // title is "
+	accept gl-clearing-flag                @1,12 // title is "
+	accept gl-normal-balance-flag          @1,14 // title is "
+	accept gl-batch-account-flag           @1,16 // title is "
+confirm
+	auto
+confirmed
+endconfirm
+endscreen // gl-master-paste --------------------------------------------------

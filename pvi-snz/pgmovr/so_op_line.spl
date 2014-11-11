@@ -15,6 +15,11 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
+//	xxoct14 rmd	{3}		was attempting to allow tax code change is stock-code
+//						= LOAN but Chris W said it's now all ok he's worked it out
+//						.. yet to hear what that was - the fix I mean, need to
+//						ask him about that yes?
+//	15oct14	rmd	{2}		convert ZROUNDDISC to ZROUND
 //	09apr14	rmd	{1}		option to set line as taken if in an external warehouse
 //						where sol-line-type = "WN" and sol-whse-code = ext whse
 //							allow option to set sol-print-line = "T"
@@ -61,6 +66,23 @@ returning
 			on error
 			endon
 		endif
+		// < {2}
+		if stock-code = "ZROUNDDISC"
+			set stock-code = "ZROUND"
+			update sales-order-line
+		endif
+		// > {2}
+//		// > {3}
+//		if stock-code in {"LOAN"}
+//			do update-so-line-tax entry-once
+//				parameters
+//					lf-so-order-no
+//					lf-so-bo-suffix
+//					lf-sol-line-seq
+//				returning
+//					lr-sol-changed
+//		endif
+//		// < {3}
 	endon
 	//>{1}
 	get sales-order lock
@@ -113,3 +135,23 @@ notconfirmed
 	reenter lr-sol-print-line
 endconfirm
 endscreen // get-external-taken -----------------------------------------------
+
+//screen update-so-line-tax	//{3}
+//local field
+//	lf-tax-code			pic x
+//parameters
+//	lf-so-order-no      like so-order-no
+//	lf-so-bo-suffix     like so-bo-suffix
+//	lf-sol-line-seq		like sol-line-seq
+//returning
+//	lr-sol-changed		type boolean
+//
+//	get sales-order-line// lock
+//		on index so-order-no so-bo-suffix sol-line-seq
+//		key is lp-so-order-no lp-so-bo-suffix lp-sol-line-seq
+//	on error
+//	else
+//		set sol-tax-rate =
+//	endon
+//
+//endscreen // update-so-line-tax -----------------------------------------------

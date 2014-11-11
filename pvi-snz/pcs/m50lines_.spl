@@ -11,7 +11,6 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//	15oct14	rmd	{1}		add a300-get-order-lines screen_exit
 //	02jun14	rmd			started
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -20,13 +19,10 @@ procedure main
 		case "-a300-get-order-lines"
 			if get-param(2) = "-screen_load"
 				do a300-get-order-lines-set-datagrid
-			// < {1}
-			elseif get-param(2) =  "-sceen_exit"
-				do a300-get-order-lines-screen-exit
-			// > {1}
 			endif
 	endswitch
 endprocedure // main ----------------------------------------------------------
+
 
 procedure a300-get-order-lines-set-datagrid
 local field
@@ -45,18 +41,3 @@ local field
 		//message "Unable to reset columns"
 	endif
 endprocedure // a300-get-order-lines-set-datagrid -----------------------------
-
-// < {1}
-procedure a300-get-order-lines-screen-exit
-	extract sales-order-line lock
-		on index so-order-no so-bo-suffix sol-line-seq
-		key is num(get-param(3)) get-param(4) 0
-		next same so-order-no so-bo-suffix
-	detail
-		if stock-code = "ZROUNDDISC"
-			set stock-code = "ZROUND"
-			update sales-order-line
-		endif
-	endextract
-endprocedure // a300-get-order-lines-screen-exit ------------------------------
-// > {1}

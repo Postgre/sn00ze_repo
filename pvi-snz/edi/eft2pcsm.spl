@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////////////
-//  Program Name:	eft2pc.spl
+//  Program Name:	eft2pcsm.spl
 //  Program Desc:	Send EFT file to the PC
 //  Requested By:	Corey Bakes
 //  Request Date:	12may11
@@ -11,6 +11,8 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
+//	02sep14	rmd	{2}		send to c:\eft dir on PC, modify message to reflect new directory
+//						alert if c:\eft does not exist, prompting for its reation
 //	15may14	rmd	{1}		upgrade to 710.3
 //	12may11	rmd			started
 //	01Feb12 LG		Added '-r' to send2proterm argument for de-unicoding ABA output
@@ -31,7 +33,8 @@ object tmp-dir-list
 		//key is tdr-full-path //unique
 		key is tdr-full-path
 
-
+field
+	ws-pc-eft-exists		type boolean
 
 //	parameters
 //		"-c"
@@ -39,10 +42,20 @@ object tmp-dir-list
 
 procedure main
 	//message concat(strconcat(dir() "/edi/out/EFT"))
+	do check-pc-eft-dir	//{2}
 	do file-list
 	do dig-file-list
 endprocedure // main ----------------------------------------------------------
 
+// < {2}
+procedure check-pc-eft-dir
+if file-exists(strconcat("c:/eft"),1)
+	set ws-pc-eft-exists = TRUE
+else
+	set ws-pc-eft-exists = FALSE
+endif
+endprocedure // check-pc-eft-dir ----------------------------------------------
+// > {2}
 procedure file-list
 local field
 	lf-dir-ok		type boolean
@@ -95,6 +108,7 @@ local field
 	lf-load-status		type numeric
 	lf-full-path		like tdr-full-path
 	lf-command			pic x(200)
+	lf-pc-dir			pic x(40)
 	window @1,1 to @24,90
 		title concat("EFT File List: " strconcat(dir() "/edi/out/EFT2"))
 		primary tmp-dir-list
@@ -105,20 +119,37 @@ detail
 	//display tdr-dir		    @1,02 title "Dir"
 	display tdr-file        @1,04 title "File"			pic x(20)
 	display tdr-mod-time	@1,06 title "Modified"
+	if not ws-pc-eft-exists //{2}
+		display "C:\EFT folder needs to be created on this PC" @22,20 colour red bold prompt
+	else
+		//display "C:\EFT OK" @22,20 colour blue bold prompt
+	endif
 confirm
 	auto
 confirmed
 	//message tdr-full-path
 	switch on screen-mode()
 		case md-download
-		set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat(tdr-file))
+		do get-pc-user-dir
+			returning
+				lf-pc-dir
+		if ws-pc-eft-exists	//{2}
+			set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat("c:/eft/" tdr-file))
+		else
+			set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat(tdr-file))
+		endif
 		//message lf-command
 		command
 			"sh"
 		parameters
 			"-c"
 			lf-command
-		message concat("File transferred, check your Pronto program directory.")
+		//message concat("File transferred, check your Pronto program directory.")	//{2}
+		if ws-pc-eft-exists	//{2}
+			message concat("File transferred, check the C:\EFT\ directory on your PC.")    //{2}C
+		else
+			message concat("File transferred, check the '" strconcat(lf-pc-dir) "' directory on your PC.")    //{2}
+		endif
 	endswitch
 endconfirm
 endscreen // dig-file-list ----------------------------------------------------
@@ -146,3 +177,30 @@ endscreen // dig-file-list ----------------------------------------------------
 // endconfirm
 // endscreen // eft-to-pc --------------------------------------------------------
 
+procedure get-pc-user-dir
+returning
+	lr-pc-user-dir			pic x(40)
+local field
+	lf-hive							pic x(300)
+	set lr-pc-user-dir = SPACES
+	set lf-hive = "HKEY_CURRENT_USER\Volatile Environment\"
+	set lr-pc-user-dir = strconcat(get-registry-value(strconcat(lf-hive "HOMEDRIVE")) get-registry-value(strconcat(lf-hive "HOMEPATH")))
+endprocedure // get-pc-user-dir -----------------------------------------------
+
+/*
+Windows Registry Editor Version 5.00
+
+[HKEY_CURRENT_USER\Volatile Environment]
+"LOGONSERVER"="\\\\ASUSLAP"
+"USERDOMAIN"="asuslap"
+"USERNAME"="rob"
+"USERPROFILE"="C:\\Users\\rob"
+"HOMEPATH"="\\Users\\rob"
+"HOMEDRIVE"="C:"
+"APPDATA"="C:\\Users\\rob\\AppData\\Roaming"
+"LOCALAPPDATA"="C:\\Users\\rob\\AppData\\Local"
+
+[HKEY_CURRENT_USER\Volatile Environment\1]
+"SESSIONNAME"="Console"
+"CLIENTNAME"=""
+*/

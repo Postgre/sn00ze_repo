@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////////////
-//  Program Name:	eft2pcadv.spl
+//  Program Name:	eft2pc.spl
 //  Program Desc:	Send EFT file to the PC
 //  Requested By:	Corey Bakes
 //  Request Date:	12may11
@@ -11,10 +11,16 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//	15may14	rmd			upgrade to 710.3
+//	02sep14	rmd	{5} 	handle new directory pathways
+//	27may14	mb 	{4}		convert send2proterm to use proclientft
+//	15may14	rmd	{3}		upgrade to 710.3
 //	12may11	rmd			started
 //	01Feb12 LG		Added '-r' to send2proterm argument for de-unicoding ABA output
 ///////////////////////////////////////////////////////////////////////////////
+
+version-number "140527.000" //"CUSTOM pvi-snz/edi/eft2pc 140527" //{4}
+//version-number "CUSTOM rc/edi/eft2pc no-version"
+
 
 mode md-download
 	prompt "Download to PC"
@@ -75,7 +81,7 @@ local field
 	//endif
 	open tmp-dir-list truncate temporary
 	set lf-ext = ".ABA"
-	set lf-dir = strconcat(dir() "/edi/out/EFT1") // strconcat("/data/shared2/stfiles/" ws-whse-code)
+	set lf-dir = strconcat(dir() "/edi/out/EFT") // strconcat("/data/shared2/stfiles/" ws-whse-code)
 	set lf-no-entries = TRUE
 	if start-dir-search(lf-dir,lf-ext) // SPACES)
     	set lf-dir-ok = TRUE
@@ -108,7 +114,7 @@ local field
 	lf-command			pic x(200)
 	lf-pc-dir			pic x(40)
 	window @1,1 to @24,90
-		title concat("EFT File List: " strconcat(dir() "/edi/out/EFT1"))
+		title concat("EFT File List: " strconcat(dir() "/edi/out/EFT"))
 		primary tmp-dir-list
 		datagrid occurs 20
 	allowed search md-download
@@ -132,9 +138,11 @@ confirmed
 			returning
 				lf-pc-dir
 		if ws-pc-eft-exists	//{2}
-			set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat("c:/eft/" tdr-file))
+			//set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat("c:/eft/" tdr-file))
+			set lf-command = concat("proclientft -s -t " strconcat(tdr-full-path) " " strconcat("c:/eft/" tdr-file)) //{4}
 		else
-			set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat(tdr-file))
+			//set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat(tdr-file))
+			set lf-command = concat("proclientft -s -t " strconcat(tdr-full-path) " " strconcat(tdr-file)) //{4}
 		endif
 		//message lf-command
 		command
@@ -185,6 +193,7 @@ local field
 	set lr-pc-user-dir = strconcat(get-registry-value(strconcat(lf-hive "HOMEDRIVE")) get-registry-value(strconcat(lf-hive "HOMEPATH")))
 endprocedure // get-pc-user-dir -----------------------------------------------
 
+
 /*
 mode md-download
 	prompt "Download to PC"
@@ -194,12 +203,13 @@ object tmp-dir-list
 	type memory
 	record
 		tdr-dir					pic x(200)
-		tdr-file        		pic x(40)
+		tdr-file        		pic x(200)
 		tdr-full-path   		pic x(250)
 		tdr-mod-time			type date-time
 	endrecord
 		//key is tdr-full-path //unique
 		key is tdr-full-path
+
 //	parameters
 //		"-c"
 //		concat("send2proterm xml-output.xml 'C:/Program Files/Nightowl Systems/ProntoLink/Upload/invoice.xml'")
@@ -231,7 +241,8 @@ local field
 	//endif
 	open tmp-dir-list truncate temporary
 	set lf-ext = ".ABA"
-	set lf-dir = strconcat(dir() "/edi/out/EFT1") // strconcat("/data/shared2/stfiles/" ws-whse-code)
+	set lf-dir = strconcat(dir() "/edi/out/EFT") // strconcat("/data/shared2/stfiles/" ws-whse-code)
+	//message "zaz: " strconcat(lf-dir) //{4}
 	set lf-no-entries = TRUE
 	if start-dir-search(lf-dir,lf-ext) // SPACES)
     	set lf-dir-ok = TRUE
@@ -261,9 +272,9 @@ screen dig-file-list
 local field
 	lf-load-status		type numeric
 	lf-full-path		like tdr-full-path
-	lf-command			pic x(200)
+	lf-command			pic x(400)
 	window @1,1 to @24,90
-		title concat("EFT File List: " strconcat(dir() "/edi/out/EFT1"))
+		title concat("EFT File List: " strconcat(dir() "/edi/out/EFT"))
 		primary tmp-dir-list
 		datagrid occurs 20
 	allowed search md-download
@@ -278,7 +289,13 @@ confirmed
 	//message tdr-full-path
 	switch on screen-mode()
 		case md-download
+		//<{4}
 		set lf-command = concat("send2proterm -r " strconcat(tdr-full-path) " " strconcat(tdr-file))
+		//>{4}
+		//set tdr-file = strconcat("C:/Program Files (x86)/PRONTO/PROCLIENT/" tdr-file)
+		//set tdr-file = strconcat("C:/tmp/" tdr-file)
+		set lf-command = concat("proclientft -s -t " strconcat(tdr-full-path) " " strconcat(tdr-file)) //{4}
+		//message "zaz b: " strconcat(lf-command)
 		//message lf-command
 		command
 			"sh"
@@ -299,7 +316,6 @@ endscreen // dig-file-list ----------------------------------------------------
 // window @1,1 to @5,35 title "Send EFT file to PC"
 // box @1,1 to @4,35 title SPACES
 // 	accept lf-unix-file @2,20 title "EFT Filename:"
-
 // 		default lf-unix-file
 // confirm
 // confirmed
@@ -314,4 +330,30 @@ endscreen // dig-file-list ----------------------------------------------------
 // endconfirm
 // endscreen // eft-to-pc --------------------------------------------------------
 
+
+/*
+
+menu main-trial
+local field
+	lf-path			pic x(60)
+	u-path			pic x(60)
+	w-path			pic x(60)
+	set lf-path = "/pro/pronto/bmsxi6/cus/binney/pvi/sys/"
+	option "Get" @1,1
+		command "proclientft"
+			parameters
+				"-r"
+				"-t"
+				strconcat(lf-path "putted.spl")
+				"c:/putmeft.spl"
+	option "Put" @1,1
+		command "proclientft"
+			parameters
+				"-s"
+				"-t"
+				"c:/putmeft.spl"
+				strconcat(lf-path "puttedft.spl")
+endmenu // main ---------------------------------------------------------------
+
 */
+

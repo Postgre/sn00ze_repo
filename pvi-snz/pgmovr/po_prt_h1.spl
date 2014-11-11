@@ -1,0 +1,54 @@
+//pvi-snz/pgmovr/so_entry
+procedure main
+parameters
+	lp-po-order-no          like po-order-no
+	lp-po-backorder-flag 	like po-backorder-flag
+	lp-parameter            pic x(30)
+returning
+	lr-return               pic x(30)
+	//if login-id() in {"robd"}
+	//	message "po_prt_h1 not hx1!"
+	//	//spl "pvi-snz/so/discprcaud"
+	//	//	parameters
+	//	message get_param(1) ":" get_param(2) ":" get_param(3) ":" get_param(4)
+	//endif
+	get purchase-order
+		on index po-order-no po-backorder-flag
+		key is lp-po-order-no lp-po-backorder-flag
+	on error
+		set lr-return = SPACES
+		exit
+	else
+		//get territory address using po-user-only-alpha4-1
+		get name-and-address-master
+			on index accountcode na-type
+			key is po-user-only-alpha4-1 "TC"
+		on error
+			set lr-return = SPACES
+			exit
+		else
+		endon
+		//if we are still here we have currency on the Territory Address
+		//find out which line is required
+		switch on lp-parameter
+			case "-address-line-1"
+				set lr-return = na-name
+			case "-address-line-2"
+				set lr-return = na-company
+			case "-address-line-3"
+				set lr-return = na-street
+			case "-address-line-4"
+				set lr-return = na-suburb
+			case "-address-line-5"
+				set lr-return = na-country
+			case "-address-line-6"
+				set lr-return = na-address-6
+			case "-address-line-7"
+				set lr-return = na-address-7
+			case "-address-postcode"
+				set lr-return = postcode
+			else
+				set lr-return = SPACES
+		endswitch
+	endon
+endprocedure // main ----------------------------------------------------------

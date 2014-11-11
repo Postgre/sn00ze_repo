@@ -1,0 +1,74 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/pgmovr/po_prt_l1
+//  Program Desc:	PO_PRT_L1 override for PO layout line triggers
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	16oct14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+procedure main
+parameters
+	lp-po-order-no          like po-order-no
+	lp-po-backorder-flag 	like po-backorder-flag
+	lp-po-l-seq				like po-l-seq
+	lp-parameter            pic x(20)
+returning
+	lr-return               pic x(30)
+	//message lp-po-order-no ":" lp-po-l-seq ":" lp-parameter ":"
+	get purchase-order-line
+		on index po-order-no po-backorder-flag po-l-seq
+		key is lp-po-order-no lp-po-backorder-flag lp-po-l-seq
+	on error
+		//message "unfound"
+		set lr-return = SPACES
+		exit
+	else
+		switch on lp-parameter
+			case "-dn-check"
+				if po-line-type != "DN"
+					set lr-return = SPACES
+					exit
+				else
+					//check if note line was created by so line as a discount reason
+					extract system-table
+						on index sys-tbl-type sys-tbl-code
+						key is "VU" SPACES
+						next same sys-tbl-type
+					detail
+						if po-line-description = sys-description
+							set lr-return = "VU"
+							exit
+						endif
+					endextract
+				endif
+			else
+				//lp-parameter is empty for some reason, only need for one purpose at the moment
+				//so this will call the looup for match in VU table
+				//set lr-return = SPACES
+				if po-line-type != "DN"
+					set lr-return = SPACES
+					exit
+				else
+					//check if note line was created by so line as a discount reason
+					extract system-table
+						on index sys-tbl-type sys-tbl-code
+						key is "VU" SPACES
+						next same sys-tbl-type
+					detail
+						if po-line-description = sys-description
+							set lr-return = "VU"
+							exit
+						endif
+					endextract
+				endif
+		endswitch
+	endon
+endprocedure // main ----------------------------------------------------------

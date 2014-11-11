@@ -1,0 +1,127 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/adhoc/141009import-deb.spl
+//  Program Desc:	Import deb details from Excel file generate form cube data
+//  Requested By:	Chris Ward
+//  Request Date:	09oct14
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	09oct14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+object tmp-deb-import type memory
+	record
+		tdi-accountcode     	like accountcode
+		tdi-shortname       	like shortname
+		tdi-na-company      	like na-company
+		tdi-na-suburb       	like na-suburb
+		tdi-na-country      	like na-country
+		tdi-postcode        	like postcode
+		tdi-na-phone        	like na-phone
+		tdi-na-mobile-phone		like na-mobile-phone
+		email-address           pic x(60)
+	endrecord
+	key is tdi-accountcode
+
+mode md-import
+	prompt "Import"
+	help "Import customer and address details"
+
+procedure main
+	open tmp-deb-import truncate temporary
+	do aig-deb-import
+endprocedure // main ----------------------------------------------------------
+
+screen aig-deb-import
+	window @1,1 to @24,90
+		title concat("Import Customer Details")
+		primary tmp-deb-import
+		datagrid occurs 20
+	allowed search entry correct remove md-import
+	review-from-start
+detail
+	accept tdi-accountcode      @1,004 title "Account"
+	accept tdi-shortname        @1,008 title "Name"		optional
+	accept tdi-na-company       @1,012 title "Address"  optional
+	accept tdi-na-suburb        @1,016 title "Suburb"   optional
+	accept tdi-na-country       @1,020 title "State"    optional
+	accept tdi-postcode         @1,024 title "Postcode" optional
+	accept tdi-na-phone         @1,028 title "Phone"    optional
+	accept tdi-na-mobile-phone	@1,032 title "Mob Ph"   optional
+	accept email-address       	@1,036 title "Email"    optional
+confirm
+	auto
+confirmed
+	switch on screen-mode()
+		case md-import
+			do import-deb
+	endswitch
+endconfirm
+endscreen // aig-deb-import ---------------------------------------------------
+
+procedure import-deb
+	push tmp-deb-import
+	extract tmp-deb-import
+	detail
+		get deb-master
+			on index accountcode
+			key is tdi-accountcode
+		on error
+			initialise deb-master
+			set accountcode		= tdi-accountcode
+			set bill-to			= tdi-accountcode
+			set shortname		= tdi-shortname
+			insert deb-master
+			on error
+			endon
+		else
+			set bill-to			= tdi-accountcode
+			update deb-master
+			on error
+			endon
+		endon
+		get name-and-address-master
+			on index accountcode na-type
+			key is tdi-accountcode "C"
+		on error
+			initialise name-and-address-master
+			set accountcode			= tdi-accountcode
+			set na-type         	= "C"
+			set na-name				= tdi-shortname
+			set na-company     		= tdi-na-company
+			set na-suburb      		= tdi-na-suburb
+			set na-country     		= tdi-na-country
+			set postcode       		= tdi-postcode
+			set na-phone       		= tdi-na-phone
+			set na-mobile-phone		= tdi-na-mobile-phone
+			insert name-and-address-master
+			on error
+			endon
+		endon
+		if email-address = SPACES
+			continue
+		endif
+		get name-and-address-master
+			on index accountcode na-type
+			key is tdi-accountcode "E"
+		on error
+			initialise name-and-address-master
+			set accountcode			= tdi-accountcode
+			set na-type         	= "E"
+			set na-name				= substring(email-address,1,30)
+			set na-company     		= substring(email-address,31,60)
+			insert name-and-address-master
+			on error
+			endon
+		endon
+	endextract
+	pop tmp-deb-import
+	get tmp-deb-import
+	on error
+	endon
+endprocedure // import-deb ----------------------------------------------------

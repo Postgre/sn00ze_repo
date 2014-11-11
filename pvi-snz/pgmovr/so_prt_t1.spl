@@ -1,0 +1,50 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/pgmovr/so_prt_t1
+//  Program Desc:	Return the total of all payments made against this order
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	20sep14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+version-number "20140920.000"
+
+procedure main
+parameters
+	lp-so-order-no      	like so-order-no
+	lp-so-bo-suffix			like so-bo-suffix
+	lp-param				pic x(30)
+returning
+	lr-total-paid			type numeric
+	//test if order exists
+	get sales-order
+		on index so-order-no so-bo-suffix
+		key is lp-so-order-no lp-so-bo-suffix
+	on error
+		get sales-order-archive
+			on index so-order-no so-bo-suffix
+			key is lp-so-order-no lp-so-bo-suffix
+		on error
+			set lr-total-paid = 0
+			exit
+		endon
+	endon
+	if lp-param = "-payments"
+		//still here, use so-invoice-no to check payments made against this invoice
+		extract deb-trans
+			on index accountcode trans-ref batch-ref dr-tr-trans-no
+			key is so-cust-code so-invoice-no SPACES 0
+			next same accountcode trans-ref
+			when trans-type in {"CR"}
+		detail
+			set lr-total-paid += (tr-amount * -1)
+		endextract
+	endif
+endprocedure // main ----------------------------------------------------------

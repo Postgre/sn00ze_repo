@@ -11,16 +11,15 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//	06nov14	rmd	{4}		ensure all trans are being pickd up, 710 version yields
-//						less than 660, correctly identify Archived trans
 //	20jun14	mb	{3}		upgrade to 710.3
-//	19jun13	mb	{1}		add multi-company extract
+//	19jun13	mb	{1}		add multi-company extract 
 //								to bpfs.spl as bpfsff.spl
 //	13may13	rmd			progress
 //	10may13	rmd			started
 ///////////////////////////////////////////////////////////////////////////////
 
-version-number "140614.004"
+version-number "140620.000" //{3}
+version-number "140604.000" //"CUSTOM pvi-snz/deb/bpfs 140602" //{1}
 
 object tmp-deb-trans like deb-trans type memory
 //<{1}
@@ -176,11 +175,11 @@ procedure main
 		set ws-confirm = true
 	else
 		//-- -buildonly call :
-		set ws-start-date		= date-to-julian(get-param(2))
-		set ws-end-date			= date-to-julian(get-param(3))
+		set ws-start-date	= date-to-julian(get-param(2))
+		set ws-end-date	= date-to-julian(get-param(3))
 		set ws-amount-threshold = num(get-param(4))
-		set ws-ds-count			= num(get-param(5))
-		set ws-confirm			= true
+		set ws-ds-count	= num(get-param(5))
+		set ws-confirm		= true
 	endif //get-param(1) != "-buildonly"
 
 	if ws-confirm
@@ -279,6 +278,7 @@ procedure build-dataset
 	set ws-max-datasets = num(get-param(6))
 	DISPLAY_DATASET_COUNT
 //>{1}
+
 	set ws-rec-count = zero
 	select * from deb-trans
 		where trans-type in {"PD" "JE" "CR"} and
@@ -286,13 +286,7 @@ procedure build-dataset
 		br-acc-code = " " and
 		trans-date between ws-start-date and ws-end-date
 	detail
-		// < {4}
-		if dr-tr-record-status = "1"
-			set dr-tr-spare-1 = "A"
-		else
-		// > {4}
-			set dr-tr-spare-1 = "O"
-		endif //{4}
+		set dr-tr-spare-1 = "O"
 		insert tmp-deb-trans
 		set ism-sys-con = sys-consolidation-division
 		insert ism-ff-bpfsff
@@ -572,11 +566,11 @@ local field
 		//clear existing values
 		open ism-ff-bpfsff truncate permanent
 //		do unload-temp
-		//--
+		//-- 
 		//-- save REBUILD criteria first :
 		//-- ------------------------------
 		X_SAVE_REBUILD
-		//--
+		//-- 
 		//set ws-max-datasets = 5 //5 //100 //for testing
 		report "Finance Sales (deb/bpfsff)"
 			spool-only

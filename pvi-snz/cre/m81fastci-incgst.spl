@@ -1,0 +1,14 @@
+//pvi-snz/cre/m81fastci-incgst
+procedure main
+//parameters
+//	lp-ex-gst-amount		type numeric
+returning
+	lr-inc-gst-amount		type numeric
+	if get-param(1) = "-gst"
+		message "getting gst value"
+		set lr-inc-gst-amount = num(get-param(2)) * 1.1
+	elseif get-param(1) = "-popup"
+		message concat("Inc GST: " fstr(num(get-param(2)) * 1.1,6,2))
+		//set lr-inc-gst-amount = num(get-param(2)) * 1.1
+	endif
+endprocedure // main ----------------------------------------------------------
