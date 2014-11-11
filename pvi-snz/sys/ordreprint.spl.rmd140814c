@@ -1,5 +1,4 @@
 // ordreprint.spl
-//	15sep14	rmd	{7} use pvi-snz poprint
 //	12aug14	mb		{2}	fix to restore original email if say NO to update email address in snzinvprnt.spl
 //	25nov13	rmd	{5)	K mode to call pvi-snz/so/snzinvprnt-kit
 //	26jul12	rmd	{4} moved to pvi-snz/sys/ordreprint
@@ -20,7 +19,8 @@
 //		tsl-shortname
 //	endrecord
 //	key is tsl-so-order-no unique
-version-number "710.3 pvi-snz/sys/ordreprint 20090419.007"
+version-number "pvi-snz/sys/ordreprint 20140814.001"
+version-number "CUSTOM BETA pvi-snz/sys/ordreprnt 20090419.004"
 
 #define XEXT_FILE "tmp_snzinvprnt"
 object ff-ext-snzinvprnt
@@ -40,7 +40,6 @@ field
 	ws-print-or-spool	pic x
 
 procedure main
-	get system-control first	//{7}
 	do get-user-input
 endprocedure // main ----------------------------------------------------------
 
@@ -78,6 +77,7 @@ field
 procedure get-user-input
 local field
 	lf-accept					pic x
+
 	window @1,1 to @6,45 title is "Reprint Order"
 	box @1,1 to @6,44
 	display "(S)ales or (P)urchase Order:" 	@2,1 background
@@ -141,26 +141,14 @@ local field
 		//			YES // don't spool
 		//	endif
 		if ws-order-type = "S"
-			// < {7}
-			if sys-consolidation-division = "2"
-				//spl "pvi-snz/so/snzinvprnt-ho"	//{7}
-				//parameters
-				//	ws-order-no
-				//	SPACES
-				spl "pvi-snz/so/snzinvprnt"
-					parameters
-						//"-layby"
-						ws-order-no
-						SPACES
-						TRUE
-			else
-				spl "pvi-snz/so/snzinvprnt"			//{4}
-					parameters
-						//"-layby"
-						ws-order-no
-						SPACES
-						TRUE
-			endif
+			//spl "rmd/so/B120228snzinvprnt"
+			//spl "rmd/so/B100720snzinvprnt"    //{4}
+			spl "pvi-snz/so/snzinvprnt"			//{4}
+			parameters
+				//"-layby"
+				ws-order-no
+				SPACES
+				TRUE
 		//rmd23jul10 ------------------------------ end
 		elseif ws-order-type = "F"
 			spl "rmd/so/x54trans"
@@ -194,8 +182,7 @@ local field
 				TRUE
 		elseif ws-order-type = "P"
 			//if login-id() = "robd"
-				//spl "rmd/po/poprint"		//{7}
-				spl "pvi-snz/po/poprint"    //{7}
+				spl "rmd/po/poprint"
 					parameters
 						"-s"
 						ws-order-no
