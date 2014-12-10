@@ -11,7 +11,6 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//  13nov14	rmd	{10}	make ZROUNDDISC fix global
 //	28oct14	rmd	{9}		add check to switch ZROUNDDISC on any lines to ZROUND
 //	15sep14	rmd	{8}		suppress if called from company 2, dealing with a common pcs path
 //						and this program may be caled from company 2
@@ -109,12 +108,12 @@ window @1,1 to @15,45 title "pvi-snz/so/discprcaud"
     endif
     // > {8}
     // < {9}
-    //if login-id() in {"robd"} or sys-consolidation-division in {"295" "312" "292" "115" "163"}	//{10}
+    if login-id() in {"robd"} or sys-consolidation-division in {"295" "312" "292" "115" "163"}
     	do zrounddiscfix
     		parameters
     			lp-so-order-no
     			lp-so-bo-suffix
-    //endif																							//{10}
+    endif
     // > {9}
     set sol-spare-num2 = 1
     set lf-audit-required = FALSE

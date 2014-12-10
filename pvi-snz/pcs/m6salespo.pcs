@@ -1,0 +1,69 @@
+#PRONTO Screen Customiser File (Override statements only).
+screen review-sales-po-link
+	{
+	mode
+		{
+		name = "PO-Maint"
+		add = true
+		text = "PO-&Maint"
+		}
+	trigger
+		{
+		trigger_point = confirmed
+		name = "PO-Maint"
+		run = "po/m6edit" "-es" po-order-no po-backorder-flag
+		type = pronto
+		}
+	}
+screen review-sales-po-link-same-order
+	{
+#	trigger
+#		{
+#		trigger_point = screen_exit
+#		run = "po/m6update" "-p" " "
+#		type = pronto
+#		}
+	mode
+		{
+		name = "PO-Maint"
+		add = true
+		text = "PO-&Maint"
+		}
+	trigger
+		{
+		trigger_point = confirmed
+		name = "PO-Maint"
+		run = "po/m6edit" "-es" po-order-no po-backorder-flag
+		type = pronto
+		}
+	mode
+		{
+		name = "Rcv Goods"
+		add = true
+		text = "Goods Receipt"
+		}
+	trigger
+		{
+		trigger_point = validate_mode
+		name = "Rcv Goods"
+		#run = "po/m6lines" "" "" "" "" "" "" "-rcpt" po-order-no po-backorder-flag "" "" "" "" 0 0 0
+		run = "po/m6lines" "" "" "" "" "" "" "-rcpt" po-order-no po-backorder-flag
+		type = pronto
+		}
+	accept
+		{
+		name = solp-xdock-qty
+		suppress = true
+		default = "0"
+		}
+	window
+		{
+		window_size = 20,108
+		}
+	accept
+		{
+		name = solp-xdock-indicator
+		suppress = true
+		default = "X"
+		}
+	}
