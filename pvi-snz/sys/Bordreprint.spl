@@ -1,0 +1,265 @@
+// ordreprint.spl
+//	01dec14	rmd	{8} Bordreprint uses Bpoprint
+//	15sep14	rmd	{7} use pvi-snz poprint
+//	12aug14	mb		{2}	fix to restore original email if say NO to update email address in snzinvprnt.spl
+//	25nov13	rmd	{5)	K mode to call pvi-snz/so/snzinvprnt-kit
+//	26jul12	rmd	{4} moved to pvi-snz/sys/ordreprint
+//					and calls pvi-snz/so/snzinvprnt
+// 	23jul10	rmd 	use new snzinvprint for s/o
+// 	21jul10	rmd 	option to print using Beta snzinvprnt
+// 	09sep09	rmd 	option to print or spool invoices
+// 	16apr09	rmd		written
+// if we go ahead with a search engine, need this to store results
+//object tmp-so-list
+//type memory
+//	record is
+//		tsl-so-order-no
+//		tsl-order-date
+//		tsl-territory
+//		tsl-rep
+//		tsl-accountcode
+//		tsl-shortname
+//	endrecord
+//	key is tsl-so-order-no unique
+version-number "710.3 pvi-snz/sys/ordreprint 20090419.007"
+
+#define XEXT_FILE "tmp_snzinvprnt"
+object ff-ext-snzinvprnt
+	//like object
+	file XEXT_FILE
+	type external
+	record
+		fes-email			pic x(60)			// = lf-original-email
+		fes-accountcode	like so-cust-code	// = lf-so-accountcode	// = so-cust-code
+	endrecord
+//end-object ff-ext-snzinvprnt
+
+field
+	ws-order-no			like so-order-no
+	ws-suffix			pic xx // like so-bo-suffix
+	ws-order-type		pic x
+	ws-print-or-spool	pic x
+
+procedure main
+	get system-control first	//{7}
+	do get-user-input
+endprocedure // main ----------------------------------------------------------
+
+// < {2}
+/*
+field
+	lf-update-email			pic x 	//{2}
+	lf-temp-email				pic x(60)
+	lf-original-email			pic x(60)
+	lf-so-accountcode			like so-cust-code
+*/
+
+#define UPDATE_EMAIL_INIT(ACODE,BEMAIL) \
+	set accountcode = ACODE \
+	set na-type = "E" \
+	set na-name		= substring(BEMAIL,1,30) \
+	set na-company	= substring(BEMAIL,31,60) \
+//end-#define UPDATE_EMAIL_INIT
+
+//UPDATE_EMAIL(lf-so-accountcode,lf-temp-email)
+#define UPDATE_EMAIL(ACODE,BEMAIL) \
+	get name-and-address-master \
+		on index accountcode na-type \
+		key is ACODE "E" \
+	on error \
+		UPDATE_EMAIL_INIT(ACODE,BEMAIL) \
+		insert name-and-address-master \
+	else \
+		UPDATE_EMAIL_INIT(ACODE,BEMAIL) \
+		update name-and-address-master \
+	endon //get name-and-address-master
+//end-#define UPDATE_EMAIL(ACODE,BEMAIL)
+// > {2}
+
+procedure get-user-input
+local field
+	lf-accept					pic x
+	window @1,1 to @6,45 title is "Reprint Order"
+	box @1,1 to @6,44
+	display "(S)ales or (P)urchase Order:" 	@2,1 background
+	accept ws-order-type 					@2,30 //title is "(S)ales or (P)urchase Order"
+		uppercase
+		help "Choose (S)ales or (P)urchase Order"
+		allowed "S" "P" "O" "D" "F" "B" "K"// "D" type is a sales order showing discounts, "F" forces spool if possible
+		default "S"
+	if ws-order-type in {"S" "O" "D" "B" "K"}
+		//if ws-order-type = "B"
+		//	set ws-order-no = 29747
+		//endif
+		display "Sales Order #:"			@3,15 background
+		accept ws-order-no					@3,30 //title is "Sales Order #"
+			default ws-order-no
+		//rmd23jul10 ---------------------------- start
+		//if ws-order-type != "B"
+		//	display "Print or Spool?:"			@4,13 background
+		//	accept ws-print-or-spool			@4,30
+		//		uppercase
+		//		allowed "S" "P"
+		//		default "P"
+		//endif
+		set ws-print-or-spool = "P"
+		//rmd23jul10 ------------------------------ end
+	elseif ws-order-type = "P"
+		display	"Purchase Order #:"			@3,12 background
+		accept ws-order-no					@3,30 //title is "Purchase Order #"
+		display "Suffix:"					@4,22 background
+		accept ws-suffix					@4,30 //title is "Suffix"
+			uppercase
+			optional
+			default SPACES
+	endif
+	//if ws-order-type != "B"		//rmd23jul10
+	if ws-order-type = "P"          //rmd23jul10
+		display "Accept Y/N?:"					@5,17 background
+		accept lf-accept						@5,30 // title is "Accept Y/N?"
+			uppercase
+			allowed "Y" "N"
+			default "Y"
+	else
+		set lf-accept = "Y"
+	endif
+	if lf-accept = "N"
+		reenter ws-order-type
+	else
+		//rmd23jul10 ---------------------------- start
+		//if ws-order-type = "S"
+		//	if ws-print-or-spool = "P"
+		//		spl "so/x54posnoxml" // spl "rmd/so/x54trans"
+		//		parameters
+		//			ws-order-no
+		//			SPACES
+		//			NO // don't spool
+		//	elseif ws-print-or-spool = "S"
+		//		spl "so/x54posnoxml" // spl "rmd/so/x54trans"
+		//		parameters
+		//			ws-order-no
+		//			SPACES
+		//			YES // don't spool
+		//	endif
+		if ws-order-type = "S"
+			// < {7}
+			if sys-consolidation-division = "2"
+				//spl "pvi-snz/so/snzinvprnt-ho"	//{7}
+				//parameters
+				//	ws-order-no
+				//	SPACES
+				spl "pvi-snz/so/snzinvprnt"
+					parameters
+						//"-layby"
+						ws-order-no
+						SPACES
+						TRUE
+			else
+				spl "pvi-snz/so/snzinvprnt"			//{4}
+					parameters
+						//"-layby"
+						ws-order-no
+						SPACES
+						TRUE
+			endif
+		//rmd23jul10 ------------------------------ end
+		elseif ws-order-type = "F"
+			spl "rmd/so/x54trans"
+			parameters
+				ws-order-no
+				SPACES
+				YES // force spool
+		elseif ws-order-type = "O" // old order print
+			//spl "rmd/so/x54trans"
+			spl "so/x54posnoxml"
+			parameters
+				//"-layby"
+				ws-order-no
+				SPACES
+				TRUE
+		elseif ws-order-type = "D" // order print showing discounts
+			//spl "rmd/so/x54trans"
+			spl "rmd/so/snzinvprnt"
+			parameters
+				//"-layby"
+				ws-order-no
+				SPACES
+				TRUE
+		elseif ws-order-type = "B" // beta order print showing discounts
+			//spl "rmd/so/x54trans"
+			spl "rmd/so/B100720snzinvprnt"
+			parameters
+				//"-layby"
+				ws-order-no
+				SPACES
+				TRUE
+		elseif ws-order-type = "P"
+			//if login-id() = "robd"
+				//spl "rmd/po/poprint"		//{7}
+				//spl "pvi-snz/po/poprint"    //{7}	//{8}
+				spl "pvi-snz/po/Bpoprint"    		//{8}
+					parameters
+						"-s"
+						ws-order-no
+						ws-suffix
+						"-print"
+			//else
+			//	spl
+			//		"po/m62custom"
+			//	parameters
+			//		"-s"
+			//		ws-order-no
+			//		ws-suffix
+			//		"-print"
+			//endif
+		elseif ws-order-type = "K"	//{5)
+			spl "pvi-snz/so/snzinvprnt-kit"
+			parameters
+				//"-layby"
+				ws-order-no
+				SPACES
+				TRUE
+		endif
+	endif
+//message "zaz a open " XEXT_FILE
+	open ff-ext-snzinvprnt permanent
+	on error
+//message "zaz b on error : unable to open " XEXT_FILE
+	else
+		//-- restore email address :
+		extract ff-ext-snzinvprnt all
+		detail
+//message concat("zaz c : update so-code / email : " strconcat(fes-accountcode) " / " strconcat(fes-email) )
+			UPDATE_EMAIL(fes-accountcode, fes-email)
+		endextract //ff-ext-snzinvprnt all
+		//--
+		//-- important to clear temp file at this point :
+		open ff-ext-snzinvprnt truncate permanent
+		//--
+	endon //open ff-ext-snzinvprnt permanent
+
+endprocedure // get-user-input ------------------------------------------------
+
+procedure pse-po
+local field
+	lf-email-address				pic x(30)
+	lf-mode							pic x
+	lf-complete						pic x
+window @14,50 to @20,105
+	accept lf-mode @15,77 title "Print or Email:"
+		help "Print or Email"
+		uppercase
+	if lf-mode = "E"
+		display "Email Address:"	@16,61
+		accept lf-email-address		@16,77
+		display "Complete:"     	@17,66
+		accept lf-complete			@17,66
+	endif
+endprocedure // pse-po --------------------------------------------------------
+
+procedure so-order-search
+	// can ask user to enter ranges for store, date, rep, then either customer wildcards or range
+	// then return a list of orders allowing them to choose one to reprint.
+	// replicate for po if required.
+endprocedure // so-order-search -----------------------------------------------
+// ordreprint.spl

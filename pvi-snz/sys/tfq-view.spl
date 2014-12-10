@@ -1,0 +1,70 @@
+//view/manage TF queues withint Pronto?
+//	pvi-snz/sys/tfq-view.spl
+
+#define INSPRT(p) \
+	set tmp-printer = p \
+	insert tmp-printers \
+	on error \
+	endon
+
+object tmp-printers
+	type memory
+	record
+		tmp-printer			pic x(12)
+		tmp-def-project		pic x(30)
+	endrecord
+	key is tmp-printer unique
+
+
+
+object csv-printers like tmp-printers type prn
+	file "/tmp/tfq-printers.csv"
+
+procedure main
+	do build-printer-list
+	do get-trueform-printers
+	open csv-printers truncate permanent
+	extract tmp-printers
+	detail
+		insert csv-printers
+	endextract
+	do display-in-grid
+endprocedure // main ----------------------------------------------------------
+
+procedure build-printer-list
+local field
+	i			pic 999
+	open tmp-printers truncate temporary
+	for i =  100 to 700
+		INSPRT(strconcat(str(i) "_tfq_inv"))
+		INSPRT(strconcat(str(i) "_tfq_po"))
+	endfor
+endprocedure // build-printer-list --------------------------------------------
+
+procedure get-trueform-printers
+	extract tmp-printers
+	detail
+		set tmp-def-project = get-registry-value(strconcat("HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Print\Printers\" tmp-printer "\DefaultProject"))
+		if tmp-def-project = SPACES
+			delete tmp-printers
+		else
+			update tmp-printers
+		endif
+	endextract
+endprocedure // get-trueform-printers -----------------------------------------
+
+screen display-in-grid
+	window @1,1 to @24,90
+		title concat("TrueForm Invoice Printers/Projects")
+		primary tmp-printers
+		datagrid occurs 20
+	allowed search
+	review-from-start
+detail
+	display tmp-printer	        @1,010 title "Printer"
+	display tmp-def-project		@1,020 title "Default Inv Project"
+confirm
+	auto
+confirmed
+endconfirm
+endscreen // display-in-grid --------------------------------------------------

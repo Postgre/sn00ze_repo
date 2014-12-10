@@ -1,0 +1,166 @@
+/*
+ADDPRIV("-----BEGIN RSA PRIVATE KEY-----")
+ADDPRIV("MIIEogIBAAKCAQEAwYTumVcPvuHAGdw9SKeOwtIuL4uZPbHmWOdGpagwfkKMpeyU")
+ADDPRIV("Ur3alnLKNWRIpaNYWzc7E4QXgFg1ElzX3SKubEvTMVuUzb5dX1hD+ja0Pp1pye3n")
+ADDPRIV("v1sP01s8lH3ohZ/+7VMpAWtNdM57/aVwN8FeCpf1frbsADcZFUA64YaUjsX2Uab5")
+ADDPRIV("GOfsTjUNk7nW+SUaSgSUkeEj5kmDvUwK1M+eHkfIV0PUZJ5MOwqBbKll4rMxJeIQ")
+ADDPRIV("+llpgFKfBtvxezg13mzuqghvO3pRu7AuzF7foed0VcyG356VB/vnDJdycemfPUsI")
+ADDPRIV("aGJXltgcIKUES8yVXBoY9c+nnma57koi1NAhhwIBIwKCAQAxwxjIWDc/tmSY7315")
+ADDPRIV("FSS1wQSP4hF2Q7BCvyDLgwUnx/hH7GCnj+fASWcyTPy84Nw0tm5G2NLX3CrndvWt")
+ADDPRIV("5Fi8wwprxxeinqpLt5xzimjc5qYsnELoEBoDJhbkWuQFGoNhmQqLVhs7SwnwxCQr")
+ADDPRIV("mB9/ESHewVKg+DmmYPkyrZPqMnUPBvc7y3phO965/cXQVr1/bnfNo4Pp6j6RLLYh")
+ADDPRIV("HESsNaWpWHqS+WsCegKl4mKDalnGjuWlTgizvQcPLkkUjkDhcYyHKWgr7U8sQybF")
+ADDPRIV("5l9V/TERAZKknjTLJCQr4gMZ8BW6TrlbV0Puzde814Ey5iAc1ASovBJ8a+N1Xhh3")
+ADDPRIV("buiDAoGBAOSRwJCDvF6NLDgBh9Nubnqdag0k7Eoql2IZmXK60h3ddrML5KcWef4a")
+ADDPRIV("0gzX2NmI7c7iSJUTEz20wm//yZNUqFZAGrme+99PjvmaPjMddoBqaQW6V3OX0ssx")
+ADDPRIV("fWjjabX/ozXE8ncl3zXysLbg/oD07B71hAGwaWAgDxYeJ9ugtQT7AoGBANi+WYqs")
+ADDPRIV("onjxkci+5VeZZUz17O5psdi8P6AZy9PSHcqGqx9HBxe9Pebds03W0fDMfSGUwxtH")
+ADDPRIV("+kLXsROTJXrWn434tRKLpGyWbOtY3p3JvdAFiVp1xErHnW5OuQ3wTQW4EobAQtzf")
+ADDPRIV("TDXnBuVhQ/6tYYe9lnbuGRwMQkuyXwSAFnflAoGBALBTLiZW/wcccpGax92eVToE")
+ADDPRIV("Z8D/OfASOkRc5BatYELsrAZ245bW0yMcAR/ZtemkJSqRTe9X26ShYsttjN9ekH0M")
+ADDPRIV("4WqfN1R/M8fdYy6+9QP6UQRrLYUOuI4e3RZmSjvxF4FAKMJQalzRKTye8DeYXmEG")
+ADDPRIV("imez+YSrBFLkEB50qOaVAoGBAI5udVsg/Q2mD1gIatMqSeId83gZkiC2OHCF+vjp")
+ADDPRIV("KYUWqvdL7rfUIV0ymmZZ96zeJlflakUgq8WGbQzdCgBD5TFo7ATfbAzX4SzxQdVn")
+ADDPRIV("UNkoNbB5RnpIqUh84AHYbSED7urWHU9Q6PA4u2OJD2zYVgi+ajDlm3jU2xvM/JyO")
+ADDPRIV("r63fAoGAH4QCWs74IdRFStUxOJKITasPVJ6bVdCMrYmDgo1zxWQBtF96qTY53AMz")
+ADDPRIV("k272srP6rt/+JE6T1c5WpEOCoPdn9u8WKknbVbXiwKB3ihED5vmSfqBWDzPTW7db")
+ADDPRIV("ciWbS6SDfqttjOnhvbl78j988nBz/wU00PZKHntlkDoJNcDwLJk=")
+ADDPRIV("-----END RSA PRIVATE KEY-----")
+
+ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAwYTumVcPvuHAGdw9SKeOwtIuL4uZPbHmWOdGpagwfkKMpeyUUr3alnLKNWRIpaNYWzc7E4QXgFg1ElzX3SKubEvTMVuUzb5dX1hD+ja0Pp1pye3nv1sP01s8lH3ohZ/+7VMpAWtNdM57/aVwN8FeCpf1frbsADcZFUA64YaUjsX2Uab5GOfsTjUNk7nW+SUaSgSUkeEj5kmDvUwK1M+eHkfIV0PUZJ5MOwqBbKll4rMxJeIQ+llpgFKfBtvxezg13mzuqghvO3pRu7AuzF7foed0VcyG356VB/vnDJdycemfPUsIaGJXltgcIKUES8yVXBoY9c+nnma57koi1NAhhw== robd@sm-pronto.ad.captnsnooze.com.au
+
+aushost2.phocasweb.com,166.78.157.48 ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAIEA08ETADyQgvkuKShdL8aKFdIuBZjNfVNRbtJxw4GQY9OmxgQQGtmaxgnhD3bz8j/yNUwTzSXwqKTtHU2xF+WFz5U3jmQRcoZZ9Kk1A9WTk8RtdQRjjZLbPmmEzfSuDIUO/ucYLW6xSmG5cJyLn5bk9ZNNgSF+oF/lAZ9deVR0O80=
+
+
+08nov14 new key generated from Core FTP server to be distributed out
+
+-----BEGIN RSA PRIVATE KEY-----
+ADDPRIV("MIICWgIBAAKBgQDUsleDSB0CfnSTsurx/MXlyhjDDjo5BFqYhwD8PCebYni4UNCW")
+ADDPRIV("A/vq7UIQIEY3H9Zb3/jv50D6zFLW/JBr+U1NN8zBNkZf1LG+zPLPhmoJAyX4myzV")
+ADDPRIV("XLlZV/TYXtY3nNm5M/Pi04/NjpctmizpHnFo1RmK7EinQXRKFBVGfw8sBQIBIwKB")
+ADDPRIV("gE8AaaXKU+r7xOZnBs7o28phAeIMmUhgs++CmfdJiw3UHjXU38KxBcxJfvAL/NKl")
+ADDPRIV("bOBL4B6XuQyySqefo1tN+CNRPs8dBRG9g7Ceyco+1TAdR43ZfIccn21KHw3+NTiQ")
+ADDPRIV("5BE7A40cU3WpTVHNgaGu+TRvWMxpoxDzT05AQfMZK0F/AkEA9Kvuco+skZl1sPL9")
+ADDPRIV("TOJymQ2EpQVuWhdlBx9/Jn2LifKZvJm/2peu7YYBY8lIpirG5k4fdJi4hCWA4Fq3")
+ADDPRIV("8xs7ywJBAN6LahMfNLsEgUkbngaEsmoJCcBOSgRXMIlGqbNTOypZtf/aa/t54dlB")
+ADDPRIV("ATR8xciUARHIp5ZbXqRllBCS2Kqm3W8CQQCE0lzfGstk+4kISWTvORmjiv7dPXZr")
+ADDPRIV("a8khH7oNlJw08WlmYhexLcVcXrBMHM+qqYHqvLH9d3ob2dg/RzCoiyB1AkATE0Ob")
+ADDPRIV("PTBnzS+nLkC+uuq4obBg8MSEB3kwVoOTByJUFlFts6LbCnJxtR1cRTWGOJJgnCuf")
+ADDPRIV("LGcyqZ76GzckkfW5AkBWnda4mgkXysIgFtGpXanOTySNxIHh0n4tSBZFNHJiGMED")
+ADDPRIV("w8aErmOvW1whTIQ/PjzgsU7eyYbHWFxONBbZnJgU")
+-----END RSA PRIVATE KEY-----
+
+ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAIEA1LJXg0gdAn50k7Lq8fzF5coYww46OQRamIcA/Dwnm2J4uFDQlgP76u1CECBGNx/WW9/47+dA+sxS1vyQa/lNTTfMwTZGX9Sxvszyz4ZqCQMl+Jss1Vy5WVf02F7WN5zZuTPz4tOPzY6XLZos6R5xaNUZiuxIp0F0ShQVRn8PLAU= PIT_FTP@aushost2.phocasweb.com
+
+
+*/
+object priv-file type external
+	record
+		priv-line	pic x(64)
+	endrecord
+
+object pub-file type external
+	record
+		pub-line	pic x(600)
+	endrecord
+
+object host-file type external
+	record
+		host-line	pic x(600)
+	endrecord
+
+#define ADDPRIV(LINE) \
+	set priv-line = LINE \
+	insert priv-file
+
+procedure main
+local field
+	lf-command			pic x(300)
+	lf-ssh-dir			pic x(300)
+	//check if ssh dir exists, make if not
+	set lf-ssh-dir = strconcat(get-env("HOME") "/.ssh")
+	if not is-a-dir(lf-ssh-dir)
+		set lf-command = concat("mkdir " strconcat(get-env("HOME") "/.ssh"))
+			command "sh"
+				parameters
+					"-c"
+					lf-command
+		set lf-command = concat("chmod 700 " strconcat(get-env("HOME") "/.ssh"))
+			command "sh"
+				parameters
+					"-c"
+					lf-command
+	endif
+	open priv-file create permanent
+		file strconcat(lf-ssh-dir "/id_rsa")
+	open pub-file create permanent
+		file strconcat(lf-ssh-dir "/id_rsa.pub")
+	open host-file create permanent
+		file strconcat(lf-ssh-dir "/known_hosts")
+	//build private key
+	ADDPRIV("-----BEGIN RSA PRIVATE KEY-----")
+	//ADDPRIV("MIIEogIBAAKCAQEAwYTumVcPvuHAGdw9SKeOwtIuL4uZPbHmWOdGpagwfkKMpeyU")
+	//ADDPRIV("Ur3alnLKNWRIpaNYWzc7E4QXgFg1ElzX3SKubEvTMVuUzb5dX1hD+ja0Pp1pye3n")
+	//ADDPRIV("v1sP01s8lH3ohZ/+7VMpAWtNdM57/aVwN8FeCpf1frbsADcZFUA64YaUjsX2Uab5")
+	//ADDPRIV("GOfsTjUNk7nW+SUaSgSUkeEj5kmDvUwK1M+eHkfIV0PUZJ5MOwqBbKll4rMxJeIQ")
+	//ADDPRIV("+llpgFKfBtvxezg13mzuqghvO3pRu7AuzF7foed0VcyG356VB/vnDJdycemfPUsI")
+	//ADDPRIV("aGJXltgcIKUES8yVXBoY9c+nnma57koi1NAhhwIBIwKCAQAxwxjIWDc/tmSY7315")
+	//ADDPRIV("FSS1wQSP4hF2Q7BCvyDLgwUnx/hH7GCnj+fASWcyTPy84Nw0tm5G2NLX3CrndvWt")
+	//ADDPRIV("5Fi8wwprxxeinqpLt5xzimjc5qYsnELoEBoDJhbkWuQFGoNhmQqLVhs7SwnwxCQr")
+	//ADDPRIV("mB9/ESHewVKg+DmmYPkyrZPqMnUPBvc7y3phO965/cXQVr1/bnfNo4Pp6j6RLLYh")
+	//ADDPRIV("HESsNaWpWHqS+WsCegKl4mKDalnGjuWlTgizvQcPLkkUjkDhcYyHKWgr7U8sQybF")
+	//ADDPRIV("5l9V/TERAZKknjTLJCQr4gMZ8BW6TrlbV0Puzde814Ey5iAc1ASovBJ8a+N1Xhh3")
+	//ADDPRIV("buiDAoGBAOSRwJCDvF6NLDgBh9Nubnqdag0k7Eoql2IZmXK60h3ddrML5KcWef4a")
+	//ADDPRIV("0gzX2NmI7c7iSJUTEz20wm//yZNUqFZAGrme+99PjvmaPjMddoBqaQW6V3OX0ssx")
+	//ADDPRIV("fWjjabX/ozXE8ncl3zXysLbg/oD07B71hAGwaWAgDxYeJ9ugtQT7AoGBANi+WYqs")
+	//ADDPRIV("onjxkci+5VeZZUz17O5psdi8P6AZy9PSHcqGqx9HBxe9Pebds03W0fDMfSGUwxtH")
+	//ADDPRIV("+kLXsROTJXrWn434tRKLpGyWbOtY3p3JvdAFiVp1xErHnW5OuQ3wTQW4EobAQtzf")
+	//ADDPRIV("TDXnBuVhQ/6tYYe9lnbuGRwMQkuyXwSAFnflAoGBALBTLiZW/wcccpGax92eVToE")
+	//ADDPRIV("Z8D/OfASOkRc5BatYELsrAZ245bW0yMcAR/ZtemkJSqRTe9X26ShYsttjN9ekH0M")
+	//ADDPRIV("4WqfN1R/M8fdYy6+9QP6UQRrLYUOuI4e3RZmSjvxF4FAKMJQalzRKTye8DeYXmEG")
+	//ADDPRIV("imez+YSrBFLkEB50qOaVAoGBAI5udVsg/Q2mD1gIatMqSeId83gZkiC2OHCF+vjp")
+	//ADDPRIV("KYUWqvdL7rfUIV0ymmZZ96zeJlflakUgq8WGbQzdCgBD5TFo7ATfbAzX4SzxQdVn")
+	//ADDPRIV("UNkoNbB5RnpIqUh84AHYbSED7urWHU9Q6PA4u2OJD2zYVgi+ajDlm3jU2xvM/JyO")
+	//ADDPRIV("r63fAoGAH4QCWs74IdRFStUxOJKITasPVJ6bVdCMrYmDgo1zxWQBtF96qTY53AMz")
+	//ADDPRIV("k272srP6rt/+JE6T1c5WpEOCoPdn9u8WKknbVbXiwKB3ihED5vmSfqBWDzPTW7db")
+	//ADDPRIV("ciWbS6SDfqttjOnhvbl78j988nBz/wU00PZKHntlkDoJNcDwLJk=")
+	ADDPRIV("MIICWgIBAAKBgQDUsleDSB0CfnSTsurx/MXlyhjDDjo5BFqYhwD8PCebYni4UNCW")
+	ADDPRIV("A/vq7UIQIEY3H9Zb3/jv50D6zFLW/JBr+U1NN8zBNkZf1LG+zPLPhmoJAyX4myzV")
+	ADDPRIV("XLlZV/TYXtY3nNm5M/Pi04/NjpctmizpHnFo1RmK7EinQXRKFBVGfw8sBQIBIwKB")
+	ADDPRIV("gE8AaaXKU+r7xOZnBs7o28phAeIMmUhgs++CmfdJiw3UHjXU38KxBcxJfvAL/NKl")
+	ADDPRIV("bOBL4B6XuQyySqefo1tN+CNRPs8dBRG9g7Ceyco+1TAdR43ZfIccn21KHw3+NTiQ")
+	ADDPRIV("5BE7A40cU3WpTVHNgaGu+TRvWMxpoxDzT05AQfMZK0F/AkEA9Kvuco+skZl1sPL9")
+	ADDPRIV("TOJymQ2EpQVuWhdlBx9/Jn2LifKZvJm/2peu7YYBY8lIpirG5k4fdJi4hCWA4Fq3")
+	ADDPRIV("8xs7ywJBAN6LahMfNLsEgUkbngaEsmoJCcBOSgRXMIlGqbNTOypZtf/aa/t54dlB")
+	ADDPRIV("ATR8xciUARHIp5ZbXqRllBCS2Kqm3W8CQQCE0lzfGstk+4kISWTvORmjiv7dPXZr")
+	ADDPRIV("a8khH7oNlJw08WlmYhexLcVcXrBMHM+qqYHqvLH9d3ob2dg/RzCoiyB1AkATE0Ob")
+	ADDPRIV("PTBnzS+nLkC+uuq4obBg8MSEB3kwVoOTByJUFlFts6LbCnJxtR1cRTWGOJJgnCuf")
+	ADDPRIV("LGcyqZ76GzckkfW5AkBWnda4mgkXysIgFtGpXanOTySNxIHh0n4tSBZFNHJiGMED")
+	ADDPRIV("w8aErmOvW1whTIQ/PjzgsU7eyYbHWFxONBbZnJgU")
+	ADDPRIV("-----END RSA PRIVATE KEY-----")
+	ADDPRIV(SPACES)
+    //build public key
+	//set pub-line = "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAwYTumVcPvuHAGdw9SKeOwtIuL4uZPbHmWOdGpagwfkKMpeyUUr3alnLKNWRIpaNYWzc7E4QXgFg1ElzX3SKubEvTMVuUzb5dX1hD+ja0Pp1pye3nv1sP01s8lH3ohZ/+"
+	//set pub-line = strconcat(pub-line "7VMpAWtNdM57/aVwN8FeCpf1frbsADcZFUA64YaUjsX2Uab5GOfsTjUNk7nW+SUaSgSUkeEj5kmDvUwK1M+eHkfIV0PUZJ5MOwqBbKll4rMxJeIQ+llpgFKfBtvxezg13mzuqghvO3pRu7Auz")
+	//set pub-line = strconcat(pub-line "F7foed0VcyG356VB/vnDJdycemfPUsIaGJXltgcIKUES8yVXBoY9c+nnma57koi1NAhhw== robd@sm-pronto.ad.captnsnooze.com.au")
+	set pub-line = "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAIEA1LJXg0gdAn50k7Lq8fzF5coYww46OQRamIcA/Dwnm2J4uFDQlgP76u1CECBGNx/WW9/47+dA+sxS1vyQa/lNTTfMwTZGX9"
+	set pub-line = strconcat(pub-line "Sxvszyz4ZqCQMl+Jss1Vy5WVf02F7WN5zZuTPz4tOPzY6XLZos6R5xaNUZiuxIp0F0ShQVRn8PLAU= PIT_FTP@aushost2.phocasweb.com ")
+	insert pub-file
+	set pub-line = SPACES
+	insert pub-file
+    //build known_hosts
+	set host-line = "aushost2.phocasweb.com,166.78.157.48 ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAIEA08ETADyQgvkuKShdL8aKFdIuBZjNfVNRbtJxw4GQY9OmxgQQGtmaxgnhD3bz8j/y"
+	set host-line = strconcat(host-line "NUwTzSXwqKTtHU2xF+WFz5U3jmQRcoZZ9Kk1A9WTk8RtdQRjjZLbPmmEzfSuDIUO/ucYLW6xSmG5cJyLn5bk9ZNNgSF+oF/lAZ9deVR0O80=")
+    insert host-file
+    set host-line = SPACES
+    insert host-file
+	close priv-file
+	close pub-file
+	close host-file
+	set lf-command = concat("chmod -R 700 " strconcat(get-env("HOME") "/.ssh"))
+		command "sh"
+			parameters
+				"-c"
+				lf-command
+	message "sftp PIT_FTP@aushost2.phocaweb.com"
+endprocedure // main ----------------------------------------------------------
