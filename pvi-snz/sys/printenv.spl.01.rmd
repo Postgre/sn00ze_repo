@@ -28,10 +28,5 @@ procedure main
 	print
 		"$PRCREGION:"
 		get-env("PRCREGION")	in col 16
-	print
-                "$PROPRINTERS:"
-                get-env("PROPRINTERS")    in col 16
-
-
 	report finished
 endprocedure // main ----------------------------------------------------------
