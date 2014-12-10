@@ -252,36 +252,36 @@ procedure load-temp
 	detail
 		set tfa-sys-consolidation-division	= sfa-sys-consolidation-division
 		set tfa-div-desc						= sfa-div-desc
-		set tfa-territory						= sfa-territory
-		set tfa-terr-desc						= sfa-terr-desc
-		set tfa-written-sales-ex			= sfa-written-sales-ex
-		set tfa-cash-taken					= sfa-cash-taken
-		set tfa-cash-div-sales				= sfa-cash-div-sales
-		set tfa-z-card-bal-1					= sfa-z-card-bal-1
-		set tfa-z-card-bal-2					= sfa-z-card-bal-2
-		set tfa-z-card-bal-3					= sfa-z-card-bal-3
-		set tfa-outstanding-so-count-1	= sfa-outstanding-so-count-1
-		set tfa-outstanding-so-value-1	= sfa-outstanding-so-value-1
-		set tfa-outstanding-so-count-2	= sfa-outstanding-so-count-2
-		set tfa-outstanding-so-value-2	= sfa-outstanding-so-value-2
-		set tfa-outstanding-so-count-3	= sfa-outstanding-so-count-3
-		set tfa-outstanding-so-value-3	= sfa-outstanding-so-value-3
-		set tfa-outstanding-so-count-4	= sfa-outstanding-so-count-4
-		set tfa-outstanding-so-value-4	= sfa-outstanding-so-value-4
-		set tfa-outstanding-po-count		= sfa-outstanding-po-count
-		set tfa-outstanding-po-value		= sfa-outstanding-po-value
-		set tfa-per-yr-deb					= sfa-per-yr-deb
-		set tfa-per-yr-cre					= sfa-per-yr-cre
-		set tfa-per-yr-stk					= sfa-per-yr-stk
-		set tfa-per-yr-gl						= sfa-per-yr-gl
-		set tfa-start-date					= sfa-start-date
-		set tfa-end-date						= sfa-end-date
+		set tfa-territory						= sfa-territory					
+		set tfa-terr-desc						= sfa-terr-desc					
+		set tfa-written-sales-ex			= sfa-written-sales-ex       		
+		set tfa-cash-taken					= sfa-cash-taken          		
+		set tfa-cash-div-sales				= sfa-cash-div-sales         		
+		set tfa-z-card-bal-1					= sfa-z-card-bal-1            	
+		set tfa-z-card-bal-2					= sfa-z-card-bal-2            	
+		set tfa-z-card-bal-3					= sfa-z-card-bal-3            	
+		set tfa-outstanding-so-count-1	= sfa-outstanding-so-count-1  	
+		set tfa-outstanding-so-value-1	= sfa-outstanding-so-value-1  	
+		set tfa-outstanding-so-count-2	= sfa-outstanding-so-count-2  	
+		set tfa-outstanding-so-value-2	= sfa-outstanding-so-value-2  	
+		set tfa-outstanding-so-count-3	= sfa-outstanding-so-count-3  	
+		set tfa-outstanding-so-value-3	= sfa-outstanding-so-value-3  	
+		set tfa-outstanding-so-count-4	= sfa-outstanding-so-count-4  	
+		set tfa-outstanding-so-value-4	= sfa-outstanding-so-value-4  	
+		set tfa-outstanding-po-count		= sfa-outstanding-po-count	  	
+		set tfa-outstanding-po-value		= sfa-outstanding-po-value	  	
+		set tfa-per-yr-deb					= sfa-per-yr-deb					
+		set tfa-per-yr-cre					= sfa-per-yr-cre                  
+		set tfa-per-yr-stk					= sfa-per-yr-stk                  
+		set tfa-per-yr-gl						= sfa-per-yr-gl                   
+		set tfa-start-date					= sfa-start-date					
+		set tfa-end-date						= sfa-end-date                    
 		insert ism-ff-audit
 //		set lf-count += 1
 	endextract
 //message "zaz b4 after: load-temp ext-ffaudit - count = " lf-count
 endprocedure // load-temp-global-rep  -----------------------------------------
-// > {8}
+// > {8} 
 
 // < {8} store tmp-global-rep to permanent common file
 procedure unload-temp
@@ -298,37 +298,37 @@ procedure unload-temp
 	extract ism-ff-audit
 	detail
 		set sfa-sys-consolidation-division	= tfa-sys-consolidation-division
-		set sfa-div-desc					= tfa-div-desc
-		set sfa-territory					= tfa-territory
-		set sfa-terr-desc					= tfa-terr-desc
-		set sfa-written-sales-ex			= tfa-written-sales-ex
-		set sfa-cash-taken					= tfa-cash-taken
-		set sfa-cash-div-sales				= tfa-cash-div-sales
-		set sfa-z-card-bal-1				= tfa-z-card-bal-1
-		set sfa-z-card-bal-2				= tfa-z-card-bal-2
-		set sfa-z-card-bal-3				= tfa-z-card-bal-3
-		set sfa-outstanding-so-count-1		= tfa-outstanding-so-count-1
-		set sfa-outstanding-so-value-1		= tfa-outstanding-so-value-1
-		set sfa-outstanding-so-count-2		= tfa-outstanding-so-count-2
-		set sfa-outstanding-so-value-2		= tfa-outstanding-so-value-2
-		set sfa-outstanding-so-count-3		= tfa-outstanding-so-count-3
-		set sfa-outstanding-so-value-3		= tfa-outstanding-so-value-3
-		set sfa-outstanding-so-count-4		= tfa-outstanding-so-count-4
-		set sfa-outstanding-so-value-4		= tfa-outstanding-so-value-4
-		set sfa-outstanding-po-count		= tfa-outstanding-po-count
-		set sfa-outstanding-po-value		= tfa-outstanding-po-value
-		set sfa-per-yr-deb					= tfa-per-yr-deb
-		set sfa-per-yr-cre					= tfa-per-yr-cre
-		set sfa-per-yr-stk					= tfa-per-yr-stk
-		set sfa-per-yr-gl					= tfa-per-yr-gl
-		set sfa-start-date					= tfa-start-date
-		set sfa-end-date					= tfa-end-date
+		set sfa-div-desc						= tfa-div-desc
+		set sfa-territory						= tfa-territory					
+		set sfa-terr-desc						= tfa-terr-desc					
+		set sfa-written-sales-ex			= tfa-written-sales-ex       		
+		set sfa-cash-taken					= tfa-cash-taken          		
+		set sfa-cash-div-sales				= tfa-cash-div-sales         		
+		set sfa-z-card-bal-1					= tfa-z-card-bal-1            	
+		set sfa-z-card-bal-2					= tfa-z-card-bal-2            	
+		set sfa-z-card-bal-3					= tfa-z-card-bal-3            	
+		set sfa-outstanding-so-count-1	= tfa-outstanding-so-count-1  	
+		set sfa-outstanding-so-value-1	= tfa-outstanding-so-value-1  	
+		set sfa-outstanding-so-count-2	= tfa-outstanding-so-count-2  	
+		set sfa-outstanding-so-value-2	= tfa-outstanding-so-value-2  	
+		set sfa-outstanding-so-count-3	= tfa-outstanding-so-count-3  	
+		set sfa-outstanding-so-value-3	= tfa-outstanding-so-value-3  	
+		set sfa-outstanding-so-count-4	= tfa-outstanding-so-count-4  	
+		set sfa-outstanding-so-value-4	= tfa-outstanding-so-value-4  	
+		set sfa-outstanding-po-count		= tfa-outstanding-po-count	  	
+		set sfa-outstanding-po-value		= tfa-outstanding-po-value	  	
+		set sfa-per-yr-deb					= tfa-per-yr-deb					
+		set sfa-per-yr-cre					= tfa-per-yr-cre                  
+		set sfa-per-yr-stk					= tfa-per-yr-stk                  
+		set sfa-per-yr-gl						= tfa-per-yr-gl                   
+		set sfa-start-date					= tfa-start-date					
+		set sfa-end-date						= tfa-end-date                    
 		insert SNZ_COMMON //ext-ffaudit
 //		set lf-count += 1
 	endextract //ism-ff-audit
 //message "zaz b4 after: unload-temp ext-ffaudit - count = " lf-count
 endprocedure // load-temp-global-rep  -----------------------------------------
-// > {8}
+// > {8} 
 
 procedure get-start-date
 	get system-companies
@@ -346,12 +346,12 @@ procedure get-start-date
 			message concat("err: open file: " strconcat(sys-comp-path "/SYSCTRL.dat") )
 			exit
 		endon //open comp-2-system-control
-// > {8}
+// > {8} 
 */ // < {8}
 // < {8}
 		open comp-2-system-control
 			file is strconcat(sys-comp-path "/SYSCTRL")
-// > {8}
+// > {8} 
 		get comp-2-system-control first
 		//message sys-consolidation-division sys-period-start[1]
 		if today() > sys-next-yr-period-start[1]
@@ -581,7 +581,7 @@ local field
 			endif
 			set lf-cash += -(tr-amount)
 		endextract
-		*/ // > {8}
+		*/ // > {8} 
 		after territory
 			initialise tmp-ff-audit //{4}
 			get tmp-ff-audit
@@ -986,7 +986,7 @@ detail
 ffaudit.spl, line 784: ERROR  ORDER BY cannot specify a host field - 'tfa-sys-consolidation-division'
 ffaudit.spl, line 784: ERROR  ORDER BY cannot specify a host field - 'tfa-territory'
 
-*/ // < {8}
+*/ // < {8} 
 /*
 	Note: this doesn't follow style rules but the following need to be accepts that
 	are _never_ accepted. This is due to the index on primary table.
