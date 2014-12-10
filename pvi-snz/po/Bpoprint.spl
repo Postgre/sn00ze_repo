@@ -7,7 +7,10 @@
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//	05dec14	rmd	{6}		apply changes per Tuena Ly
+//	01dec14	rmd	{8}		email-from from purchase-order-notes ~F instead of po-user-only-alpha20-*
+//	01dec14	rmd	{7}		territory from purchase-order-notes ~T instead of po-user-only-alpha4-1
+//						use copy-purchase order for initial lookup
+//	24nov14	rmd	{6}		pickup territory and link to PO header regardless of option
 // 05nov14	mb		{5} fix PO RETRY LOCK error
 // 03oct14	mb		{3a} incorp {3b} changes by rmd in 660 across to 710 :
 //	20aug14	rmd	{3b}		retrieve territory (store) code associated with PO to
@@ -32,6 +35,9 @@ object tmp-printers
 	endrecord
 	key is tmp-prt-name unique
 
+object copy-purchase-order 			like purchase-order			//{7}
+object copy-purchase-order-archive 	like purchase-order-archive	//{7}
+
 field
 	ws-order-no			like so-order-no
 	ws-suffix			pic xx // like so-bo-suffix
@@ -47,11 +53,13 @@ procedure main
 		set ws-order-no				= num(get-param(2))
 		set ws-suffix				= get-param(3)
 		//
-		get purchase-order
+		//get purchase-order    //{7}
+		get copy-purchase-order	//{7}
 			on index po-order-no po-backorder-flag
 			key is ws-order-no ws-suffix
 		on error
-			get purchase-order-archive
+			//get purchase-order-archive    //{7}
+		    get copy-purchase-order-archive	//{7}
 				on index po-order-no po-backorder-flag
 				key is ws-order-no ws-suffix
 			on error
@@ -135,29 +143,39 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		help "Print or Email this Purchse Order"
 		allowed "P" "S" "E"
 		uppercase
-	get purchase-order
-		on index po-order-no po-backorder-flag
-		key is ws-order-no ws-suffix
-	on error
-		get purchase-order-archive
-			on index po-order-no po-backorder-flag
-			key is ws-order-no ws-suffix
-		on error
-			message "Exiting, PO not found:"  ws-order-no ws-suffix
-			exit
-		else
-			set lf-archived-po = TRUE
-// < {3a}
-			set lf-territory = po-user-only-alpha4-1	//{2}
-// > {3a}
-		endon
-	else
-		set lf-archived-po = FALSE
-// < {3a}
-		set lf-territory = po-user-only-alpha4-1	//{2}
-// > {3a}
-	endon
-// < {3a}
+// < {7} -------------- start comment out
+//	get purchase-order
+//		on index po-order-no po-backorder-flag
+//		key is ws-order-no ws-suffix
+//	on error
+//		get purchase-order-archive
+//			on index po-order-no po-backorder-flag
+//			key is ws-order-no ws-suffix
+//		on error
+//			message "Exiting, PO not found:"  ws-order-no ws-suffix
+//			exit
+//		else
+//			set lf-archived-po = TRUE
+//// < {3a}
+//			set lf-territory = po-user-only-alpha4-1	//{2}
+//// > {3a}
+//		endon
+//	else
+//		set lf-archived-po = FALSE
+//// < {3a}
+//		set lf-territory = po-user-only-alpha4-1	//{2}
+//// > {3a}
+//	endon
+//// < {3a}
+// < {7} ---------------- end comment out
+	// < {7}
+	do get-po-territory
+		parameters
+			ws-order-no
+			ws-suffix
+		returning
+			lf-territory
+	// > {7}
 	// < {3}
 	if lf-territory = SPACES
 		//1. test for linked order to obtain territory
@@ -183,35 +201,46 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 	display lf-terr-method	@15,63 background
 	accept lf-territory @15,57 title "Store:"
 // < {4}
-		when lf-mode != "E"
-		default lf-territory
+		//when lf-mode != "E" 	//{6}
+		//default lf-territory	//{6}
 		read-only
-	accept lf-territory @15,57 title "Store:"
-		when lf-mode = "E"
+// < {6} ------- start comment out
+//	accept lf-territory @15,57 title "Store:"
+//		when lf-mode = "E"
+// > {6} --------- end comment out
 // > {4}
 		default lf-territory
 		uppercase
 		validation
 			//#| lookup helper and validation
 			if num(lf-territory) > 0
-				get purchase-order lock
-					on index po-order-no po-backorder-flag
-					key is ws-order-no ws-suffix
-				on error
-					get purchase-order-archive lock
-						on index po-order-no po-backorder-flag
-						key is ws-order-no ws-suffix
-					on error
-					else
-						set po-user-only-alpha4-1 = lf-territory
-						update purchase-order-archive
-							on error endon //{5}
-					endon
-				else
-					set po-user-only-alpha4-1 = lf-territory
-					update purchase-order
-						on error endon //{5}
-				endon
+				// < {7} ---------- start comment out
+				//get purchase-order lock
+				//	on index po-order-no po-backorder-flag
+				//	key is ws-order-no ws-suffix
+				//on error
+				//	get purchase-order-archive lock
+				//		on index po-order-no po-backorder-flag
+				//		key is ws-order-no ws-suffix
+				//	on error
+				//	else
+				//		set po-user-only-alpha4-1 = lf-territory
+				//		update purchase-order-archive
+				//			on error endon //{5}
+				//	endon
+				//else
+				//	set po-user-only-alpha4-1 = lf-territory
+				//	update purchase-order
+				//		on error endon //{5}
+				//endon
+				// < {7} ------------ end comment out
+				// < {7}
+				do set-po-territory
+					parameters
+						ws-order-no
+						ws-suffix
+						lf-territory
+				// > {7}
 			endif
 		endvalidation
 	// > {3}
@@ -234,9 +263,8 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		else
 			set lf-email-address = na-name
 			set na-company = SPACES
-			//update name-and-address-master	//{6}
+			update name-and-address-master
 		endif
-		update name-and-address-master         	//{6}
 		//display "Email Address:"	@16,62 background   //{1}
 		//accept lf-email-address		@16,77          //{1}
 		set lf-temp-email			= spaces		//{3}
@@ -351,31 +379,45 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 				lf-faxmail-from
 		//message lf-faxmail-from
 		//re-get po
-		set po-user-only-alpha20-1 = substring(lf-faxmail-from,1,20)
-		set po-user-only-alpha20-2 = substring(lf-faxmail-from,21,40)
-		if lf-archived-po
-			// < {6}
-			get purchase-order-archive lock
-				on index po-order-no po-backorder-flag
-				key is ws-order-no ws-suffix
-			on error
-			else
-			// > {6}
-				update purchase-order-archive
-					on error endon //{5}
-			endon	//{6}
-		else
-			// < {6}
-			get purchase-order lock
-				on index po-order-no po-backorder-flag
-				key is ws-order-no ws-suffix
-			on error
-			else
-			// > {6}
-				update purchase-order
-					on error endon //{5}
-			endon //{6}
-		endif
+		//set po-user-only-alpha20-1 = substring(lf-faxmail-from,1,20)  //{7}
+		//set po-user-only-alpha20-2 = substring(lf-faxmail-from,21,40)	//{7}
+		// < {8} ------- start comment out
+		//if lf-archived-po
+		//	// < {7}
+		//	get purchase-order-archive lock
+		//		on index po-order-no po-backorder-flag
+		//		key is ws-order-no ws-suffix
+		//	on error
+		//	else
+		//		set po-user-only-alpha20-1 = substring(lf-faxmail-from,1,20)
+		//	    set po-user-only-alpha20-2 = substring(lf-faxmail-from,21,40)
+		//	// > {7}
+		//		update purchase-order-archive
+		//			on error endon //{5}
+		//	endon	//{7}
+		//else
+		//	// < {7}
+		//	get purchase-order lock
+		//		on index po-order-no po-backorder-flag
+		//		key is ws-order-no ws-suffix
+		//	on error
+		//	else
+		//		set po-user-only-alpha20-1 = substring(lf-faxmail-from,1,20)
+		//	    set po-user-only-alpha20-2 = substring(lf-faxmail-from,21,40)
+		//	// > {7}
+		//		get purchase-order lock
+		//		update purchase-order
+		//			on error endon //{5}
+		//	endon	//{7}
+		//endif
+		// > {8} --------- end comment out
+		// < {8}
+		do set-po-email-from
+			parameters
+				ws-order-no
+				ws-suffix
+				lf-faxmail-from
+		// > {8}
 		//on error
 		//	message "Cannot insert P/O 'From' Address"
 		//endon
@@ -401,16 +443,16 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		//		ws-order-no
 		//		ws-suffix
 		if ws-suffix = SPACES
-			unlock purchase-order
-			unlock purchase-order-archive
+			//unlock purchase-order         //{7}
+			//unlock purchase-order-archive	//{7}
 			set lf-command = concat("POPRINT=tf_faxmail; export POPRINT;prospl po/m62custom -s " str(ws-order-no) " " "'  '" " " "-print")
 		else
-			unlock purchase-order
-			unlock purchase-order-archive
+			//unlock purchase-order         //{7}
+			//unlock purchase-order-archive	//{7}
 			set lf-command = concat("POPRINT=tf_faxmail; export POPRINT;prospl po/m62custom -s " str(ws-order-no) " " ws-suffix " " "-print")
 		endif
-		unlock purchase-order
-		unlock purchase-order-archive
+		//unlock purchase-order         //{7}
+		//unlock purchase-order-archive	//{7}
 		command "sh"
 			parameters
 				"-c"
@@ -707,3 +749,73 @@ endprocedure // get-linked-so-terr --------------------------------------------
 // > {3}
 
 // > {3a}
+// < {7}
+procedure get-po-territory
+parameters
+	lp-order-no         like po-order-no
+	lp-suffix			like po-backorder-flag
+returning
+	lr-territory		like territory
+	get purchase-order-notes
+		on index po-order-no po-backorder-flag po-l-seq po-note-type po-note-seq
+		key is lp-order-no lp-suffix 0 "~T" 1
+	on error
+		set po-note-text = SPACES
+	endon
+	set lr-territory = substring(po-note-text,1,3)
+endprocedure // get-po-territory ------------------------------------------
+
+procedure set-po-territory
+parameters
+	lp-order-no         like po-order-no
+	lp-suffix			like po-backorder-flag
+	lp-territory		like territory
+	get purchase-order-notes lock
+		on index po-order-no po-backorder-flag po-l-seq po-note-type po-note-seq
+		key is lp-order-no lp-suffix 0 "~T" 1
+	on error
+		set po-order-no			= lp-order-no
+		set po-backorder-flag   = lp-suffix
+		set po-l-seq            = 0
+		set po-note-type        = "~T"
+		set po-note-seq         = 1
+		set po-note-text 		= lp-territory
+		insert purchase-order-notes
+		on error
+		endon
+	else
+		set po-note-text 		= lp-territory
+		update purchase-order-notes
+		on error
+		endon
+	endon
+endprocedure // set-po-territory ------------------------------------------
+// > {7}
+
+// < {8}
+procedure set-po-email-from
+parameters
+	lp-order-no         like po-order-no
+	lp-suffix			like po-backorder-flag
+	lp-email-from		like po-note-text
+	get purchase-order-notes lock
+		on index po-order-no po-backorder-flag po-l-seq po-note-type po-note-seq
+		key is lp-order-no lp-suffix 0 "~F" 1
+	on error
+		set po-order-no			= lp-order-no
+		set po-backorder-flag   = lp-suffix
+		set po-l-seq            = 0
+		set po-note-type        = "~F"
+		set po-note-seq         = 1
+		set po-note-text 		= lp-email-from
+		insert purchase-order-notes
+		on error
+		endon
+	else
+		set po-note-text 		= lp-email-from
+		update purchase-order-notes
+		on error
+		endon
+	endon
+endprocedure // set-po-email-from ---------------------------------------------
+// > {8}

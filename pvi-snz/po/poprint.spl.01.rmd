@@ -4,17 +4,21 @@
 //  Requested By:	Lionel van Niekerk
 //  Request Date:	26jul10
 //===========================================================================//
+//  Copyright ProViewIT Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
 //
 //  Modification History
 //  Date	Who	Chg#	What
-//	05dec14	rmd	{6}		apply changes per Tuena Ly
+//
 // 05nov14	mb		{5} fix PO RETRY LOCK error
 // 03oct14	mb		{3a} incorp {3b} changes by rmd in 660 across to 710 :
 //	20aug14	rmd	{3b}		retrieve territory (store) code associated with PO to
 //						po-user-only-alpha4-1 allowing Territory address print
 //
-//	03sep14	mb	{4}		default printer for Kim of Geelong
-//	07aug14	mb	{3}		fix issue where only option to exit is to say YES to update email address.
+//	03sep14	mb	{4}		default printer for Kim of Geelong 
+//	07aug14	mb		{3}		fix issue where only option to exit is to say YES to update email address.
 //	28mar14	rmd	{2}		upgrade for 710
 //	08may13	rmd	{1}		increase email address to 60 char na-name + na-company
 //	26jul10	rmd	------	written
@@ -206,10 +210,10 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 						set po-user-only-alpha4-1 = lf-territory
 						update purchase-order-archive
 							on error endon //{5}
-					endon
+					endon				
 				else
 					set po-user-only-alpha4-1 = lf-territory
-					update purchase-order
+					update purchase-order				
 						on error endon //{5}
 				endon
 			endif
@@ -234,9 +238,8 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		else
 			set lf-email-address = na-name
 			set na-company = SPACES
-			//update name-and-address-master	//{6}
+			update name-and-address-master
 		endif
-		update name-and-address-master         	//{6}
 		//display "Email Address:"	@16,62 background   //{1}
 		//accept lf-email-address		@16,77          //{1}
 		set lf-temp-email			= spaces		//{3}
@@ -244,7 +247,7 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 	//-- note : the following 'Update email? ' is important, otherwise the TITLE does not display further down :
 	//-- --------------------------------------------------
 		accept lf-update-email
-			@17,47
+			@17,47 
 			title "Update email?:"
 			read-only
 	/*
@@ -266,7 +269,7 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		endif //-- if lf-email-address = spaces
 // > {4}
 		accept lf-email-address
-			@16,47
+			@16,47 
 			title "Email Address:"
 			default lf-email-address
 			help "Enter the email address to send the Purchase Order to."
@@ -292,7 +295,7 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 					accept lf-update-email 		@17,47              //{1}
 				*/
 					accept lf-update-email
-						@17,47
+						@17,47 
 						title "Update email?:"
 						//tle "Email Address:"
 						uppercase
@@ -354,27 +357,11 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		set po-user-only-alpha20-1 = substring(lf-faxmail-from,1,20)
 		set po-user-only-alpha20-2 = substring(lf-faxmail-from,21,40)
 		if lf-archived-po
-			// < {6}
-			get purchase-order-archive lock
-				on index po-order-no po-backorder-flag
-				key is ws-order-no ws-suffix
-			on error
-			else
-			// > {6}
-				update purchase-order-archive
-					on error endon //{5}
-			endon	//{6}
+			update purchase-order-archive
+				on error endon //{5}
 		else
-			// < {6}
-			get purchase-order lock
-				on index po-order-no po-backorder-flag
-				key is ws-order-no ws-suffix
-			on error
-			else
-			// > {6}
-				update purchase-order
-					on error endon //{5}
-			endon //{6}
+			update purchase-order
+				on error endon //{5}
 		endif
 		//on error
 		//	message "Cannot insert P/O 'From' Address"
@@ -486,6 +473,8 @@ box @14,33 to @19,110 title SPACES                                      //{1}
 		*/
 		//set ws-env-printer = lf-printer-name
 		//set ws-spool-report = NO
+
+
 		if ws-suffix = SPACES
 			set lf-command = concat("POPRINT=" strconcat(lf-printer-name)"; export POPRINT;prospl po/m62custom -s " str(ws-order-no) " " "'  '" " " "-print")
 		else
@@ -677,10 +666,10 @@ endprocedure  // build-printers-list  ---------------------------------------
 // < {3}
 procedure get-linked-so-terr
 parameters
-	lp-po-order-no              like po-order-no
+	lp-po-order-no              like po-order-no      
 	lp-po-backorder-flag        like po-backorder-flag
-returning
-	lr-territory        		like territory
+returning                        
+	lr-territory        		like territory        
 	extract sales-order-line-purchase
 		on index solp-po-order-no solp-backorder-flag solp-l-seq
 		key is lp-po-order-no lp-po-backorder-flag 0
@@ -699,7 +688,7 @@ returning
 			endon
 		else
 			set lr-territory = so-territory-code
-			break
+			break		
 		endon
 	endextract
 endprocedure // get-linked-so-terr --------------------------------------------
