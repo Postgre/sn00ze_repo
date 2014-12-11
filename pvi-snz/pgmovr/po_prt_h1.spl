@@ -1,11 +1,32 @@
-//pvi-snz/pgmovr/so_entry
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/pgmovr/po_prt_h1
+//  Program Desc:	PO header X1
+//  Requested By:
+//  Request Date:
+//===========================================================================//
+//  Copyright (C) Company Pty Ltd
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	01dec14	rmd	{1}		add -email-from call
+///////////////////////////////////////////////////////////////////////////////
+
+
+
+object copy-purchase-order			like purchase-order			//{1}
+object copy-purchase-order-archive	like purchase-order-archive	//{1}
+
 procedure main
 parameters
 	lp-po-order-no          like po-order-no
 	lp-po-backorder-flag 	like po-backorder-flag
 	lp-parameter            pic x(30)
 returning
-	lr-return               pic x(30)
+	//lr-return               pic x(30)	//{1}
+	lr-return               pic x(60)   //{1}
 	//if login-id() in {"robd"}
 	//	message "po_prt_h1 not hx1!"
 	//	//spl "pvi-snz/so/discprcaud"
@@ -47,8 +68,93 @@ returning
 				set lr-return = na-address-7
 			case "-address-postcode"
 				set lr-return = postcode
+			case "-email-from"
+				do get-po-email-from
+					parameters
+						lp-po-order-no
+						lp-po-backorder-flag
+					returning
+						lr-return
 			else
 				set lr-return = SPACES
 		endswitch
 	endon
 endprocedure // main ----------------------------------------------------------
+
+procedure get-po-email-from
+parameters
+	lp-order-no         like po-order-no
+	lp-suffix			like po-backorder-flag
+returning
+	lr-email-from		like po-note-text
+	get purchase-order-notes
+		on index po-order-no po-backorder-flag po-l-seq po-note-type po-note-seq
+		key is lp-order-no lp-suffix 0 "~F" 1
+	on error
+		//need po-user-name
+	    get copy-purchase-order
+	    	on index po-order-no po-backorder-flag
+	    	key is lp-order-no lp-suffix
+	    on error
+	    	get copy-purchase-order-archive
+				on index po-order-no po-backorder-flag
+	    		key is lp-order-no lp-suffix
+	    	on error
+	    		set po-user-name = login-id()
+	    	endon
+	    endon
+		get system-user-control
+			on index user-id
+			key is po-user-name
+		on error
+			set suc-user-email = strconcat("whse" po-whse-code "@snooze.com.au")
+		endon
+		do build-faxmail-sender
+			parameters
+				suc-user-email
+			returning
+				lr-email-from
+		if lr-email-from != SPACES
+			set po-order-no			= lp-order-no
+			set po-backorder-flag   = lp-suffix
+			set po-l-seq            = 0
+			set po-note-type        = "~F"
+			set po-note-seq         = 1
+			set po-note-text 		= lr-email-from
+			insert purchase-order-notes
+			on error
+			endon
+		endif
+	else
+		set lr-email-from = po-note-text
+	endon
+endprocedure // get-po-email-from ---------------------------------------------
+
+procedure build-faxmail-sender
+parameter
+	lp-sender-email-address			pic x(50)
+returning
+	lr-faxmail-sender-email    		pic x(50)
+local field
+	i	type numeric
+	c	pic x
+	//message "build-faxmail-sender: " lp-sender-email-address
+	set lr-faxmail-sender-email = SPACES
+	for i = 1 to strlen(lp-sender-email-address)
+		set c = substring(lp-sender-email-address,i,i)
+		if c = "@"
+			//message c "!"
+			set lr-faxmail-sender-email = strconcat(lr-faxmail-sender-email "\@")
+			//message lr-faxmail-sender-email
+		else
+			//message c "x"
+			set lr-faxmail-sender-email = strconcat(lr-faxmail-sender-email c)
+		endif
+		//message lr-faxmail-sender-email
+	endfor
+	set lr-faxmail-sender-email = concat("@F111 " strconcat(lr-faxmail-sender-email) "@")
+	//if login-id() = "robd"
+	//	message lp-sender-email-address
+	//	message lr-faxmail-sender-email
+	//endif
+endprocedure // build-faxmail-sender ------------------------------------------
