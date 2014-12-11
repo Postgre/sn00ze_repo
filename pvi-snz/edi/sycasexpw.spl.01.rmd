@@ -19,8 +19,6 @@
 //		FILLER_5
 //  Modification History
 //  Date	Who	Chg#	What
-//	04dec14	rmd	{2}		change email recip to cward, add timestamps to log spool
-//						swithc output dir back to /pro/pronto/edi/out/flatfile/globalred
 //	12jun14	mb 	{1}		mods for tests 710.3 (test run compare in 660 & 710)
 //	05mar14	rmd	{710.3}	upgrade to 710.3 use custom objects over ISAM file
 //						for global-sycas-lines and sycas-lines
@@ -123,15 +121,15 @@ procedure main
 	set ws-file-seq	    = sys-consolidation-division
 	//10sep10 ----------------------------------- start
 	if get-param(2) = "-test"
-		set ws-file-name 	= strconcat("/pro/pronto/edi/out/flatfile/globalred_tests/" ws-partner "_" ws-file-date "_" ws-file-seq "w.csv")	//{710}	//{2}
-		set ws-file-name-global = strconcat("/pro/pronto/edi/out/flatfile/globalred_tests/" ws-partner "_" ws-file-date "_000w.csv")          //{710}   //{2}
-		//set ws-file-name 	= strconcat("/2k12export/710/sycas/test_" ws-partner "_" ws-file-date "_" ws-file-seq "w.csv")						//{710} //{2}
-		//set ws-file-name-global = strconcat("/2k12export/710/sycas/test_" ws-partner "_" ws-file-date "_000w.csv")                             //{710}//{2}
+		//set ws-file-name 	= strconcat("/pro/pronto/edi/out/flatfile/globalred_tests/" ws-partner "_" ws-file-date "_" ws-file-seq "w.csv")	//{710}
+		//set ws-file-name-global = strconcat("/pro/pronto/edi/out/flatfile/globalred_tests/" ws-partner "_" ws-file-date "_000w.csv")          //{710}
+		set ws-file-name 	= strconcat("/2k12export/710/sycas/test_" ws-partner "_" ws-file-date "_" ws-file-seq "w.csv")						//{710}
+		set ws-file-name-global = strconcat("/2k12export/710/sycas/test_" ws-partner "_" ws-file-date "_000w.csv")                             //{710}
 		else
-		set ws-file-name 	= strconcat("/pro/pronto/edi/out/flatfile/globalred/" ws-partner "_" ws-file-date "_" ws-file-seq "x.csv")			//{710} //{2}
-		set ws-file-name-global = strconcat("/pro/pronto/edi/out/flatfile/globalred/" ws-partner "_" ws-file-date "_000x.csv")                //{710}   //{2}
-		//set ws-file-name 	= strconcat("/2k12export/710/sycas/" ws-partner "_" ws-file-date "_" ws-file-seq "x.csv")							//{710} //{2}
-        //set ws-file-name-global = strconcat("/2k12export/710/sycas/" ws-partner "_" ws-file-date "_000x.csv")		                            //{710} //{2}
+		//set ws-file-name 	= strconcat("/pro/pronto/edi/out/flatfile/globalred/" ws-partner "_" ws-file-date "_" ws-file-seq "x.csv")			//{710}
+		//set ws-file-name-global = strconcat("/pro/pronto/edi/out/flatfile/globalred/" ws-partner "_" ws-file-date "_000x.csv")                //{710}
+		set ws-file-name 	= strconcat("/2k12export/710/sycas/" ws-partner "_" ws-file-date "_" ws-file-seq "x.csv")							//{710}
+        set ws-file-name-global = strconcat("/2k12export/710/sycas/" ws-partner "_" ws-file-date "_000x.csv")		                            //{710}
 	endif
 /* //<{1}
 set ws-file-name 	= strconcat(ws-partner "_" ws-file-date "_" ws-file-seq "x.csv")
@@ -175,8 +173,8 @@ message concat("zaz: test, ws-file-name = " ws-file-name)
 		do silent-all
 	elseif get-param(1) = "-forever"
 		set ws-forever = TRUE
-		set ws-file-name-global = strconcat("/pro/pronto/edi/out/flatfile/sycas_forever_" ws-partner "_" ws-file-date "_000.csv")	//{710}		//{2}
-		//set ws-file-name-global = strconcat("/2k12export/710/sycas/sycas_forever_" ws-partner "_" ws-file-date "_000.csv")          //{710}   //{2}
+		//set ws-file-name-global = strconcat("/pro/pronto/edi/out/flatfile/sycas_forever_" ws-partner "_" ws-file-date "_000.csv")	//{710}
+		set ws-file-name-global = strconcat("/2k12export/710/sycas/sycas_forever_" ws-partner "_" ws-file-date "_000.csv")          //{710}
 		do silent-all
 	else
 		do build-dataset
@@ -197,7 +195,6 @@ procedure silent-all
 						//message "Y:" strconcat(sys-comp-code ":" sys-comp-path)
 					endif
 					print
-						tod()   //{2}
 						sys-comp-code
 						sys-comp-desc
 						sys-comp-spare2
@@ -226,7 +223,6 @@ procedure silent-all
 						//message "N:" strconcat(sys-comp-code ":" sys-comp-path)
 					endif
 					print
-						tod()   //{2}
 						sys-comp-code
 						sys-comp-desc
 						sys-comp-spare2
@@ -1090,21 +1086,12 @@ message "zaz a : lf-counter = " lf-counter
 	parameters
 		"-c"
 		concat("cat " ws-file-name " | mailx -s '" strconcat(ws-file-name) "' robd@snooze.com.au")
-	// < {2}
-	command
-		"sh"
-	parameters
-		"-c"
-		concat("cat " ws-file-name " | mailx -s '" strconcat(ws-file-name) "' cward@snooze.com.au")
-	// > {2}
-/*	//{2}
-			//
+	//
 	command
 		"sh"
 	parameters
 		"-c"
 		concat("(uuencode " strconcat(ws-file-name) " " strconcat(ws-file-name) "; echo 'Please find file attached') | mail -s '" strconcat(ws-file-name) "' robd@snooze.com.au")
-*/
 /* //<{1}
 */ //>{1}
 message concat("zaz: created file : " ws-file-name)
@@ -1211,20 +1198,11 @@ message "zaz b : lf-counter = " lf-counter
 		"-c"
 		concat("cat " ws-file-name-global " | mailx -s '" strconcat(ws-file-name-global) "' robd@snooze.com.au")
 	//
-	// < {2}
-	command
-		"sh"
-	parameters
-		"-c"
-		concat("cat " ws-file-name " | mailx -s '" strconcat(ws-file-name) "' cward@snooze.com.au")
-	// > {2}
-/*	//{2}
 	command
 		"sh"
 	parameters
 		"-c"
 		concat("(uuencode " strconcat(ws-file-name-global) " " strconcat(ws-file-name-global) "; echo 'Please find file attached') | mail -s '" strconcat(ws-file-name-global) "' robd@snooze.com.au")
-*/
 //<{1}
 //>{1}
 endprocedure // create-output-global ------------------------------------------
