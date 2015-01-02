@@ -1,5 +1,4 @@
 // pdoutstand.spl
-// 20dec14	rmd	{3} only show 'current' trans
 // 11oct14	rmd	{2}	trans ref fix
 // 15may14	rmd	{1} upgrade for 710.3
 //						tr-sort-key fix switch to trans-ref
@@ -416,12 +415,7 @@ endprocedure // add-missing-deb-with-bal-dm-pd --------------------------------
 
 procedure add-missing-deb-with-bal-dt
 	extract deb-trans
-		// < {3}
-		//on index accountcode trans-ref batch-ref dr-tr-trans-no	//accountcode tr-sort-key
-		on index dr-tr-record-status accountcode trans-ref batch-ref dr-tr-trans-no	//{1}
-		key is SPACES SPACES SPACES SPACES 0
-		next same dr-tr-record-status
-		// > {3}
+	on index accountcode trans-ref batch-ref dr-tr-trans-no	//accountcode tr-sort-key
 	detail
 		//if substring(accountcode,1,3) in {"ZCS"}
 		//	continue
@@ -469,14 +463,9 @@ local field
 	detail
 		set lf-rec-count = 0
 		extract deb-trans
-			// < {3}
-			//on index accountcode trans-ref batch-ref dr-tr-trans-no	//accountcode tr-sort-key
-			//key is tdc-accountcode SPACES SPACES 0
-			//next same accountcode
-			on index dr-tr-record-status accountcode trans-ref batch-ref dr-tr-trans-no	//{1}
-			key is SPACES tdc-accountcode SPACES SPACES 0
-			next same dr-tr-record-status accountcode
-			// > {3}
+		on index accountcode trans-ref batch-ref dr-tr-trans-no	//accountcode tr-sort-key
+		key is tdc-accountcode SPACES SPACES 0
+		next same accountcode
 		detail
 			if trans-type != "PD"
 				continue

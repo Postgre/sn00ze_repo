@@ -1,5 +1,7 @@
-// pdoutstand.spl
+// pdoutstand-batch.spl
 // 20dec14	rmd	{3} only show 'current' trans
+//					cloned from pdoutstand.spl to run in batch mode,
+//					pardon the redundance, needed to get it through urgently
 // 11oct14	rmd	{2}	trans ref fix
 // 15may14	rmd	{1} upgrade for 710.3
 //						tr-sort-key fix switch to trans-ref
@@ -142,14 +144,16 @@ type is memory
 
 procedure main
 	get system-control first
-	if get-param(1) = SPACES
-		do get-params
-	else
-		set ws-store = get-param(1)
-		if ws-store = "ALL"
+	// < {3}
+	//if get-param(1) = SPACES
+	//	do get-params
+	//else
+		//set ws-store = get-param(1)
+		//if ws-store = "ALL"
+			set ws-store = "ALL"
 			set ws-store-desc = "All Stores"
 			set ws-show-all-stores = TRUE
-		else
+		//else
 			set ws-show-all-stores = FALSE
 			get name-and-address-master
 			on index accountcode na-type
@@ -165,8 +169,9 @@ procedure main
 			do build-virtual-table-pd
 			do build-warnings-pd
 			do print-report-virtual-pd
-		endif
-	endif
+		//endif
+	//endif
+	// < {3}
 	//do build-order-list
 	//do build-trans-list
 	//do build-virtual-table
@@ -662,9 +667,10 @@ local field
 	gt-so-order-total-amount			like so-order-total-amount
 	gt-balance							like so-order-total-amount
 	report "Customer Outstanding Orders"
-	length 80 // 105
-	depth  80 // 105
-	header is top-of-page-pd
+		spool-only// {3}
+		length 80 // 105
+		depth  80 // 105
+		header is top-of-page-pd
 	page
 	extract tmp-virtual-table
 	before tvt-accountcode
@@ -805,6 +811,7 @@ local field
 	st-so-order-total-amount			like so-order-total-amount
 	lf-balance							like so-order-total-amount
 	report "Customer Outstanding Orders"
+		spool-only// {3}
 	//length 150
 	header is top-of-page-pd
 	page
