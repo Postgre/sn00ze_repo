@@ -1,0 +1,154 @@
+///////////////////////////////////////////////////////////////////////////////
+//  Program Name:	pvi-snz/stk/rrpfix
+//  Program Desc:	710 program to place correct value in RRP inc
+//					(used for stock labels)
+//  Requested By:	Mladen Bauk
+//  Request Date:	31dec14
+//===========================================================================//
+
+//
+//  All Rights Reserved. Unauthorised copying is prohibited
+//===========================================================================//
+//
+//  Modification History
+//  Date	Who	Chg#	What
+//	31dec14	rmd			started
+///////////////////////////////////////////////////////////////////////////////
+
+field
+	ws-price-region					pic x(20)
+
+procedure main
+local field
+	lf-fix-required					type boolean
+	lf-tax-exempt					type boolean
+	report "RRP fix"
+		spool-only
+	get system-control first
+	get system-table
+		on index sys-tbl-type sys-tbl-code
+		key is "XY" "PRCREGION"
+	on error
+		set ws-price-region = SPACES
+	else
+		set ws-price-region = uppercase(sys-description)
+	endon
+	if ws-price-region = SPACES
+		if uppercase(get-env("PRCREGION")) = SPACES
+			set ws-price-region = "METRO"
+		else
+			set ws-price-region = uppercase(get-env("PRCREGION"))
+		endif
+	endif
+	print
+		company-name
+		"RRP Fix report"
+	print
+		today()
+		tod()
+		login-id()
+	print
+		"Price Region:"
+		ws-price-region
+	do backup-tables
+	extract stock-price all
+	detail
+		//is item tax exempt?
+		set lf-tax-exempt = FALSE
+		extract tax-stock-output-defaults
+			on index tsod-stock-code tsod-cust-type tsod-tax-group tsod-tax-code
+			key is stock-code SPACES SPACES
+			next same tsod-stock-code
+		detail
+			if tsod-tax-code = "0" and tsod-type = "O"
+				set lf-tax-exempt = TRUE
+				break
+			endif
+		endextract
+		//check if record requires attention
+		set lf-fix-required = FALSE
+		if ws-price-region = "REGIONAL"
+			if lf-tax-exempt
+				//if prc-recommend-retail-inc-tax <> prc-wholesale-price
+				if abs(prc-recommend-retail-inc-tax - prc-wholesale-price) > 0.009
+					set lf-fix-required = TRUE
+				endif
+			else //tax inc
+				//if prc-recommend-retail-inc-tax <> prc-wholesale-price * 1.1
+				if abs(prc-recommend-retail-inc-tax - (prc-wholesale-price * 1.1)) > 0.009
+					set lf-fix-required = TRUE
+				endif
+			endif
+		else//if ws-price-region = "METRO"
+			if lf-tax-exempt
+				//if prc-recommend-retail-inc-tax <> prc-recommend-retail
+				if abs(prc-recommend-retail-inc-tax - prc-recommend-retail) > 0.009
+					set lf-fix-required = TRUE
+				endif
+			else //tax inc
+				//if prc-recommend-retail-inc-tax <> prc-recommend-retail * 1.1
+				if abs(prc-recommend-retail-inc-tax - (prc-recommend-retail * 1.1)) > 0.009
+					set lf-fix-required = TRUE
+				endif
+			endif
+		endif
+		if lf-fix-required
+			get stock-price lock
+			on error
+			else
+				if lf-tax-exempt
+					print
+						stock-code
+						"(exempt)  fix required:"
+						"R:"
+						prc-wholesale-price
+						"M:"
+						prc-recommend-retail
+						"RRP:"
+						prc-recommend-retail-inc-tax
+				else
+					print
+						stock-code
+						"(tax inc) fix required:"
+						"R:"
+						prc-wholesale-price
+						"M:"
+						prc-recommend-retail
+						"RRP:"
+						prc-recommend-retail-inc-tax
+				endif
+				if ws-price-region = "REGIONAL"
+					if lf-tax-exempt
+						set prc-recommend-retail-inc-tax = prc-wholesale-price
+					else
+						set prc-recommend-retail-inc-tax = prc-wholesale-price * 1.1
+					endif
+				else
+					if lf-tax-exempt
+						set prc-recommend-retail-inc-tax = prc-recommend-retail
+					else
+						set prc-recommend-retail-inc-tax = prc-recommend-retail * 1.1
+					endif
+				endif
+				print
+					"    set RRP Inc"
+					prc-recommend-retail-inc-tax
+				update stock-price
+			endon
+		endif
+	endextract
+endprocedure // main ----------------------------------------------------------
+
+procedure backup-tables
+local field
+	lf-date-serial			pic x(12)	//ccyymmddhhmm
+	lf-command				pic x(60)
+	set lf-date-serial 		= strconcat(format-picture(today(),"yyyymmdd") format-picture(tod(),"hhmm"))
+	set lf-command 			= concat("procopy stock-price - " strconcat(lf-date-serial "-stock-price"))
+	command "sh"
+		parameters
+			"-c"
+			lf-command
+	print
+		concat("stock-price backed up to "	strconcat(lf-date-serial "-stock-price"))
+endprocedure // backup-tables -------------------------------------------------
