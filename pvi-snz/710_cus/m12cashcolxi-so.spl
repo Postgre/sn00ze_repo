@@ -1,0 +1,788 @@
+////////////////////////////////////////////////////////////////////////////////
+// Debtor Cash Collections
+//=========================================================================//
+// Copyright (C) Prometheus Software Developments Pty Ltd 1987 thru 1993
+//
+// PRONTO is a registered trademark of Prometheus Software Developments P/L.
+//
+// All Rights Reserved. Unauthorized copying is prohibited.
+//=========================================================================//
+//
+// Modification History
+// Date		Who	SDR		What
+// 27nov14	rmd	{6}		territory mode default
+// 22nov14	rmd	{5}		cloned from m12cashcolxi, gives option to use store against
+//						sales order instead of customer (todo - add option to batch routines)
+// 15jul14	mb		{4}		710.3 upgrade changes
+// 14jul14	mb		{2}		add back "CP" trans, add "BC" to existing "BE" (etc) list.
+// 14jul14	mb		{1}		merge code in "m12cashcolxi_cp_only.spl" for "CP" trans report only (based on "m12cashcolxi.spl")
+// 14may14	rmd	{3}		upgrade to 710.3
+//						tr-sort-key fix switch to trans-ref
+//						switch index accountcode tr-sort-key
+//							to accountcode trans-ref batch-ref dr-tr-trans-no
+//						suppress deb-trans-archive extract?  not used
+// 11oct10	rmd			New gift vouchers write VP#99999 to tr-details
+// 29sep09	rc			included the sorting based on Territory Code
+// 01jun09	rmd			if end territory is SPACES, set to ~~~ (defaulting to full range of stores)
+// 11may09	rc			Added sort order for report - Date, Sales Order ro Customer
+// 10dec08	rmd			Ignore Gift Voucher redemption substring(tr-details,1,7) = "GIFTVOU"
+// 08oct08	rmd			Weird fran payments at Shepparton, if branch = ZCSM* ignore trans
+// 30may08	rmd			XI postdated trans carry AC DC etc detail for both customer
+//						and finance company trans, if postdated transaction is detected
+//						lookup deb-master, if account is finance company, display trans
+//						add more postdated prefixes to test for "BE" "CE" "IN" "AX"
+// 29may08 	rmd			added GE to the list of tr-details to exclude
+// 27may08	rmd			Show Branch (financed customer) if account = ZAMEX* ZDINE* etc.
+// 						Intelligent ZCS filter (no ZCS0* to ZCS9*, no ZCSM*)
+//						Sort by Accountcode then date
+// 21may08	rmd			Clone as m12cashcolds (filter by date stamp instead of trans date)
+// 22feb07	rmd			Convert RBTCHPROC and I8DATEVAL calls
+// 25jul00	sr	L464	correct printing of trans date for archive transactions
+// 16may00	sr	L217	incorrect exclusion of transactions
+// 08may00	sr	L120	Not including archive trans, was using the
+//						wrong date field in extract
+// 24jul00	sr	188418	Patched due to 372.7 compile errors
+// 23jun96	ao 	E11117	Written
+////////////////////////////////////////////////////////////////////////////////
+
+#define NO_OF_SELECTION_PARAMETERS		'6'
+
+// <{3}
+//#include "../../bms/include/bmsdef.spl"
+//#include '../../bms/include/rbtchproc.spl'
+//#include "../../bms/include/i8dateval.spl"
+//#include "../../bms/include/i85codes.spl"
+// >{3}
+// <{3}
+#include "/pro/pronto/bms/include/bmsdef.spl"
+#include '/pro/pronto/bms/include/rbtchproc.spl'
+#include "/pro/pronto/bms/include/i8dateval.spl"
+#include "/pro/pronto/bms/include/i85codes.spl"
+// >{3}
+
+object tmp-sort-file
+	type is memory //{4}
+/* // <{4}
+	type is isam
+*/ // >{4}
+	record
+		//territory                                         //{5}
+		ws-territory						like territory	//{5}
+		accountcode
+		ws-date								like trans-date
+		ws-order-no							like dr-tr-order-no
+		ws-bo-suffix						like dr-tr-bo-suffix
+		ws-trans-type						like trans-type
+		ws-details							pic x(40) //like tr-details (30) + br-acc-code (10)
+		ws-payment-type						pic xx
+		ws-trans-amount						like tr-amount
+		ws-trans-date						like trans-date
+	endrecord
+	// 27may08
+	//key is territory ws-date ws-order-no ws-bo-suffix
+	//key is territory accountcode ws-date ws-order-no ws-bo-suffix     //{5}
+	key is ws-territory accountcode ws-date ws-order-no ws-bo-suffix	//{5}
+
+field	default-end-date					like cr-tr-date
+		start-trans-date					type date
+		end-trans-date						type date
+		error-mess							pic x(80)
+		default-end-trans-date-str			pic x(11)
+		start-trans-date-str				pic x(11)
+		end-trans-date-str					pic x(11)
+		fixed-start-date					BOOLEAN
+		fixed-end-date						BOOLEAN
+		default-start-date					like cr-tr-date
+		summary-or-detail					pic x
+		start-territory						like territory
+		end-territory						like territory
+		ws-store-total-cr					like tr-amount
+		ws-store-total-cp					like tr-amount
+		ws-grand-total-cr					like tr-amount
+		ws-grand-total-cp					like tr-amount
+		ws-sort-order						pic x			//rcMay 08, 2009
+		//ws-store-total-cheque				like tr-amount	//372.7 compile err
+		//ws-store-total-bankcard			like tr-amount	//372.7 compile err
+		//ws-store-total-visacard 			like tr-amount	//372.7 compile err
+		//ws-store-total-mastercard			like tr-amount	//372.7 compile err
+		//ws-store-total-cash				like tr-amount	//372.7 compile err
+		//ws-store-total-transfer			like tr-amount	//372.7 compile err
+		ws-deb-or-so-terr					pic x	//{5} D or S
+
+procedure main
+	get system-control first
+	set ws-report-started = FALSE
+	set ws-deb-or-so-terr = "S"	//{5}
+	// 22feb07
+	// DO_RUN_PROGRAM("Debtors Cash Receipts/Payments")
+	RBTCHPROC_RUN_PROGRAM("Debtors Cash Receipts/Payments")
+endprocedure //main ------------------------------------------------------------
+
+screen rbtchproc-report-parameters
+local fields
+	lf-start-terr-desc			like sys-description
+	lf-end-terr-desc			like sys-description
+	//
+	window @1,1 to @18,80
+		title is concat("Customer Cash Collections")
+	allow entry
+before
+	clear
+	DO_SCREEN_HEADER()
+	//display	"Customer Cash Collections" @3,25 inverse
+	//box @4,1 to @22,80
+	box @3,1 to @16,80
+		title "Customer Cash Collections"
+	display "Summary or Detail :" @6,4
+	display "Start Territory   :" @8,4
+	display "End Territory     :" @9,4
+	display "Start Trans Date  : " @11,4
+	display "End Trans Date    :" @12,4
+detail
+	set lf-start-terr-desc = SPACES
+	set lf-end-terr-desc = SPACES
+	//
+	accept summary-or-detail @6,24
+		uppercase
+		allow "S" "D"
+		default "D"
+		help "Mode: (S)ummary or (D)etail"
+	accept start-territory @8,24
+		help "Enter the territory to start at"
+		default spaces
+	//start ------------------------------------ //rcMay 11, 2009
+	on help-key
+		set sys-tbl-type = "TC"
+		do i85codes-table-help
+		set start-territory = sys-tbl-code
+		reenter optional
+	endon
+	validation
+		if start-territory <> SPACES
+			get system-table
+				on index sys-tbl-type sys-tbl-code
+				key is 'TC' start-territory
+			on error
+				message "Territory code is invalid"
+				reenter
+			else
+				set lf-start-terr-desc = sys-description
+			endon
+		endif
+	endvalidation
+	set lf-start-terr-desc = sys-description
+	display lf-start-terr-desc @8,30 background
+	//end -------------------------------------- //rcMay 11, 2009
+	accept end-territory @9,24
+		help "Enter the territory to end at"
+		default start-territory
+		//fill with trailing "~"
+	//start ------------------------------------ //rcMay 11, 2009
+	on help-key
+		set sys-tbl-type = "TC"
+		do i85codes-table-help
+		set end-territory = sys-tbl-code
+		reenter optional
+	endon
+	validation
+		if end-territory <> SPACES
+			get system-table
+				on index sys-tbl-type sys-tbl-code
+				key is 'TC' end-territory
+			on error
+				message "Territory code is invalid"
+				reenter
+			else
+				set lf-end-terr-desc = sys-description
+			endon
+		else
+			// rmd 01jun09
+			set end-territory = "~~~"
+			refresh end-territory
+			// rmd 01jun09
+		endif
+	endvalidation
+	set lf-end-terr-desc = sys-description
+	display lf-end-terr-desc @9,30 background
+	//end -------------------------------------- //rcMay 11, 2009
+	accept start-trans-date-str @11,24
+		// 22feb07
+		// VD_DATE_ACCEPT_VALIDATIONS
+		I8DATEVAL_DATE_ACCEPT_VALIDATIONS
+		default julian2date(default-start-date)
+	validation
+		// 22feb07
+		// VALIDATE_DATE_STR("S",sys-dl-per,sys-dl-yr,
+		I8DATEVAL_VALIDATE_DATE_STR("S",sys-dl-per,sys-dl-yr,
+			start-trans-date-str,start-trans-date,error-mess,fixed-start-date)
+		if error-mess not = spaces
+			message error-mess
+			reenter start-trans-date-str
+		endif
+		if fixed-start-date
+			display start-trans-date @11,36
+			set default-end-trans-date-str = julian2date(default-end-date)
+		else
+			display start-trans-date @11,36
+			set default-end-trans-date-str = start-trans-date-str
+		endif
+	endvalidation
+	accept end-trans-date-str @12,24
+		// 22feb07
+		// VD_DATE_ACCEPT_VALIDATIONS
+		I8DATEVAL_DATE_ACCEPT_VALIDATIONS
+		default default-end-trans-date-str
+		showvalue
+	validation
+		// 22feb07
+		// VALIDATE_DATE_STR("S",sys-dl-per,sys-dl-yr,
+		I8DATEVAL_VALIDATE_DATE_STR("S",sys-dl-per,sys-dl-yr,
+			end-trans-date-str,end-trans-date,error-mess,fixed-end-date)
+		if error-mess not = spaces
+			message error-mess
+			reenter end-trans-date-str
+		endif
+		if end-trans-date < start-trans-date
+			message "Transaction end date cannot be before the transaction start date"
+			reenter end-trans-date-str
+		endif
+		if fixed-end-date
+			display end-trans-date @12,36
+		else
+			display end-trans-date @12,36
+		endif
+	endvalidation
+	//start ----------------------------------- //rcMay 11, 2009
+	accept ws-sort-order @14,24
+		title "Sort Order:"
+		//allow "D" "S" "C"						//rc 29sep09
+		allow "D" "S" "C" "T"
+		uppercase
+		//default "C"	//{6}
+		default "T"	//{6}
+		help "Enter the Sort Order - (C)ustomer (D)ate (S)ales (T)erritory"
+	//end ------------------------------------- //rcMay 11, 2009
+	confirm auto
+	confirmed
+		// 22feb07
+		// DO_EXECUTION
+		RBTCHPROC_EXECUTION
+	endconfirm
+endscreen //rbtchproc-report-parameters --------------------------------------
+
+procedure rbtchproc-set-parameters
+	// 22feb07
+	// LOAD_OR_SET_ALPHA(summary-or-detail)
+	// LOAD_OR_SET_ALPHA(start-territory)
+	// LOAD_OR_SET_ALPHA(end-territory)
+	// LOAD_OR_SET_ALPHA(start-trans-date-str)
+	// LOAD_OR_SET_ALPHA(end-trans-date-str)
+	RBTCHPROC_LOAD_SET_ALPHA(summary-or-detail)
+	RBTCHPROC_LOAD_SET_ALPHA(start-territory)
+	RBTCHPROC_LOAD_SET_ALPHA(end-territory)
+	RBTCHPROC_LOAD_SET_ALPHA(start-trans-date-str)
+	RBTCHPROC_LOAD_SET_ALPHA(end-trans-date-str)
+	RBTCHPROC_LOAD_SET_ALPHA(ws-sort-order)
+	//22feb07
+	// VALIDATE_DATE_STR("S",sys-cl-per,sys-cl-yr,start-trans-date-str,start-trans-date			,error-mess,fixed-start-date)
+	I8DATEVAL_VALIDATE_DATE_STR("S",sys-cl-per,sys-cl-yr,start-trans-date-str,start-trans-date,error-mess,fixed-start-date)
+	if error-mess not = spaces
+		if get-param(1) = "-b"
+			// 22feb07
+			// DO_MESSAGE_INFO("M",true,error-mess)
+			RBTCHPROC_MESSAGE_INFO("M",true,error-mess)
+		else
+			message error-mess
+		endif
+	endif
+	//22feb07
+	// VALIDATE_DATE_STR("E",sys-cl-per,sys-cl-yr,end-trans-date-str,end-trans-date,error-mess,fixed-end-date)
+	I8DATEVAL_VALIDATE_DATE_STR("E",sys-cl-per,sys-cl-yr,end-trans-date-str,end-trans-date,error-mess,fixed-end-date)
+	if error-mess not = spaces
+		if get-param(1) = "-b"
+			// 22feb07
+			// DO_MESSAGE_INFO("M",true,error-mess)
+			RBTCHPROC_MESSAGE_INFO("M",true,error-mess)
+		else
+			message error-mess
+		endif
+	endif
+endprocedure //rbtchproc-set-parameters --------------------------------------
+
+procedure start-report
+	set rbtchproc-report-name = "Debtors Cash Receipts/Payments"
+	report rbtchproc-report-name
+		header is cash-collections-report-header
+		no-message
+	set ws-report-started = TRUE
+endprocedure //start-report ----------------------------------------------------
+
+procedure cash-collections-report-header
+	print company-name col 1
+		bold
+		"Date:" col 47
+		tod() col 63 pic hh:mm
+		today() col 53 pic dd-mmm-yy
+		'Page:' col 69
+		left-justify(str(page-no)) col 75 pic x(4)
+	print rbtchproc-report-name in col 24 pic x(30)
+	skip
+	if summary-or-detail = "D"
+		print "Trans" in col 38
+		print "D/Stamp" in col 1
+		"Store" in col 10
+			"Order #" in col 17
+			"Customer" in col 27
+			"Type" in col 38
+		"Details" in col 45
+		"Branch"  in col 55
+			"Amount" in col 70
+		"Trans Date" in col 82
+		print 80"=" in col 1
+	endif
+endprocedure //cash-collections-report-header --------------------------------
+
+#define FIN_COY_CODES "BC" //{2}
+
+procedure rbtchproc-report-detail
+// <{3}
+local field
+	lf-count			type numeric
+	lf-tested			type numeric
+// >{3}
+	//
+    window @19,44 to @23,80
+        title is "Report Progress"
+        color white
+        no-hide
+	//
+    if not rbtchproc-in-background
+    	display bitmap concat(getenv('BMS')'/images/repedge.gif') @19,44
+    	display 'Report :' @20,59 background right
+    	display "Now at :" @23,45 background prompts left
+    endif
+    //
+	do start-report
+	if rbtchproc-in-background
+		// 22FEB07
+		// DO_MESSAGE_REPORT_STARTED
+		RBTCHPROC_MESSAGE_REPORT_STARTED
+	else
+		//box @18,47 to @22,80
+		//display "Spoolfile :" @19,54
+		//	spool-file-name() @19,66 pic x(12)
+		//	"Now at :" @21,54
+	endif
+	open tmp-sort-file truncate temporary
+	page
+
+	//message "deb-master" //{3}
+	extract deb-master
+		on index territory dr-sort-key accountcode
+		key is start-territory spaces spaces
+		finish when territory > end-territory
+	before territory
+		if not rbtchproc-in-background
+			//display territory @21,64
+			//		accountcode @21,69
+		endif
+	detail
+
+		//message "acct: " accountcode //{3}
+		extract deb-trans
+// <{3}
+			on index accountcode trans-ref batch-ref dr-tr-trans-no
+			key is accountcode spaces SPACES 0
+// >{3}
+/* // <{3}
+			on index accountcode tr-sort-key
+			key is accountcode spaces
+*/ // >{3}
+			next same accountcode
+			// 21may08
+			// when trans-date between start-trans-date and end-trans-date
+			when dr-tr-date-stamp between start-trans-date and end-trans-date
+				and trans-type in {"CR" "CP"}
+				/* //{1} {2}
+				and trans-type in {"CP"} //{1}
+				*/ //{1} {2}
+
+				// 30may08
+				////Exclude Post dated - Other Credit Card, Diners, Amex
+				//and substring(tr-details,1,2) not in {"CC","DC","AC","GE"}
+				//or substring(tr-details,1,3) = "CCT") //CCTPOS - Credit transfer
+
+				// 27may08
+				//and accountcode != concat('ZCSM',sys-consolidation-division)//l592sep21
+				and substring(accountcode,1,4) not in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"}
+		detail
+// <{3}
+			set lf-tested += 1
+			//message "trans: " trans-ref
+// >{3}
+			display ws-order-no @23,57 foreground prompts
+			// 30may08 - new method of determining if trans is postdated and if it is the cust or fincomp
+			// Exclude Post dated - Other Credit Card, Diners, Amex
+			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+				// this should be shown
+			/* //{2}
+			elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}
+			*/ //{2}
+			// < {2}
+			elseif substring(tr-details,1,2) in {FIN_COY_CODES "CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}
+			// > {2}
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, ignore this transaction
+					continue
+				endif
+			endif
+			// 08oct08
+			if substring(br-acc-code,1,4) = "ZCSM"
+				continue
+			endif
+
+			// 10dec08
+			if substring(tr-details,1,7) = "GIFTVOU"
+				continue
+			endif
+			//11oct10 new style gift voucher.
+			if substring(tr-details,1,3) = "VP#"
+				continue
+			endif
+			// 21may08
+			// set ws-date = trans-date
+			// < {5}
+			if ws-deb-or-so-terr = "D"
+				set ws-territory = territory		//from deb-master
+			else
+				set ws-territory = dr-tr-territory  //from sales order
+			endif
+			// > {5}
+			set ws-date = dr-tr-date-stamp
+			set ws-order-no = dr-tr-order-no
+			set ws-bo-suffix = dr-tr-bo-suffix
+			set ws-trans-type = trans-type
+			set ws-payment-type = substring(tr-details,1,2)
+			set ws-trans-date = trans-date
+			// 27may08
+			if substring(accountcode,1,5) in {"ZCCAR" "ZAMEX" "ZDINE" "ZCERT" "ZGEFI" "ZGECA" "ZEFTP"}
+/* // <{3}
+ 				//set ws-details = concat(tr-sort-key "   " strconcat(br-acc-code))
+*/ // >{3}
+ 				set ws-details = concat(trans-ref "   " strconcat(br-acc-code))
+ 			else
+/* // <{3}
+				set ws-details = tr-sort-key //tr-details
+*/ // >{3}
+				set ws-details = trans-ref	//tr-sort-key //tr-details
+			endif
+			set ws-trans-amount = tr-amount
+// <{3}
+			//message accountcode dr-tr-date-stamp dr-tr-order-no
+			set lf-count += 1
+// >{3}
+			insert tmp-sort-file
+		endextract
+/* // <{3}
+		extract deb-trans-archive
+			//on index accountcode da-invoice-no			//372.7 compile err
+			on index accountcode trans-ref 					//372.7 compile err
+			key is accountcode spaces
+			next same accountcode
+			//when da-payment-date between start-trans-date and end-trans-date
+			//when dr-tr-due-date between start-trans-date and end-trans-date
+			// 21may08
+			// when trans-date between start-trans-date and end-trans-date//L120sr
+			when dr-tr-date-stamp between start-trans-date and end-trans-date
+
+			//and (da-payment-detail  in {"CR" "CP"}		//372.7 compile err
+			and trans-type  in {"CR" "CP"}					//372.7 compile err
+			//{1} {2}
+			//and trans-type  in {"CP"}			//{1}
+			//{1} {2}
+
+			// 30may08
+			////Exclude Post dated - Other Credit Card, Diners, Amex
+			////and substring(da-customer-ref,1,2) not in {"CC","DC","AC"}
+			////or substring(da-customer-ref,1,3) = "CCT") //CCTPOS -Cred transfer
+			//and substring(tr-details,1,2) not in {"CC","DC","AC","GE"}
+			//or substring(tr-details,1,3) = "CCT") //CCTPOS -Credit transfer
+
+			// 27may08
+			//and accountcode != concat('ZCSM',sys-consolidation-division)//l592sep21
+			and substring(accountcode,1,4) not in {"ZCSM" "ZCS0" "ZCS1" "ZCS2" "ZCS3" "ZCS4" "ZCS5" "ZCS6" "ZCS7" "ZCS8" "ZCS9"}
+		//detail
+			//set ws-date = da-payment-date					//372.7 compile err
+			//set ws-date = dr-tr-due-date				//372.7 compile //L464
+		detail
+			// 30may08 - new method of determining if trans is postdated and if it is the cust or fincomp
+			// Exclude Post dated - Other Credit Card, Diners, Amex
+			if substring(tr-details,1,3) = "CCT" //CCTPOS - Credit transfer
+				// this should be shown
+			//{2}
+			//elseif substring(tr-details,1,2) in {"CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}
+			//{2}
+			// < {2}
+			elseif substring(tr-details,1,2) in {FIN_COY_CODES "CC" "DC" "AC" "GE" "BE" "CE" "IN" "AX"}
+			// > {2}
+				// test if transaction account is for a finance company with postdated flag set (customer-type = "P")
+				// show this transaction, otherwise assume it to be the 'customer' transaction that should not be shown
+				get deb-master
+				if dr-cust-type != "P"
+					// this is a normal customer account, ignore this transaction
+					continue
+				endif
+			endif
+			// 08oct08
+			if substring(br-acc-code,1,4) = "ZCSM"
+				continue
+			endif
+
+			// 10dec08
+			if substring(tr-details,1,7) = "GIFTVOU"
+				continue
+			endif
+
+			// 21may08
+			// set ws-date = trans-date									//L464
+			set ws-date = dr-tr-date-stamp
+			//set ws-order-no = da-order-no					//372.7 compile err
+			set ws-order-no = dr-tr-order-no				//372.7 compile err
+			//set ws-bo-suffix = da-order-suffix			//372.7 compile err
+			set ws-bo-suffix = dr-tr-bo-suffix				//372.7 compile err
+			//set ws-trans-type = da-payment-detail			//372.7 compile err
+			set ws-trans-type = trans-type					//372.7 compile err
+			//set ws-payment-type = substring(da-payment-detail,1,2)//372 compil
+			set ws-payment-type = substring(trans-type,1,2)	//372 compile err
+			//set ws-details = da-customer-ref				//372.7 compile err
+			// 27may08
+			if substring(accountcode,1,5) in {"ZCCAR" "ZAMEX" "ZDINE" "ZCERT" "ZGEFI" "ZGECA" "ZEFTP"}
+ 				set ws-details = concat(trans-ref "   " strconcat(br-acc-code))
+ 			else
+				set ws-details = trans-ref
+			endif
+
+			//set ws-trans-amount = da-invoice-amount		//372.7 compile err
+			set ws-trans-amount = tr-amount					//372.7 compile err
+			insert tmp-sort-file
+		endextract
+*/ // >{3}
+	endextract
+// <{3}
+	//message "Count: " str(lf-count) " of " str(lf-tested)
+// >{3}
+	//start ------------------------------------ //rcMay 11, 2009
+	//accountcode 		ws-date	 	ws-order-no
+	switch on ws-sort-order
+		case "C"
+			select *
+			from tmp-sort-file
+			order by accountcode
+			//before territory  //{5}
+			before ws-territory	//{5}
+				set ws-store-total-cr = 0
+				set ws-store-total-cp = 0
+			detail
+				if summary-or-detail = "D"
+					do print-trans
+				endif
+				do total-transactions
+			//after territory  	//{5}
+			after ws-territory  //{5}
+				do print-store-totals
+			endselect
+		case "S"
+			select *
+			from tmp-sort-file
+			order by ws-order-no
+			//before territory  //{5}
+			before ws-territory	//{5}
+				set ws-store-total-cr = 0
+				set ws-store-total-cp = 0
+			detail
+				if summary-or-detail = "D"
+					do print-trans
+				endif
+				do total-transactions
+			//after territory   //{5}
+			after ws-territory	//{5}
+				do print-store-totals
+			endselect
+		case "T"
+			select *
+			from tmp-sort-file
+			// < [5}
+			//order by territory
+			//before territory
+			order by ws-territory
+			before ws-territory
+			// > [5}
+				set ws-store-total-cr = 0
+				set ws-store-total-cp = 0
+			detail
+				if summary-or-detail = "D"
+					do print-trans
+				endif
+				do total-transactions
+			//after territory   //{5}
+			after ws-territory	//{5}
+				do print-store-totals
+			endselect
+		else
+			select *
+			from tmp-sort-file
+			order by ws-date
+			//before territory  //{5}
+			before ws-territory	//{5}
+				set ws-store-total-cr = 0
+				set ws-store-total-cp = 0
+			detail
+				if summary-or-detail = "D"
+					do print-trans
+				endif
+				do total-transactions
+			//after territory   //{5}
+			after ws-territory	//{5}
+				do print-store-totals
+			endselect
+	end-switch
+	//extract tmp-sort-file
+	//	all
+	//before territory
+	//	set ws-store-total-cr = 0
+	//	set ws-store-total-cp = 0
+	//detail
+	//	if summary-or-detail = "D"
+	//		do print-trans
+	//	endif
+	//	do total-transactions
+	//after territory
+	//	do print-store-totals
+	//endextract
+	//end -------------------------------------- //rcMay 11, 2009
+	do print-grand-totals
+	do finish-report
+	close tmp-sort-file and remove
+endprocedure //rbtchproc-report-detail ---------------------------------------
+
+procedure print-trans
+	print	ws-date in col 1 pic dd-mmm-yy
+			//territory in col 11   //{5}
+			ws-territory in col 11	//{5}
+			ws-order-no in col 16
+			ws-bo-suffix in col 24
+			accountcode in col 27
+			ws-trans-type in col 39
+			ws-details in col 44
+			ws-trans-amount in col 67 pic -(7)9.99
+			ws-trans-date in col 82
+endprocedure //print-trans ---------------------------------------------------
+
+procedure total-transactions
+	if ws-trans-type = "CR"
+		set ws-store-total-cr += ws-trans-amount
+		set ws-grand-total-cr += ws-trans-amount
+	else
+		set ws-store-total-cp += ws-trans-amount
+		set ws-grand-total-cp += ws-trans-amount
+	endif
+//	switch ws-payment-type
+//	case "CH"
+//		set ws-store-total-cheque += ws-trans-amount
+//	case "BC"
+//		set ws-store-total-bankcard += ws-trans-amount
+//	case "VC"
+//		set ws-store-total-visacard += ws-trans-amount
+//	case "MC"
+//		set ws-store-total-mastercard += ws-trans-amount
+//	case "  "
+//		set ws-store-total-cash += ws-trans-amount
+//	else
+//		set ws-store-total-transfer += ws-trans-amount
+//	endswitch
+endprocedure //total-transactions --------------------------------------------
+
+procedure print-store-totals
+	if summary-or-detail = "D"
+		print "-----------" in col 67
+		print
+			"Total Receipts/Payments for " in col 32 bold
+		// territory in col 60	//{5}
+		ws-territory in col 60	//{5}
+			ws-store-total-cr + ws-store-total-cp in col 67 bold pic -(7)9.99
+		skip 2
+	endif
+	print "SUMMARY FOR" in col 32 bold underlined
+		//territory in col 44   //{5}
+		ws-territory in col 44	//{5}
+	skip
+	print "Total Cash Receipts :" in col 21
+			ws-store-total-cr in col 43 bold
+	print "Total Cash Payments :" in col 21
+			ws-store-total-cp in col 43 bold
+	print "---------------" in col 43
+	print ws-store-total-cr + ws-store-total-cp in col 43 pic -(11)9.99 bold
+	skip 1
+//	print "Payment Type" in col 21 underlined
+//		"Total Receipts" in col 43 underlined
+//	print "Cash" in col 21
+//		ws-store-total-cash in col 43
+//	print "Cheque" in col 21
+//		ws-store-total-cheque in col 43
+//	print "Bankcard" in col 21
+//		ws-store-total-bankcard in col 43
+//	print "Mastercard" in col 21
+//		ws-store-total-mastercard in col 43
+//	print "Visacard" in col 21
+//		ws-store-total-visacard in col 43
+//	print "Transfer" in col 21
+//		ws-store-total-transfer in col 43
+//	print "---------------" in col 43
+//	print ws-store-total-cr in col 43
+endprocedure //print-store-totals --------------------------------------------
+
+procedure print-grand-totals
+	skip 1
+	print "TOTAL ALL STORES" in col 30 bold underlined
+	skip
+	print "Total Cash Receipts :" in col 21
+			ws-grand-total-cr in col 43 bold
+	print "Total Cash Payments :" in col 21
+			ws-grand-total-cp in col 43 bold
+	print "---------------" in col 43
+	print
+		ws-grand-total-cr + ws-grand-total-cp in col 43 pic -(11)9.99 bold
+	skip
+endprocedure //print-grand-totals --------------------------------------------
+
+procedure finish-report
+	if ws-report-started
+		skip 2
+		print 'Options selected : ' col 2 no-newline
+		if summary-or-detail = "S"
+			print "Summary mode" col 22
+		else
+			print "Detail mode" col 22
+		endif
+		print "Trans Date: " col 22
+			start-trans-date in col 34
+			"-" in col 46
+			end-trans-date in col 48
+		print "Territory : " col 22
+			start-territory
+			"-"
+			end-territory
+	endif
+	// 23FEB07
+	// DO_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+	RBTCHPROC_FINISH_REPORT_AND_MESSAGE(ws-report-started)
+	if not rbtchproc-in-background
+		display rbtchproc-report-finish-message @21,51
+		pause
+	endif
+endprocedure //finish-report ---------------------------------------------------
+
+//end of file -------------------------------------------------------
