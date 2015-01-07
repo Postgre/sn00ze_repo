@@ -10,7 +10,6 @@
 //
 // Modification History
 // Date		Who	SDR		What
-// 07jan15  mb		{7}		remove prompt, always run in territory sort mode.
 // 27nov14	rmd	{6}		territory mode default
 // 22nov14	rmd	{5}		cloned from m12cashcolxi, gives option to use store against
 //						sales order instead of customer (todo - add option to batch routines)
@@ -135,10 +134,8 @@ before
 	box @3,1 to @16,80
 		title "Customer Cash Collections"
 	display "Summary or Detail :" @6,4
-/* //-- {7}
 	display "Start Territory   :" @8,4
 	display "End Territory     :" @9,4
-*/ //-- {7}
 	display "Start Trans Date  : " @11,4
 	display "End Trans Date    :" @12,4
 detail
@@ -150,7 +147,6 @@ detail
 		allow "S" "D"
 		default "D"
 		help "Mode: (S)ummary or (D)etail"
-/* {7}		remove prompt, always run in territory sort mode.
 	accept start-territory @8,24
 		help "Enter the territory to start at"
 		default spaces
@@ -208,7 +204,6 @@ detail
 	endvalidation
 	set lf-end-terr-desc = sys-description
 	display lf-end-terr-desc @9,30 background
-*/ //-- {7}
 	//end -------------------------------------- //rcMay 11, 2009
 	accept start-trans-date-str @11,24
 		// 22feb07
@@ -258,7 +253,6 @@ detail
 		endif
 	endvalidation
 	//start ----------------------------------- //rcMay 11, 2009
-/* //-- {7}
 	accept ws-sort-order @14,24
 		title "Sort Order:"
 		//allow "D" "S" "C"						//rc 29sep09
@@ -268,16 +262,10 @@ detail
 		default "T"	//{6}
 		help "Enter the Sort Order - (C)ustomer (D)ate (S)ales (T)erritory"
 	//end ------------------------------------- //rcMay 11, 2009
-*/ //-- {7}
 	confirm auto
 	confirmed
 		// 22feb07
 		// DO_EXECUTION
-//-- {7}
-		set ws-sort-order = "T"
-		set start-territory	= spaces //-- {7}
-		set end-territory = "~~~"
-//-- {7}
 		RBTCHPROC_EXECUTION
 	endconfirm
 endscreen //rbtchproc-report-parameters --------------------------------------
@@ -787,10 +775,6 @@ procedure finish-report
 			start-territory
 			"-"
 			end-territory
-//-- {7}
-		print "in Seq.   : " col 22
-			ws-sort-order
-//-- {7}
 	endif
 	// 23FEB07
 	// DO_FINISH_REPORT_AND_MESSAGE(ws-report-started)
