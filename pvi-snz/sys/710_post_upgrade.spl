@@ -16,15 +16,17 @@ procedure main
 		tod()
 		login-id()
 	skip
-	do set-faxmail
-	do create-custom-objects
-	do system-table-fix
-	do night-seq-fix
-	do remittance-fix
-	do skin-bg
-	do promo-gst-fix
-	do get-mas-flatcl
-	do mas-po-layouts
+	//do set-faxmail
+	//do create-custom-objects
+	//do system-table-fix
+	//do night-seq-fix
+	//do remittance-fix
+	//do skin-bg
+	//do promo-gst-fix
+	//do get-mas-flatcl
+	//do mas-po-layouts
+	//do insert-currency-code
+	do clear-sup-currency
 	report finished
 	message "Post Upgrade complete"
 endprocedure // main ----------------------------------------------------------
@@ -58,6 +60,7 @@ endprocedure // create-custom-objects -----------------------------------------
 procedure set-faxmail
 	get faxmail-software-control first
 	set fmsc-pending-area = "/pro/pronto/bms/fax/jobs"
+	set fmsc-default-fax-printer = "tf_faxmail"
 	update faxmail-software-control
 	on error
 	else
@@ -120,6 +123,19 @@ procedure system-table-fix
 		insert system-table
 	else
 		set sys-description	= "pvi-snz/pgmovr/po_prt_l1"
+		update system-table
+	endon
+	get system-table lock
+		on index sys-tbl-type sys-tbl-code
+		key is "PR" "PO_PRT_H1"
+	on error
+		initialise system-table
+		set sys-tbl-type	= "PR"
+		set sys-tbl-code	= "PO_PRT_H1"
+		set sys-description	= "pvi-snz/pgmovr/po_prt_h1"
+		insert system-table
+	else
+		set sys-description	= "pvi-snz/pgmovr/po_prt_h1"
 		update system-table
 	endon
 	unlock system-table
@@ -304,3 +320,34 @@ procedure mas-po-layouts
 	print
 		"FMT PO updated"
 endprocedure // mas-po-layouts ------------------------------------------------
+
+procedure insert-currency-code
+	initialise currency-code-master
+	set ccm-currency-code		= SPACES
+	set ccm-description 		= "System Default"
+	set ccm-currency-decimal	= 0
+	set ccm-active-flag     	= "Y"
+	set ccm-user-id				= login-id()
+	set ccm-date-time-stamp		= gmt()
+	insert currency-code-master
+	on error
+		//already exists
+	endon
+endprocedure // insert-currency-code ------------------------------------------
+
+procedure clear-sup-currency
+	print
+	 	"Clear Supplier Currency Codes"
+	extract stock-supplier lock all
+	detail
+		if sup-currency-code != SPACES
+			print
+				stock-code
+				cre-accountcode
+				sup-currency-code
+				"cleared"
+			set sup-currency-code = SPACES
+			update stock-supplier
+		endif
+	endextract
+endprocedure // clear-sup-currency --------------------------------------------
