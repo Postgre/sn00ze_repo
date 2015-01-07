@@ -1,5 +1,6 @@
 // delsched.spl
-version-number "20080107.010"
+version-number "20080107.011"
+// 07jan15	rmd	use Bsetdeldate that is delsched aware
 // 24nov14	rmd	{11} resolve colour code issues when record is highlighted
 // 16jan14	rmd	{10} migrate to 710
 //					retired fields
@@ -1296,7 +1297,8 @@ confirmed
 		case md-po-maint
 			spl "po/m6edit"
 		case md-delivery-details	//{5}
-			spl "pvi-snz/so/setdeldate"
+			//spl "pvi-snz/so/setdeldate"	//07jan15
+			spl "pvi-snz/so/Bsetdeldate"    //07jan15
 				parameters
 					tsd-so-order-no
 			        tsd-so-bo-suffix
